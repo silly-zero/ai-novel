@@ -8,24 +8,27 @@ import (
 
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
+	"github.com/ai-novel/studio/internal/infrastructure/config"
 	"github.com/ai-novel/studio/internal/infrastructure/llm"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// 1. 初始化 LLM 基础设施 (使用环境变量)
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	baseURL := os.Getenv("OPENAI_BASE_URL") // 如果使用 DeepSeek 等，这里设置其 BaseURL
-	modelName := os.Getenv("OPENAI_MODEL")  // 如 "gpt-4o" 或 "deepseek-chat"
+	// 1. 加载配置文件
+	cfg, err := config.LoadConfig("configs")
+	if err != nil {
+		log.Fatalf("加载配置文件失败: %v", err)
+	}
 
-	if apiKey == "" {
-		log.Println("警告: OPENAI_API_KEY 为空，请设置环境变量后再运行")
+	// 2. 初始化 LLM 基础设施
+	if cfg.LLM.OpenAI.APIKey == "你的Key" || cfg.LLM.OpenAI.APIKey == "" {
+		log.Println("警告: LLM API Key 未配置，请在 configs/config.yaml 中设置")
 		return
 	}
 
 	// 初始化 OpenAI 适配器
-	llmAdapter, err := llm.NewOpenAIAdapter(ctx, apiKey, baseURL, modelName)
+	llmAdapter, err := llm.NewOpenAIAdapter(ctx, cfg.LLM.OpenAI.APIKey, cfg.LLM.OpenAI.BaseURL, cfg.LLM.OpenAI.Model)
 	if err != nil {
 		log.Fatalf("初始化 LLM 失败: %v", err)
 	}

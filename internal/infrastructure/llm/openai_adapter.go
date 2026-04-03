@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"

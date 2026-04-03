@@ -37,14 +37,21 @@
 └── pkg/                        # 公共工具库 (Logger, Tracer)
 ```
 
-## 🚀 核心技术栈
+## 🚀 快速开始
 
-*   **语言**: Go 1.21+
-*   **Web 框架**: go-chi/chi
-*   **数据库 & ORM**: PostgreSQL + ent (Facebook 开源图关系 ORM)
-*   **向量检索**: pgvector
-*   **异步任务**: Temporal 或 asynq
-*   **可观测性**: OpenTelemetry (Trace & Span 记录 Agent 思维链)
+1.  **配置 LLM**:
+    编辑 `configs/config.yaml` 文件，填入你的 API Key 和相关设置：
+    ```yaml
+    llm:
+      openai:
+        api_key: "你的Key"
+        base_url: "https://api.deepseek.com"
+        model: "deepseek-chat"
+    ```
+2.  **运行项目**:
+    ```bash
+    go run cmd/server/main.go
+    ```
 
 ## 📋 当前任务路线图 (Roadmap)
 

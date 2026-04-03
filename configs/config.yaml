@@ -1,0 +1,9 @@
+app:
+  name: "ai-novel-studio"
+  env: "dev"
+
+llm:
+  openai:
+    api_key: "你的Key"
+    base_url: "https://api.deepseek.com"
+    model: "deepseek-chat"
