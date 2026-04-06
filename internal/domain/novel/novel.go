@@ -42,7 +42,7 @@ const (
 // Repository 定义了小说的持久化接口，具体实现在 infrastructure 层
 type Repository interface {
 	SaveNovel(ctx context.Context, n *Novel) error
-	GetNovel(ctx context.Context, id string) (*Novel, error)
+	GetNovel(ctx context.Context, id int) (*Novel, error)
 	SaveChapter(ctx context.Context, c *Chapter) error
-	GetChapter(ctx context.Context, id string) (*Chapter, error)
+	GetChapter(ctx context.Context, id int) (*Chapter, error)
 }

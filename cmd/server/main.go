@@ -14,6 +14,7 @@ import (
 	"github.com/ai-novel/studio/internal/infrastructure/eventbus"
 	"github.com/ai-novel/studio/internal/infrastructure/llm"
 	"github.com/ai-novel/studio/internal/infrastructure/vectorstore"
+	"github.com/ai-novel/studio/internal/interfaces/api"
 )
 
 func main() {
@@ -71,7 +72,7 @@ func main() {
 
 	// 4. 初始化各个 Agent
 	director := agents.NewDirectorAgent(llmAdapter)
-	writer := agents.NewWriterAgent(llmAdapter)
+	writer := agents.NewWriterAgent(llmAdapter, eventBus)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
 
 	// LibrarianAgent 现在拥有真实的 Embedder 和 VectorStore
@@ -84,19 +85,28 @@ func main() {
 	}
 
 	// 6. 准备生成任务的初始状态
+	// (可选) 也可以通过命令行或配置文件指定
 	initialState := &agents.GenerationState{
 		NovelID: "test-novel-001",
 		Outline: "这一章描写主角林动初次下山，在客栈遇到了一位神秘的黑衣人，两人因为一卷秘籍产生了争执。",
 	}
 
-	// 7. 运行工作流！
-	fmt.Println("🚀 正在启动 AI 小说生成工作流...")
+	// 7. 启动 API Server (支持流式输出)
+	server := api.NewServer(engine, eventBus)
+	go func() {
+		if err := server.Start(":8080"); err != nil {
+			log.Fatalf("API Server 启动失败: %v", err)
+		}
+	}()
+
+	// 8. 同时保留一个本地 CLI 测试逻辑
+	fmt.Println("🚀 正在启动 AI 小说生成工作流 (本地测试)...")
 	finalState, err := engine.RunChapterGeneration(ctx, initialState)
 	if err != nil {
 		log.Fatalf("工作流执行失败: %v", err)
 	}
 
-	// 8. 输出结果
+	// 9. 输出结果
 	fmt.Println("\n--- 生成结果 ---")
 	fmt.Printf("重试次数: %d\n", finalState.RetryCount)
 	fmt.Printf("是否通过审查: %v\n", finalState.IsApproved)

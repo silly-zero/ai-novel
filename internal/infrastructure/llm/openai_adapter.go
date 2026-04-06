@@ -33,22 +33,49 @@ func NewOpenAIAdapter(ctx context.Context, apiKey, baseURL, modelName string) (*
 
 // Generate 实现领域层的 agents.LLMService 接口
 func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	// 2. 将提示词转换为 Eino 的 schema.Message
 	messages := []*schema.Message{
 		schema.SystemMessage(systemPrompt),
 		schema.UserMessage(userPrompt),
 	}
 
-	// 3. 调用 Eino 的 Generate 方法
 	resp, err := a.chatModel.Generate(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("openai generate error: %w", err)
 	}
 
-	// 4. 返回生成的文本内容
 	if resp == nil || resp.Content == "" {
 		return "", fmt.Errorf("openai returned empty response")
 	}
 
 	return resp.Content, nil
+}
+
+// StreamGenerate 实现领域层的 agents.LLMService 接口，支持流式输出
+func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, systemPrompt, userPrompt string) (<-chan string, error) {
+	messages := []*schema.Message{
+		schema.SystemMessage(systemPrompt),
+		schema.UserMessage(userPrompt),
+	}
+
+	// 调用 Eino 的 Stream 方法
+	sr, err := a.chatModel.Stream(ctx, messages)
+	if err != nil {
+		return nil, fmt.Errorf("openai stream error: %w", err)
+	}
+
+	out := make(chan string)
+	go func() {
+		defer close(out)
+		defer sr.Close()
+		for {
+			msg, err := sr.Recv()
+			if err != nil {
+				// 结束或出错
+				return
+			}
+			out <- msg.Content
+		}
+	}()
+
+	return out, nil
 }

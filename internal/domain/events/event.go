@@ -7,7 +7,7 @@ import (
 
 // Event 是所有领域事件的通用接口
 type Event interface {
-	Topic() string      // 事件主题
+	Topic() string         // 事件主题
 	OccurredAt() time.Time // 发生时间
 }
 
@@ -18,9 +18,12 @@ type Handler func(ctx context.Context, event Event) error
 type Bus interface {
 	// Publish 发布一个事件
 	Publish(ctx context.Context, event Event) error
-	
-	// Subscribe 订阅某个主题的事件
-	Subscribe(topic string, handler Handler)
+
+	// Subscribe 订阅某个主题的事件，返回订阅 ID 用于取消订阅
+	Subscribe(topic string, handler Handler) string
+
+	// Unsubscribe 取消订阅
+	Unsubscribe(topic string, id string)
 }
 
 // ChapterGeneratedEvent 章节生成成功的领域事件
@@ -31,5 +34,16 @@ type ChapterGeneratedEvent struct {
 	Timestamp time.Time
 }
 
-func (e ChapterGeneratedEvent) Topic() string      { return "chapter.generated" }
+func (e ChapterGeneratedEvent) Topic() string         { return "chapter.generated" }
 func (e ChapterGeneratedEvent) OccurredAt() time.Time { return e.Timestamp }
+
+// TokenGeneratedEvent 实时生成中的 Token 事件 (用于流式展示)
+type TokenGeneratedEvent struct {
+	NovelID   string
+	ChapterID string
+	Token     string
+	Timestamp time.Time
+}
+
+func (e TokenGeneratedEvent) Topic() string         { return "token.generated" }
+func (e TokenGeneratedEvent) OccurredAt() time.Time { return e.Timestamp }
