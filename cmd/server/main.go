@@ -7,7 +7,9 @@ import (
 
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
+	"github.com/ai-novel/studio/internal/domain/events"
 	"github.com/ai-novel/studio/internal/infrastructure/config"
+	"github.com/ai-novel/studio/internal/infrastructure/eventbus"
 	"github.com/ai-novel/studio/internal/infrastructure/llm"
 	"github.com/ai-novel/studio/internal/infrastructure/vectorstore"
 )
@@ -21,7 +23,16 @@ func main() {
 		log.Fatalf("加载配置文件失败: %v", err)
 	}
 
-	// 2. 初始化 LLM 基础设施
+	// 2. 初始化基础设施
+	eventBus := eventbus.NewInternalEventBus()
+
+	// 订阅事件测试 (模拟 Ingestion 或 日志)
+	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
+		e := event.(events.ChapterGeneratedEvent)
+		fmt.Printf("\n📢 [事件订阅成功] 检测到新章节生成！小说ID: %s, 字数: %d\n", e.NovelID, len(e.Content))
+		return nil
+	})
+
 	if cfg.LLM.OpenAI.APIKey == "你的Key" || cfg.LLM.OpenAI.APIKey == "" {
 		log.Println("警告: LLM API Key 未配置，请在 configs/config.yaml 中设置")
 		return
@@ -51,7 +62,7 @@ func main() {
 	librarian := agents.NewLibrarianAgent(embedder, vStore)
 
 	// 3. 初始化 Eino 工作流引擎
-	engine, err := workflows.NewWorkflowEngine(director, librarian, writer, reviewer)
+	engine, err := workflows.NewWorkflowEngine(director, librarian, writer, reviewer, eventBus)
 	if err != nil {
 		log.Fatalf("初始化工作流引擎失败: %v", err)
 	}

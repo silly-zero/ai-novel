@@ -3,14 +3,17 @@ package workflows
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/ai-novel/studio/internal/domain/agents"
+	"github.com/ai-novel/studio/internal/domain/events"
 	"github.com/cloudwego/eino/compose"
 )
 
 // WorkflowEngine 是基于 eino 框架的状态机引擎，用于控制 Agent 之间的流转
 type WorkflowEngine struct {
-	graph compose.Runnable[*agents.GenerationState, *agents.GenerationState]
+	graph    compose.Runnable[*agents.GenerationState, *agents.GenerationState]
+	eventBus events.Bus
 }
 
 // NewWorkflowEngine 初始化一个新引擎，编排多个 Agent
@@ -19,6 +22,7 @@ func NewWorkflowEngine(
 	librarian *agents.LibrarianAgent,
 	writer *agents.WriterAgent,
 	reviewer *agents.ReviewerAgent,
+	eventBus events.Bus,
 ) (*WorkflowEngine, error) {
 
 	// 1. 初始化 Eino Graph，输入和输出都是 GenerationState 的指针
@@ -43,7 +47,7 @@ func NewWorkflowEngine(
 		if state.IsApproved || state.RetryCount >= 3 {
 			return compose.END, nil
 		}
-		
+
 		// 没通过审查，增加重试次数，打回给 writer 重新写
 		state.RetryCount++
 		return "writer", nil
@@ -59,7 +63,8 @@ func NewWorkflowEngine(
 	}
 
 	return &WorkflowEngine{
-		graph: runnable,
+		graph:    runnable,
+		eventBus: eventBus,
 	}, nil
 }
 
@@ -73,6 +78,16 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 
 	if !finalState.IsApproved {
 		return finalState, fmt.Errorf("failed to generate acceptable chapter after %d retries. Last critique: %s", finalState.RetryCount, finalState.Critique)
+	}
+
+	// 重点：章节生成成功后，发布领域事件！
+	if e.eventBus != nil {
+		_ = e.eventBus.Publish(ctx, events.ChapterGeneratedEvent{
+			NovelID:   finalState.NovelID,
+			ChapterID: finalState.ChapterID,
+			Content:   finalState.Draft,
+			Timestamp: time.Now(),
+		})
 	}
 
 	return finalState, nil
