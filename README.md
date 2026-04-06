@@ -19,30 +19,62 @@
 - **Writer Agent (主笔)**: 负责具体章节撰写，根据场景卡与背景资料遣词造句。
 - **Reviewer Agent (审查员)**: 负责质量把关。如果不合格，会生成修改意见并触发 `Writer` 重写，形成 Actor-Critic 闭环。
 
-### 🧠 记忆系统 (RAG 原理)
+### 🧠 记忆系统与异步解耦
 
-小说创作是一项长程任务，我们通过以下链路实现“长记性”：
-1. **Embedding**: 利用 OpenAI `text-embedding-3` 模型将文本转化为高维向量。
-2. **Vector Store**: 目前采用内存向量库（Memory Vector Store）进行余弦相似度计算，支持毫秒级检索。
-3. **Retrieval**: 在每一章写作前，自动检索最相关的 3-5 条历史记忆注入 Context。
+- **RAG 系统**: 
+  - **Embedding**: 利用 OpenAI `text-embedding-3` 模型。
+  - **Vector Store**: 采用内存向量库进行余弦相似度计算，支持高效检索。
+- **EventBus (异步神经网络)**:
+  - 采用 **领域事件 (Domain Events)** 机制，当章节生成成功时发布 `ChapterGeneratedEvent`。
+  - 通过异步总线触发记忆存储（Ingestion）、日志记录等后续流程，确保主创作流程的极速响应。
+
+## 📂 项目结构 (Project Structure)
+
+```text
+ai-novel/
+├── cmd/
+│   └── server/                # 应用程序入口
+│       └── main.go            # 组装基础设施、Agent 与启动工作流
+├── configs/
+│   └── config.yaml            # 核心配置文件 (LLM, Embedding, 数据库等)
+├── internal/
+│   ├── application/           # 应用层：业务流程编排
+│   │   ├── usecases/          # 业务用例
+│   │   └── workflows/         # Eino 工作流引擎实现
+│   ├── domain/                # 领域层：纯业务逻辑 (无外部依赖)
+│   │   ├── agents/            # Agent 角色定义与行为接口
+│   │   ├── events/            # 领域事件定义 (EventBus 契约)
+│   │   ├── memory/            # 记忆模型与向量检索接口
+│   │   └── novel/             # 小说、章节聚合根
+│   ├── infrastructure/        # 基础设施层：技术选型具体实现
+│   │   ├── config/            # Viper 配置加载器
+│   │   ├── eventbus/          # 异步事件总线实现 (Go Channels)
+│   │   ├── llm/               # LLM/Embedding 适配器 (Eino-ext)
+│   │   └── vectorstore/       # 向量数据库实现 (Memory/Postgres)
+│   └── interfaces/            # 接口层：外部通信
+│       └── api/               # RESTful / SSE 接口
+├── pkg/                       # 公共工具库 (Logger, Utils)
+└── README.md
+```
 
 ## 🛠 技术栈
 
 - **语言**: Go 1.18+
 - **Agent 框架**: [Eino](https://github.com/cloudwego/eino) (字节跳动开源)
-- **配置管理**: Viper
-- **LLM 组件**: Eino-ext (支持 OpenAI, DeepSeek, Claude)
-- **数据库 (规划中)**: PostgreSQL + pgvector (向量存储), ent (ORM)
+- **配置管理**: Viper (YAML + 环境变量支持)
+- **LLM 组件**: Eino-ext (OpenAI 协议兼容)
+- **事件机制**: 进程内异步 EventBus (Channel-based)
+- **数据库 (规划中)**: PostgreSQL + pgvector, ent (ORM)
 
 ## 📦 快速开始
 
 1. **配置**:
-   复制 `configs/config.yaml` 并在其中填入你的 API Key：
+   编辑 `configs/config.yaml` 填入 API 信息：
    ```yaml
    llm:
      openai:
        api_key: "your-api-key"
-       base_url: "https://api.deepseek.com" # 支持 DeepSeek 或 OpenAI
+       base_url: "https://api.deepseek.com"
        model: "deepseek-chat"
        embedding_model: "text-embedding-3-small"
    ```
@@ -54,14 +86,14 @@
 
 ## 📋 任务路线图 (Roadmap)
 
-- [x] 基于 DDD 的目录结构初始化
-- [x] 集成 Eino 编排 4 大 Agent 协作流
+- [x] 基于 DDD 的标准目录结构搭建
+- [x] 集成 Eino 编排 4 大 Agent 协作流 (State Graph)
 - [x] 实现 LLM 基础设施适配器 (Chat & Embedding)
 - [x] 实现 RAG 检索模型与内存向量库
-- [ ] **Next: 实现 Ingestion 链路（自动提取剧情摘要并存入记忆库）**
-- [ ] **Next: 引入领域事件 (EventBus) 实现 Agent 异步解耦**
-- [ ] 实现 PostgreSQL 数据库持久化
+- [x] **引入领域事件总线 (EventBus) 实现异步解耦**
+- [ ] **Next: 实现 Ingestion 订阅者（自动提取剧情摘要并存入记忆库）**
+- [ ] 实现 PostgreSQL 数据库持久化 (Novel/Chapter 存储)
 - [ ] 实现基于 SSE 的流式 API 接口
 
 ---
-*本项目由 Trae IDE 辅助开发，旨在探索 Golang 在 AI Agent 领域的最佳实践。*
+*本项目由 Trae IDE 辅助开发，致力于打造 Golang 生态下最优雅的 AI Agent 应用范式。*
