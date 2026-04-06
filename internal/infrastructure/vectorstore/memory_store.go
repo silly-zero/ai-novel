@@ -47,7 +47,7 @@ func (s *MemoryVectorStore) Search(ctx context.Context, novelID string, queryVec
 			continue
 		}
 
-		score := cosineSimilarity(queryVector, entry.Embedding)
+		score := CosineSimilarity(queryVector, entry.Embedding)
 		results = append(results, scoreResult{entry: entry, score: score})
 	}
 
@@ -65,8 +65,8 @@ func (s *MemoryVectorStore) Search(ctx context.Context, novelID string, queryVec
 	return final, nil
 }
 
-// cosineSimilarity 计算余弦相似度
-func cosineSimilarity(v1, v2 []float32) float32 {
+// CosineSimilarity 计算余弦相似度
+func CosineSimilarity(v1, v2 []float32) float32 {
 	if len(v1) != len(v2) {
 		return 0
 	}

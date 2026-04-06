@@ -8,13 +8,26 @@ import (
 )
 
 type Config struct {
-	App AppConfig `mapstructure:"app"`
-	LLM LLMConfig `mapstructure:"llm"`
+	App      AppConfig      `mapstructure:"app"`
+	Database DatabaseConfig `mapstructure:"database"`
+	LLM      LLMConfig      `mapstructure:"llm"`
 }
 
 type AppConfig struct {
-	Name string `mapstructure:"name"`
-	Env  string `mapstructure:"env"`
+	Env string `mapstructure:"env"`
+}
+
+type DatabaseConfig struct {
+	Postgres PostgresConfig `mapstructure:"postgres"`
+}
+
+type PostgresConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	DBName   string `mapstructure:"dbname"`
+	SSLMode  string `mapstructure:"sslmode"`
 }
 
 type LLMConfig struct {

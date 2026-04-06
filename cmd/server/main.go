@@ -10,6 +10,7 @@ import (
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/ai-novel/studio/internal/domain/events"
 	"github.com/ai-novel/studio/internal/infrastructure/config"
+	"github.com/ai-novel/studio/internal/infrastructure/database"
 	"github.com/ai-novel/studio/internal/infrastructure/eventbus"
 	"github.com/ai-novel/studio/internal/infrastructure/llm"
 	"github.com/ai-novel/studio/internal/infrastructure/vectorstore"
@@ -24,7 +25,21 @@ func main() {
 		log.Fatalf("加载配置文件失败: %v", err)
 	}
 
-	// 2. 初始化基础设施
+	// 2. 初始化基础设施 (数据库)
+	// 使用本地定义的结构体转换，确保解耦和稳定性
+	dbClient, err := database.NewClient(ctx, &database.PostgresConfig{
+		Host:     cfg.Database.Postgres.Host,
+		Port:     cfg.Database.Postgres.Port,
+		User:     cfg.Database.Postgres.User,
+		Password: cfg.Database.Postgres.Password,
+		DBName:   cfg.Database.Postgres.DBName,
+		SSLMode:  cfg.Database.Postgres.SSLMode,
+	})
+	if err != nil {
+		log.Fatalf("初始化数据库失败: %v", err)
+	}
+	defer dbClient.Close()
+
 	eventBus := eventbus.NewInternalEventBus()
 
 	if cfg.LLM.OpenAI.APIKey == "你的Key" || cfg.LLM.OpenAI.APIKey == "" {
@@ -45,7 +60,8 @@ func main() {
 	}
 
 	// 初始化内存向量库 (作为临时存储)
-	vStore := vectorstore.NewMemoryVectorStore()
+	// vStore := vectorstore.NewMemoryVectorStore()
+	vStore := vectorstore.NewEntVectorStore(dbClient.Client)
 
 	// 3. 初始化 Ingestion 业务逻辑并订阅事件
 	ingestionUC := usecases.NewIngestionUseCase(llmAdapter, embedder, vStore)

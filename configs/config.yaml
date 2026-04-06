@@ -1,6 +1,11 @@
-app:
-  name: "ai-novel-studio"
-  env: "dev"
+database:
+  postgres:
+    host: "localhost"
+    port: 5432
+    user: "postgres"
+    password: "password"
+    dbname: "ai_novel"
+    sslmode: "disable"
 
 llm:
   openai:
