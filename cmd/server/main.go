@@ -9,6 +9,7 @@ import (
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/ai-novel/studio/internal/infrastructure/config"
 	"github.com/ai-novel/studio/internal/infrastructure/llm"
+	"github.com/ai-novel/studio/internal/infrastructure/vectorstore"
 )
 
 func main() {
@@ -26,19 +27,28 @@ func main() {
 		return
 	}
 
-	// 初始化 OpenAI 适配器
+	// 初始化 OpenAI ChatModel 适配器
 	llmAdapter, err := llm.NewOpenAIAdapter(ctx, cfg.LLM.OpenAI.APIKey, cfg.LLM.OpenAI.BaseURL, cfg.LLM.OpenAI.Model)
 	if err != nil {
 		log.Fatalf("初始化 LLM 失败: %v", err)
 	}
 
-	// 2. 初始化各个 Agent
+	// 初始化 OpenAI Embedder 适配器
+	embedder, err := llm.NewOpenAIEmbedder(ctx, cfg.LLM.OpenAI.APIKey, cfg.LLM.OpenAI.BaseURL, cfg.LLM.OpenAI.EmbeddingModel)
+	if err != nil {
+		log.Fatalf("初始化 Embedder 失败: %v", err)
+	}
+
+	// 初始化内存向量库 (作为临时存储)
+	vStore := vectorstore.NewMemoryVectorStore()
+
+	// 3. 初始化各个 Agent
 	director := agents.NewDirectorAgent(llmAdapter)
 	writer := agents.NewWriterAgent(llmAdapter)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
 
-	// LibrarianAgent 需要 Embedder 和 VectorStore
-	librarian := agents.NewLibrarianAgent(nil, nil)
+	// LibrarianAgent 现在拥有真实的 Embedder 和 VectorStore
+	librarian := agents.NewLibrarianAgent(embedder, vStore)
 
 	// 3. 初始化 Eino 工作流引擎
 	engine, err := workflows.NewWorkflowEngine(director, librarian, writer, reviewer)

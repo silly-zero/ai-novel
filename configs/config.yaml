@@ -7,3 +7,5 @@ llm:
     api_key: "你的Key"
     base_url: "https://api.deepseek.com"
     model: "deepseek-chat"
+    embedding_model: "text-embedding-3-small"
+    max_tokens: 2048

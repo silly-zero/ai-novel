@@ -21,9 +21,10 @@ type LLMConfig struct {
 }
 
 type OpenAIConfig struct {
-	APIKey  string `mapstructure:"api_key"`
-	BaseURL string `mapstructure:"base_url"`
-	Model   string `mapstructure:"model"`
+	APIKey         string `mapstructure:"api_key"`
+	BaseURL        string `mapstructure:"base_url"`
+	Model          string `mapstructure:"model"`
+	EmbeddingModel string `mapstructure:"embedding_model"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {
