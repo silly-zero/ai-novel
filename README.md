@@ -1,65 +1,67 @@
-# AI Novel Studio
+# AI Novel Studio (Eino Edition)
 
-基于 **Golang** + **DDD (领域驱动设计)** + **Multi-Agent (多智能体协作)** 架构的企业级 AI 小说生成系统。
+基于 **Golang** + **DDD (领域驱动设计)** + **Eino (Multi-Agent 框架)** 的企业级 AI 小说生成系统。
 
-## 🎯 核心设计理念
+## 🎯 项目愿景
 
-传统的 AI 小说生成往往是单向流水线，容易导致角色 OOC（Out of Character）、设定冲突和剧情注水。本项目将小说创作过程抽象为一个**“虚拟作家工作室”**，通过多个专业 Agent 协作、审查、重写，并结合长短期记忆（RAG），实现高质量的长篇小说生成。
+通过构建一个“虚拟作家工作室”，解决传统 AI 生成小说存在的“吃设定”、剧情不连贯、角色 OOC 等核心痛点。利用多智能体协作（Multi-Agent）与长短期记忆（RAG）技术，产出逻辑严密、行文优美、字数过百万的长篇小说。
 
-### 🤖 智能体角色分配 (Multi-Agent System)
+## 🚀 核心架构设计
 
-1. **Director Agent (主编/导演)**: 把控全局节奏，负责将大纲拆解为章节级的“场景卡 (Scene Cards)”。
-2. **Librarian Agent (资料管理员)**: 负责 RAG (检索增强生成)，从向量数据库中检索当前场景所需的角色设定、历史剧情和伏笔，构建精准的 Context。
-3. **Writer Agent (主笔)**: 负责具体章节的文本生成，遣词造句。
-4. **Reviewer Agent (审查员)**: 负责阅读草稿，进行一致性检查（是否偏离大纲、是否 OOC），并生成 Critique（修改意见）打回重写。
+项目采用 **Clean Architecture** 分层，确保业务逻辑与具体技术实现（如 LLM 提供商、数据库）完全解耦。
 
-### 🏗 架构分层 (Clean Architecture + DDD)
+### 🤖 智能体工作室 (Multi-Agent Workflows)
 
-项目严格遵循依赖倒置原则，核心业务逻辑完全与外部框架解耦。
+依托 **[CloudWeGo/Eino](https://github.com/cloudwego/eino)** 框架，我们将小说创作流程建模为一个有向图 (State Graph)：
 
-```text
-├── cmd/
-│   └── server/                 # 应用程序入口
-├── internal/
-│   ├── domain/                 # 领域层：纯 Go 代码，定义实体、值对象和领域接口
-│   │   ├── agents/             # 多智能体核心接口
-│   │   ├── events/             # 领域事件 (EDA)
-│   │   ├── memory/             # 记忆模型抽象 (短期记忆、长期向量记忆)
-│   │   └── novel/              # 小说、章节聚合根
-│   ├── application/            # 应用层：工作流编排和用例
-│   │   ├── usecases/           # 外部可调用的业务用例
-│   │   └── workflows/          # 基于状态机/DAG 的 Agent 工作流引擎
-│   ├── infrastructure/         # 基础设施层：具体技术实现
-│   │   ├── database/           # 关系型数据库实现 (PostgreSQL)
-│   │   ├── llm/                # 大模型防腐层 (OpenAI, Anthropic 等)
-│   │   └── vectorstore/        # 向量检索实现 (pgvector/Milvus)
-│   └── interfaces/             # 接口层：HTTP API, SSE 流式输出
-└── pkg/                        # 公共工具库 (Logger, Tracer)
-```
+- **Director Agent (主编)**: 拆解大纲，规划场景，生成“场景卡”。
+- **Librarian Agent (资料员)**: 执行 RAG 检索。利用向量数据库，从数万字的历史剧情中精准提取角色设定与伏笔。
+- **Writer Agent (主笔)**: 负责具体章节撰写，根据场景卡与背景资料遣词造句。
+- **Reviewer Agent (审查员)**: 负责质量把关。如果不合格，会生成修改意见并触发 `Writer` 重写，形成 Actor-Critic 闭环。
 
-## 🚀 快速开始
+### 🧠 记忆系统 (RAG 原理)
 
-1.  **配置 LLM**:
-    编辑 `configs/config.yaml` 文件，填入你的 API Key 和相关设置：
-    ```yaml
-    llm:
-      openai:
-        api_key: "你的Key"
-        base_url: "https://api.deepseek.com"
-        model: "deepseek-chat"
-    ```
-2.  **运行项目**:
-    ```bash
-    go run cmd/server/main.go
-    ```
+小说创作是一项长程任务，我们通过以下链路实现“长记性”：
+1. **Embedding**: 利用 OpenAI `text-embedding-3` 模型将文本转化为高维向量。
+2. **Vector Store**: 目前采用内存向量库（Memory Vector Store）进行余弦相似度计算，支持毫秒级检索。
+3. **Retrieval**: 在每一章写作前，自动检索最相关的 3-5 条历史记忆注入 Context。
 
-## 📋 当前任务路线图 (Roadmap)
+## 🛠 技术栈
 
-- [x] 初始化 Go 项目并搭建基于 Agent+DDD 的目录结构
-- [x] 生成任务 README 和核心框架接口文件
-- [ ] 定义多智能体协作模型与 Agent 接口实现
-- [ ] 实现核心领域模型与领域事件总线 (Novel, Chapter, Memory, EventBus)
-- [ ] 设计并实现 Agent 的长期与短期记忆系统 (RAG)
-- [ ] 实现 Agent 工作流引擎 (状态机/DAG 控制生成、审查、重写流程)
-- [ ] 集成基础设施 (LLM API, Postgres, VectorDB)
-- [ ] 提供 SSE 流式输出的 API 接口
+- **语言**: Go 1.18+
+- **Agent 框架**: [Eino](https://github.com/cloudwego/eino) (字节跳动开源)
+- **配置管理**: Viper
+- **LLM 组件**: Eino-ext (支持 OpenAI, DeepSeek, Claude)
+- **数据库 (规划中)**: PostgreSQL + pgvector (向量存储), ent (ORM)
+
+## 📦 快速开始
+
+1. **配置**:
+   复制 `configs/config.yaml` 并在其中填入你的 API Key：
+   ```yaml
+   llm:
+     openai:
+       api_key: "your-api-key"
+       base_url: "https://api.deepseek.com" # 支持 DeepSeek 或 OpenAI
+       model: "deepseek-chat"
+       embedding_model: "text-embedding-3-small"
+   ```
+
+2. **运行**:
+   ```bash
+   go run cmd/server/main.go
+   ```
+
+## 📋 任务路线图 (Roadmap)
+
+- [x] 基于 DDD 的目录结构初始化
+- [x] 集成 Eino 编排 4 大 Agent 协作流
+- [x] 实现 LLM 基础设施适配器 (Chat & Embedding)
+- [x] 实现 RAG 检索模型与内存向量库
+- [ ] **Next: 实现 Ingestion 链路（自动提取剧情摘要并存入记忆库）**
+- [ ] **Next: 引入领域事件 (EventBus) 实现 Agent 异步解耦**
+- [ ] 实现 PostgreSQL 数据库持久化
+- [ ] 实现基于 SSE 的流式 API 接口
+
+---
+*本项目由 Trae IDE 辅助开发，旨在探索 Golang 在 AI Agent 领域的最佳实践。*
