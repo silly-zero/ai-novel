@@ -37,8 +37,8 @@ func main() {
 	writer := agents.NewWriterAgent(llmAdapter)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
 
-	// LibrarianAgent 目前依赖记忆系统，这里我们先传 nil，它会回退到“自由发挥”模式
-	librarian := agents.NewLibrarianAgent(nil)
+	// LibrarianAgent 需要 Embedder 和 VectorStore
+	librarian := agents.NewLibrarianAgent(nil, nil)
 
 	// 3. 初始化 Eino 工作流引擎
 	engine, err := workflows.NewWorkflowEngine(director, librarian, writer, reviewer)

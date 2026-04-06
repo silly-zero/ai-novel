@@ -2,26 +2,29 @@ package memory
 
 import "context"
 
-// MemoryEntry 代表一条记忆记录
+// Embedder 定义了将文本转换为向量的能力接口
+type Embedder interface {
+	// EmbedText 将一段文本转换为高维向量 ([]float32)
+	EmbedText(ctx context.Context, text string) ([]float32, error)
+	
+	// EmbedBatch 批量转换，提高效率
+	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+}
+
+// MemoryEntry 代表一条存入向量库的记忆记录
 type MemoryEntry struct {
 	ID        string
 	NovelID   string
-	Content   string // 记忆内容 (如：林平之发现了辟邪剑谱)
-	Tags      []string
-	Embedding []float32 // 向量化表示，用于相似度检索
+	Content   string    // 原始文本内容 (如：林动在青阳镇发现石符)
+	Metadata  map[string]interface{} // 扩展信息 (如：出场人物、章节号)
+	Embedding []float32 // 对应的向量
 }
 
-// ShortTermMemory 短期记忆接口 (通常是最近 N 章的原文)
-type ShortTermMemory interface {
-	Add(ctx context.Context, novelID string, content string) error
-	GetRecent(ctx context.Context, novelID string, limit int) ([]string, error)
-}
-
-// LongTermMemory 长期记忆接口 (基于向量数据库的 RAG)
-type LongTermMemory interface {
-	// Store 将新的设定或剧情提要存入向量库
-	Store(ctx context.Context, entry *MemoryEntry) error
-
-	// Retrieve 根据查询字符串 (如当前场景描述) 检索最相关的 N 条记忆
-	Retrieve(ctx context.Context, novelID string, query string, topK int) ([]MemoryEntry, error)
+// VectorStore 定义了向量数据库的存取接口 (Repository 模式)
+type VectorStore interface {
+	// Add 将记忆存入库中
+	Add(ctx context.Context, entries []*MemoryEntry) error
+	
+	// Search 根据查询向量，找到最相关的 N 条记录
+	Search(ctx context.Context, novelID string, queryVector []float32, limit int) ([]*MemoryEntry, error)
 }
