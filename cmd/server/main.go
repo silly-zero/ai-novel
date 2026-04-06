@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
@@ -37,7 +36,7 @@ func main() {
 	director := agents.NewDirectorAgent(llmAdapter)
 	writer := agents.NewWriterAgent(llmAdapter)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
-	
+
 	// LibrarianAgent 目前依赖记忆系统，这里我们先传 nil，它会回退到“自由发挥”模式
 	librarian := agents.NewLibrarianAgent(nil)
 
