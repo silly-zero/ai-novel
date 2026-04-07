@@ -18,6 +18,7 @@ type WorkflowEngine struct {
 
 // NewWorkflowEngine 初始化一个新引擎，编排多个 Agent
 func NewWorkflowEngine(
+	architect *agents.ArchitectAgent,
 	plot *agents.PlotAgent,
 	director *agents.DirectorAgent,
 	librarian *agents.LibrarianAgent,
@@ -30,6 +31,9 @@ func NewWorkflowEngine(
 	g := compose.NewGraph[*agents.GenerationState, *agents.GenerationState]()
 
 	// 2. 将 Agent 注册为 Graph 中的 Lambda Node
+	_ = g.AddLambdaNode("architect", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return architect.Run(ctx, s)
+	}))
 	_ = g.AddLambdaNode("plot", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
 		return plot.Run(ctx, s)
 	}))
@@ -47,7 +51,8 @@ func NewWorkflowEngine(
 	}))
 
 	// 3. 定义图的边 (Edges) - 正常顺序流转
-	_ = g.AddEdge(compose.START, "plot")
+	_ = g.AddEdge(compose.START, "architect")
+	_ = g.AddEdge("architect", "plot")
 	_ = g.AddEdge("plot", "director")
 	_ = g.AddEdge("director", "librarian")
 	_ = g.AddEdge("librarian", "writer")

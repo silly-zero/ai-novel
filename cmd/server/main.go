@@ -71,6 +71,7 @@ func main() {
 	})
 
 	// 4. 初始化各个 Agent
+	architect := agents.NewArchitectAgent(llmAdapter)
 	plot := agents.NewPlotAgent(llmAdapter)
 	director := agents.NewDirectorAgent(llmAdapter)
 	writer := agents.NewWriterAgent(llmAdapter, eventBus)
@@ -80,16 +81,17 @@ func main() {
 	librarian := agents.NewLibrarianAgent(embedder, vStore)
 
 	// 5. 初始化 Eino 工作流引擎
-	engine, err := workflows.NewWorkflowEngine(plot, director, librarian, writer, reviewer, eventBus)
+	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
 	if err != nil {
 		log.Fatalf("初始化工作流引擎失败: %v", err)
 	}
 
 	// 6. 准备生成任务的初始状态
-	// 现在我们可以只提供一个 Idea，让 Plot Agent 自动生成大纲
+	// 现在我们可以只提供一个 Idea，让 Architect 生成全书大纲，Plot 生成分章大纲
 	initialState := &agents.GenerationState{
-		NovelID: "test-novel-001",
-		Idea:    "一个普通的少年在山洞中捡到了一枚神秘的戒指，从此踏上了修仙之路。",
+		NovelID:      "test-novel-001",
+		ChapterIndex: 1,
+		Idea:         "一个普通的少年在山洞中捡到了一枚神秘的戒指，从此踏上了修仙之路。",
 	}
 
 	// 7. 启动 API Server (支持流式输出)
