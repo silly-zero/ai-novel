@@ -18,6 +18,7 @@ type WorkflowEngine struct {
 
 // NewWorkflowEngine 初始化一个新引擎，编排多个 Agent
 func NewWorkflowEngine(
+	plot *agents.PlotAgent,
 	director *agents.DirectorAgent,
 	librarian *agents.LibrarianAgent,
 	writer *agents.WriterAgent,
@@ -29,13 +30,25 @@ func NewWorkflowEngine(
 	g := compose.NewGraph[*agents.GenerationState, *agents.GenerationState]()
 
 	// 2. 将 Agent 注册为 Graph 中的 Lambda Node
-	_ = g.AddLambdaNode("director", compose.InvokableLambda(director.Run))
-	_ = g.AddLambdaNode("librarian", compose.InvokableLambda(librarian.Run))
-	_ = g.AddLambdaNode("writer", compose.InvokableLambda(writer.Run))
-	_ = g.AddLambdaNode("reviewer", compose.InvokableLambda(reviewer.Run))
+	_ = g.AddLambdaNode("plot", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return plot.Run(ctx, s)
+	}))
+	_ = g.AddLambdaNode("director", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return director.Run(ctx, s)
+	}))
+	_ = g.AddLambdaNode("librarian", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return librarian.Run(ctx, s)
+	}))
+	_ = g.AddLambdaNode("writer", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return writer.Run(ctx, s)
+	}))
+	_ = g.AddLambdaNode("reviewer", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return reviewer.Run(ctx, s)
+	}))
 
 	// 3. 定义图的边 (Edges) - 正常顺序流转
-	_ = g.AddEdge(compose.START, "director")
+	_ = g.AddEdge(compose.START, "plot")
+	_ = g.AddEdge("plot", "director")
 	_ = g.AddEdge("director", "librarian")
 	_ = g.AddEdge("librarian", "writer")
 	_ = g.AddEdge("writer", "reviewer")

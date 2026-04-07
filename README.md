@@ -14,6 +14,7 @@
 
 依托 **[CloudWeGo/Eino](https://github.com/cloudwego/eino)** 框架，我们将小说创作流程建模为一个有向图 (State Graph)：
 
+- **Plot Agent (编剧)**: **(新)** 接收一句话 Idea，自动构思并生成详细的章节剧情大纲。
 - **Director Agent (主编)**: 拆解大纲，规划场景，生成“场景卡”。
 - **Librarian Agent (资料员)**: 执行 RAG 检索。利用向量数据库，从数万字的历史剧情中精准提取角色设定与伏笔。
 - **Writer Agent (主笔)**: 负责具体章节撰写，根据场景卡与背景资料遣词造句。支持 **Token 级流式输出**。
@@ -106,7 +107,8 @@ ai-novel/
 - [x] 实现 Ingestion 订阅者（自动提取剧情摘要并存入记忆库）
 - [x] 实现 PostgreSQL + Ent 数据库持久化
 - [x] 实现基于 SSE 的流式 API 接口
-- [ ] **Next: 实现 Plot Agent (自动生成全书大纲与分章大纲)**
+- [x] **实现 Plot Agent (自动生成章节剧情大纲)**
+- [ ] **Next: 实现全书大纲 Agent (从 Idea 扩展为全书各章节大纲)**
 - [ ] **Next: 优化 Librarian 检索算法 (支持多维检索与语义重写)**
 
 ---

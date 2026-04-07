@@ -54,8 +54,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	novelID := r.URL.Query().Get("novel_id")
 	outline := r.URL.Query().Get("outline")
-	if novelID == "" || outline == "" {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id or outline")
+	idea := r.URL.Query().Get("idea")
+
+	if novelID == "" || (outline == "" && idea == "") {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id and both outline/idea")
 		flusher.Flush()
 		return
 	}
@@ -85,6 +87,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		state := &agents.GenerationState{
 			NovelID: novelID,
 			Outline: outline,
+			Idea:    idea,
 		}
 		_, err := s.engine.RunChapterGeneration(ctx, state)
 		if err != nil {

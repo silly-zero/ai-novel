@@ -12,13 +12,15 @@ const (
 	RoleWriter    AgentRole = "Writer"    // 主笔
 	RoleReviewer  AgentRole = "Reviewer"  // 审查员
 	RoleLibrarian AgentRole = "Librarian" // 资料管理员 (RAG)
+	RolePlot      AgentRole = "Plot"      // 编剧 (从 Idea 生成大纲)
 )
 
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
 	NovelID      string
 	ChapterID    string
-	Outline      string   // 当前剧情大纲
+	Idea         string   // 初始想法 (一句话 Idea)
+	Outline      string   // 当前剧情大纲 (由 Plot Agent 生成)
 	SceneCard    string   // 导演拆解出的场景卡
 	Context      string   // 图书管理员检索出的背景资料 (角色设定、前情提要)
 	Draft        string   // 主笔生成的草稿
