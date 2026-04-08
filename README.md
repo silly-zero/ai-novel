@@ -115,7 +115,6 @@ ai-novel/
 - [x] 实现 Character Agent (自动生成并维护角色卡与关系网)
 - [x] 实现 World Agent (维护地理、武学、势力等世界观设定)
 - [x] 优化 Librarian 检索算法 (支持智能检索计划与结构化档案提取)
-- [ ] **Next: 实现 Graph RAG (基于知识图谱的角色关系深度检索)**
+- [x] 实现 Graph RAG (基于角色关系网 + 结构化设定库 + 向量记忆的混合检索)
 - [ ] **Next: 实现 Human-in-the-loop (支持人工干预并修改生成的剧情)**
-
 

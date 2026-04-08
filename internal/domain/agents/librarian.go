@@ -62,6 +62,13 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	contextBuilder := strings.Builder{}
 
 	// 3. 检索角色档案
+	seedNames := make(map[string]bool)
+	for _, name := range plan.CharacterNames {
+		if name != "" {
+			seedNames[name] = true
+		}
+	}
+
 	if l.charRepo != nil && len(plan.CharacterNames) > 0 {
 		contextBuilder.WriteString("【相关角色卡】\n")
 		for _, name := range plan.CharacterNames {
@@ -72,6 +79,59 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 			}
 		}
 		contextBuilder.WriteString("\n")
+	}
+
+	if l.charRepo != nil && len(seedNames) > 0 {
+		rels, err := l.charRepo.ListRelationships(ctx, state.NovelID)
+		if err == nil && len(rels) > 0 {
+			contextBuilder.WriteString("【角色关系网】\n")
+
+			neighborNames := make(map[string]bool)
+			added := 0
+			for _, rel := range rels {
+				if rel == nil || rel.SourceCharacter == nil || rel.TargetCharacter == nil {
+					continue
+				}
+
+				sName := rel.SourceCharacter.Name
+				tName := rel.TargetCharacter.Name
+				if sName == "" || tName == "" {
+					continue
+				}
+
+				if !(seedNames[sName] || seedNames[tName]) {
+					continue
+				}
+
+				contextBuilder.WriteString(fmt.Sprintf("- %s --(%s)--> %s：%s\n", sName, rel.RelationType, tName, rel.Description))
+				neighborNames[sName] = true
+				neighborNames[tName] = true
+				added++
+				if added >= 10 {
+					break
+				}
+			}
+
+			contextBuilder.WriteString("\n")
+
+			contextBuilder.WriteString("【关系相关角色卡】\n")
+			addedCards := 0
+			for name := range neighborNames {
+				if name == "" {
+					continue
+				}
+				char, err := l.charRepo.FindByName(ctx, state.NovelID, name)
+				if err == nil && char != nil {
+					contextBuilder.WriteString(fmt.Sprintf("- %s: 性格(%s), 外貌(%s), 当前状态(%s)\n",
+						char.Name, char.Personality, char.Appearance, char.CurrentStatus))
+					addedCards++
+					if addedCards >= 8 {
+						break
+					}
+				}
+			}
+			contextBuilder.WriteString("\n")
+		}
 	}
 
 	// 4. 检索世界观设定 (结构化数据检索)
