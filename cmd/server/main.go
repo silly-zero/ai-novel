@@ -113,8 +113,8 @@ func main() {
 	// 7. 启动 API Server (支持流式输出)
 	server := api.NewServer(engine, eventBus)
 	go func() {
-		if err := server.Start(":8080"); err != nil {
-			log.Fatalf("API Server 启动失败: %v", err)
+		if err2 := server.Start(":8080"); err2 != nil {
+			log.Fatalf("API Server 启动失败: %v", err2)
 		}
 	}()
 
