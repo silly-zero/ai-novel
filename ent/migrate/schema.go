@@ -34,6 +34,26 @@ var (
 			},
 		},
 	}
+	// CharactersColumns holds the columns for the "characters" table.
+	CharactersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "novel_id", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "gender", Type: field.TypeString, Nullable: true},
+		{Name: "age", Type: field.TypeInt, Nullable: true},
+		{Name: "appearance", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "personality", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "background", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "current_status", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// CharactersTable holds the schema information for the "characters" table.
+	CharactersTable = &schema.Table{
+		Name:       "characters",
+		Columns:    CharactersColumns,
+		PrimaryKey: []*schema.Column{CharactersColumns[0]},
+	}
 	// MemoryEntriesColumns holds the columns for the "memory_entries" table.
 	MemoryEntriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -65,14 +85,49 @@ var (
 		Columns:    NovelsColumns,
 		PrimaryKey: []*schema.Column{NovelsColumns[0]},
 	}
+	// RelationshipsColumns holds the columns for the "relationships" table.
+	RelationshipsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "novel_id", Type: field.TypeString},
+		{Name: "relation_type", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "character_relationships", Type: field.TypeInt},
+		{Name: "relationship_target_character", Type: field.TypeInt},
+	}
+	// RelationshipsTable holds the schema information for the "relationships" table.
+	RelationshipsTable = &schema.Table{
+		Name:       "relationships",
+		Columns:    RelationshipsColumns,
+		PrimaryKey: []*schema.Column{RelationshipsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "relationships_characters_relationships",
+				Columns:    []*schema.Column{RelationshipsColumns[6]},
+				RefColumns: []*schema.Column{CharactersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "relationships_characters_target_character",
+				Columns:    []*schema.Column{RelationshipsColumns[7]},
+				RefColumns: []*schema.Column{CharactersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ChaptersTable,
+		CharactersTable,
 		MemoryEntriesTable,
 		NovelsTable,
+		RelationshipsTable,
 	}
 )
 
 func init() {
 	ChaptersTable.ForeignKeys[0].RefTable = NovelsTable
+	RelationshipsTable.ForeignKeys[0].RefTable = CharactersTable
+	RelationshipsTable.ForeignKeys[1].RefTable = CharactersTable
 }

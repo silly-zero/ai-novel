@@ -21,6 +21,18 @@ func (f ChapterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChapterMutation", m)
 }
 
+// The CharacterFunc type is an adapter to allow the use of ordinary
+// function as Character mutator.
+type CharacterFunc func(context.Context, *ent.CharacterMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CharacterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CharacterMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CharacterMutation", m)
+}
+
 // The MemoryEntryFunc type is an adapter to allow the use of ordinary
 // function as MemoryEntry mutator.
 type MemoryEntryFunc func(context.Context, *ent.MemoryEntryMutation) (ent.Value, error)
@@ -43,6 +55,18 @@ func (f NovelFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.NovelMutation", m)
+}
+
+// The RelationshipFunc type is an adapter to allow the use of ordinary
+// function as Relationship mutator.
+type RelationshipFunc func(context.Context, *ent.RelationshipMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RelationshipFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RelationshipMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RelationshipMutation", m)
 }
 
 // Condition is a hook condition function.

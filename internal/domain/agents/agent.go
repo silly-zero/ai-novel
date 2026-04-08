@@ -14,6 +14,7 @@ const (
 	RoleLibrarian AgentRole = "Librarian" // 资料管理员 (RAG)
 	RolePlot      AgentRole = "Plot"      // 编剧 (从 Idea 生成大纲)
 	RoleArchitect AgentRole = "Architect" // 架构师 (生成全书大纲)
+	RoleCharacter AgentRole = "Character" // 角色管理 (维护人物档案)
 )
 
 // GenerationState 承载一次小说生成任务中的上下文状态

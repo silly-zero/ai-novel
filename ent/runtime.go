@@ -6,8 +6,10 @@ import (
 	"time"
 
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/relationship"
 	"github.com/ai-novel/studio/ent/schema"
 )
 
@@ -31,6 +33,18 @@ func init() {
 	chapter.DefaultUpdatedAt = chapterDescUpdatedAt.Default.(func() time.Time)
 	// chapter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	chapter.UpdateDefaultUpdatedAt = chapterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	characterFields := schema.Character{}.Fields()
+	_ = characterFields
+	// characterDescCreatedAt is the schema descriptor for created_at field.
+	characterDescCreatedAt := characterFields[8].Descriptor()
+	// character.DefaultCreatedAt holds the default value on creation for the created_at field.
+	character.DefaultCreatedAt = characterDescCreatedAt.Default.(func() time.Time)
+	// characterDescUpdatedAt is the schema descriptor for updated_at field.
+	characterDescUpdatedAt := characterFields[9].Descriptor()
+	// character.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	character.DefaultUpdatedAt = characterDescUpdatedAt.Default.(func() time.Time)
+	// character.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	character.UpdateDefaultUpdatedAt = characterDescUpdatedAt.UpdateDefault.(func() time.Time)
 	memoryentryFields := schema.MemoryEntry{}.Fields()
 	_ = memoryentryFields
 	// memoryentryDescCreatedAt is the schema descriptor for created_at field.
@@ -53,4 +67,16 @@ func init() {
 	novel.DefaultUpdatedAt = novelDescUpdatedAt.Default.(func() time.Time)
 	// novel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	novel.UpdateDefaultUpdatedAt = novelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	relationshipFields := schema.Relationship{}.Fields()
+	_ = relationshipFields
+	// relationshipDescCreatedAt is the schema descriptor for created_at field.
+	relationshipDescCreatedAt := relationshipFields[3].Descriptor()
+	// relationship.DefaultCreatedAt holds the default value on creation for the created_at field.
+	relationship.DefaultCreatedAt = relationshipDescCreatedAt.Default.(func() time.Time)
+	// relationshipDescUpdatedAt is the schema descriptor for updated_at field.
+	relationshipDescUpdatedAt := relationshipFields[4].Descriptor()
+	// relationship.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	relationship.DefaultUpdatedAt = relationshipDescUpdatedAt.Default.(func() time.Time)
+	// relationship.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	relationship.UpdateDefaultUpdatedAt = relationshipDescUpdatedAt.UpdateDefault.(func() time.Time)
 }

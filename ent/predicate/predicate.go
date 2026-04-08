@@ -9,8 +9,14 @@ import (
 // Chapter is the predicate function for chapter builders.
 type Chapter func(*sql.Selector)
 
+// Character is the predicate function for character builders.
+type Character func(*sql.Selector)
+
 // MemoryEntry is the predicate function for memoryentry builders.
 type MemoryEntry func(*sql.Selector)
 
 // Novel is the predicate function for novel builders.
 type Novel func(*sql.Selector)
+
+// Relationship is the predicate function for relationship builders.
+type Relationship func(*sql.Selector)

@@ -70,6 +70,14 @@ func main() {
 		return ingestionUC.HandleChapterGenerated(ctx, event)
 	})
 
+	// 初始化 Character 业务逻辑并订阅事件
+	charRepo := database.NewCharacterRepository(dbClient.Client)
+	charAgent := agents.NewCharacterAgent(llmAdapter, charRepo)
+	charUC := usecases.NewCharacterUseCase(charAgent)
+	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
+		return charUC.HandleChapterGenerated(ctx, event)
+	})
+
 	// 4. 初始化各个 Agent
 	architect := agents.NewArchitectAgent(llmAdapter)
 	plot := agents.NewPlotAgent(llmAdapter)

@@ -16,8 +16,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/relationship"
 )
 
 // Client is the client that holds all ent builders.
@@ -27,10 +29,14 @@ type Client struct {
 	Schema *migrate.Schema
 	// Chapter is the client for interacting with the Chapter builders.
 	Chapter *ChapterClient
+	// Character is the client for interacting with the Character builders.
+	Character *CharacterClient
 	// MemoryEntry is the client for interacting with the MemoryEntry builders.
 	MemoryEntry *MemoryEntryClient
 	// Novel is the client for interacting with the Novel builders.
 	Novel *NovelClient
+	// Relationship is the client for interacting with the Relationship builders.
+	Relationship *RelationshipClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -43,8 +49,10 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Chapter = NewChapterClient(c.config)
+	c.Character = NewCharacterClient(c.config)
 	c.MemoryEntry = NewMemoryEntryClient(c.config)
 	c.Novel = NewNovelClient(c.config)
+	c.Relationship = NewRelationshipClient(c.config)
 }
 
 type (
@@ -135,11 +143,13 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		Chapter:     NewChapterClient(cfg),
-		MemoryEntry: NewMemoryEntryClient(cfg),
-		Novel:       NewNovelClient(cfg),
+		ctx:          ctx,
+		config:       cfg,
+		Chapter:      NewChapterClient(cfg),
+		Character:    NewCharacterClient(cfg),
+		MemoryEntry:  NewMemoryEntryClient(cfg),
+		Novel:        NewNovelClient(cfg),
+		Relationship: NewRelationshipClient(cfg),
 	}, nil
 }
 
@@ -157,11 +167,13 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:         ctx,
-		config:      cfg,
-		Chapter:     NewChapterClient(cfg),
-		MemoryEntry: NewMemoryEntryClient(cfg),
-		Novel:       NewNovelClient(cfg),
+		ctx:          ctx,
+		config:       cfg,
+		Chapter:      NewChapterClient(cfg),
+		Character:    NewCharacterClient(cfg),
+		MemoryEntry:  NewMemoryEntryClient(cfg),
+		Novel:        NewNovelClient(cfg),
+		Relationship: NewRelationshipClient(cfg),
 	}, nil
 }
 
@@ -191,16 +203,20 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	c.Chapter.Use(hooks...)
+	c.Character.Use(hooks...)
 	c.MemoryEntry.Use(hooks...)
 	c.Novel.Use(hooks...)
+	c.Relationship.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	c.Chapter.Intercept(interceptors...)
+	c.Character.Intercept(interceptors...)
 	c.MemoryEntry.Intercept(interceptors...)
 	c.Novel.Intercept(interceptors...)
+	c.Relationship.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
@@ -208,10 +224,14 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *ChapterMutation:
 		return c.Chapter.mutate(ctx, m)
+	case *CharacterMutation:
+		return c.Character.mutate(ctx, m)
 	case *MemoryEntryMutation:
 		return c.MemoryEntry.mutate(ctx, m)
 	case *NovelMutation:
 		return c.Novel.mutate(ctx, m)
+	case *RelationshipMutation:
+		return c.Relationship.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -363,6 +383,155 @@ func (c *ChapterClient) mutate(ctx context.Context, m *ChapterMutation) (Value, 
 		return (&ChapterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Chapter mutation op: %q", m.Op())
+	}
+}
+
+// CharacterClient is a client for the Character schema.
+type CharacterClient struct {
+	config
+}
+
+// NewCharacterClient returns a client for the Character from the given config.
+func NewCharacterClient(c config) *CharacterClient {
+	return &CharacterClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `character.Hooks(f(g(h())))`.
+func (c *CharacterClient) Use(hooks ...Hook) {
+	c.hooks.Character = append(c.hooks.Character, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `character.Intercept(f(g(h())))`.
+func (c *CharacterClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Character = append(c.inters.Character, interceptors...)
+}
+
+// Create returns a builder for creating a Character entity.
+func (c *CharacterClient) Create() *CharacterCreate {
+	mutation := newCharacterMutation(c.config, OpCreate)
+	return &CharacterCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Character entities.
+func (c *CharacterClient) CreateBulk(builders ...*CharacterCreate) *CharacterCreateBulk {
+	return &CharacterCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *CharacterClient) MapCreateBulk(slice any, setFunc func(*CharacterCreate, int)) *CharacterCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &CharacterCreateBulk{err: fmt.Errorf("calling to CharacterClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*CharacterCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &CharacterCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Character.
+func (c *CharacterClient) Update() *CharacterUpdate {
+	mutation := newCharacterMutation(c.config, OpUpdate)
+	return &CharacterUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *CharacterClient) UpdateOne(_m *Character) *CharacterUpdateOne {
+	mutation := newCharacterMutation(c.config, OpUpdateOne, withCharacter(_m))
+	return &CharacterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *CharacterClient) UpdateOneID(id int) *CharacterUpdateOne {
+	mutation := newCharacterMutation(c.config, OpUpdateOne, withCharacterID(id))
+	return &CharacterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Character.
+func (c *CharacterClient) Delete() *CharacterDelete {
+	mutation := newCharacterMutation(c.config, OpDelete)
+	return &CharacterDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *CharacterClient) DeleteOne(_m *Character) *CharacterDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *CharacterClient) DeleteOneID(id int) *CharacterDeleteOne {
+	builder := c.Delete().Where(character.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &CharacterDeleteOne{builder}
+}
+
+// Query returns a query builder for Character.
+func (c *CharacterClient) Query() *CharacterQuery {
+	return &CharacterQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeCharacter},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Character entity by its id.
+func (c *CharacterClient) Get(ctx context.Context, id int) (*Character, error) {
+	return c.Query().Where(character.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *CharacterClient) GetX(ctx context.Context, id int) *Character {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryRelationships queries the relationships edge of a Character.
+func (c *CharacterClient) QueryRelationships(_m *Character) *RelationshipQuery {
+	query := (&RelationshipClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(character.Table, character.FieldID, id),
+			sqlgraph.To(relationship.Table, relationship.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, character.RelationshipsTable, character.RelationshipsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *CharacterClient) Hooks() []Hook {
+	return c.hooks.Character
+}
+
+// Interceptors returns the client interceptors.
+func (c *CharacterClient) Interceptors() []Interceptor {
+	return c.inters.Character
+}
+
+func (c *CharacterClient) mutate(ctx context.Context, m *CharacterMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&CharacterCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&CharacterUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&CharacterUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&CharacterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Character mutation op: %q", m.Op())
 	}
 }
 
@@ -648,12 +817,177 @@ func (c *NovelClient) mutate(ctx context.Context, m *NovelMutation) (Value, erro
 	}
 }
 
+// RelationshipClient is a client for the Relationship schema.
+type RelationshipClient struct {
+	config
+}
+
+// NewRelationshipClient returns a client for the Relationship from the given config.
+func NewRelationshipClient(c config) *RelationshipClient {
+	return &RelationshipClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `relationship.Hooks(f(g(h())))`.
+func (c *RelationshipClient) Use(hooks ...Hook) {
+	c.hooks.Relationship = append(c.hooks.Relationship, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `relationship.Intercept(f(g(h())))`.
+func (c *RelationshipClient) Intercept(interceptors ...Interceptor) {
+	c.inters.Relationship = append(c.inters.Relationship, interceptors...)
+}
+
+// Create returns a builder for creating a Relationship entity.
+func (c *RelationshipClient) Create() *RelationshipCreate {
+	mutation := newRelationshipMutation(c.config, OpCreate)
+	return &RelationshipCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of Relationship entities.
+func (c *RelationshipClient) CreateBulk(builders ...*RelationshipCreate) *RelationshipCreateBulk {
+	return &RelationshipCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RelationshipClient) MapCreateBulk(slice any, setFunc func(*RelationshipCreate, int)) *RelationshipCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RelationshipCreateBulk{err: fmt.Errorf("calling to RelationshipClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RelationshipCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RelationshipCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for Relationship.
+func (c *RelationshipClient) Update() *RelationshipUpdate {
+	mutation := newRelationshipMutation(c.config, OpUpdate)
+	return &RelationshipUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RelationshipClient) UpdateOne(_m *Relationship) *RelationshipUpdateOne {
+	mutation := newRelationshipMutation(c.config, OpUpdateOne, withRelationship(_m))
+	return &RelationshipUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RelationshipClient) UpdateOneID(id int) *RelationshipUpdateOne {
+	mutation := newRelationshipMutation(c.config, OpUpdateOne, withRelationshipID(id))
+	return &RelationshipUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for Relationship.
+func (c *RelationshipClient) Delete() *RelationshipDelete {
+	mutation := newRelationshipMutation(c.config, OpDelete)
+	return &RelationshipDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RelationshipClient) DeleteOne(_m *Relationship) *RelationshipDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RelationshipClient) DeleteOneID(id int) *RelationshipDeleteOne {
+	builder := c.Delete().Where(relationship.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RelationshipDeleteOne{builder}
+}
+
+// Query returns a query builder for Relationship.
+func (c *RelationshipClient) Query() *RelationshipQuery {
+	return &RelationshipQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRelationship},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a Relationship entity by its id.
+func (c *RelationshipClient) Get(ctx context.Context, id int) (*Relationship, error) {
+	return c.Query().Where(relationship.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RelationshipClient) GetX(ctx context.Context, id int) *Relationship {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryCharacter queries the character edge of a Relationship.
+func (c *RelationshipClient) QueryCharacter(_m *Relationship) *CharacterQuery {
+	query := (&CharacterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(relationship.Table, relationship.FieldID, id),
+			sqlgraph.To(character.Table, character.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, relationship.CharacterTable, relationship.CharacterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTargetCharacter queries the target_character edge of a Relationship.
+func (c *RelationshipClient) QueryTargetCharacter(_m *Relationship) *CharacterQuery {
+	query := (&CharacterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(relationship.Table, relationship.FieldID, id),
+			sqlgraph.To(character.Table, character.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, relationship.TargetCharacterTable, relationship.TargetCharacterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RelationshipClient) Hooks() []Hook {
+	return c.hooks.Relationship
+}
+
+// Interceptors returns the client interceptors.
+func (c *RelationshipClient) Interceptors() []Interceptor {
+	return c.inters.Relationship
+}
+
+func (c *RelationshipClient) mutate(ctx context.Context, m *RelationshipMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RelationshipCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RelationshipUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RelationshipUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RelationshipDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown Relationship mutation op: %q", m.Op())
+	}
+}
+
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chapter, MemoryEntry, Novel []ent.Hook
+		Chapter, Character, MemoryEntry, Novel, Relationship []ent.Hook
 	}
 	inters struct {
-		Chapter, MemoryEntry, Novel []ent.Interceptor
+		Chapter, Character, MemoryEntry, Novel, Relationship []ent.Interceptor
 	}
 )

@@ -14,10 +14,14 @@ type Tx struct {
 	config
 	// Chapter is the client for interacting with the Chapter builders.
 	Chapter *ChapterClient
+	// Character is the client for interacting with the Character builders.
+	Character *CharacterClient
 	// MemoryEntry is the client for interacting with the MemoryEntry builders.
 	MemoryEntry *MemoryEntryClient
 	// Novel is the client for interacting with the Novel builders.
 	Novel *NovelClient
+	// Relationship is the client for interacting with the Relationship builders.
+	Relationship *RelationshipClient
 
 	// lazily loaded.
 	client     *Client
@@ -150,8 +154,10 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Chapter = NewChapterClient(tx.config)
+	tx.Character = NewCharacterClient(tx.config)
 	tx.MemoryEntry = NewMemoryEntryClient(tx.config)
 	tx.Novel = NewNovelClient(tx.config)
+	tx.Relationship = NewRelationshipClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

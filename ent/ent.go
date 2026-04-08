@@ -13,8 +13,10 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/relationship"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -75,9 +77,11 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			chapter.Table:     chapter.ValidColumn,
-			memoryentry.Table: memoryentry.ValidColumn,
-			novel.Table:       novel.ValidColumn,
+			chapter.Table:      chapter.ValidColumn,
+			character.Table:    character.ValidColumn,
+			memoryentry.Table:  memoryentry.ValidColumn,
+			novel.Table:        novel.ValidColumn,
+			relationship.Table: relationship.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)
