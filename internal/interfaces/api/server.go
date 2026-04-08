@@ -55,6 +55,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	novelID := r.URL.Query().Get("novel_id")
 	outline := r.URL.Query().Get("outline")
 	idea := r.URL.Query().Get("idea")
+	editorNotes := r.URL.Query().Get("editor_notes")
+	manualContext := r.URL.Query().Get("manual_context")
 	chapterIndexStr := r.URL.Query().Get("chapter_index")
 	chapterIndex := 1
 	if chapterIndexStr != "" {
@@ -90,10 +92,12 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	errChan := make(chan error, 1)
 	go func() {
 		state := &agents.GenerationState{
-			NovelID:      novelID,
-			ChapterIndex: chapterIndex,
-			Outline:      outline,
-			Idea:         idea,
+			NovelID:       novelID,
+			ChapterIndex:  chapterIndex,
+			Outline:       outline,
+			Idea:          idea,
+			EditorNotes:   editorNotes,
+			ManualContext: manualContext,
 		}
 		_, err := s.engine.RunChapterGeneration(ctx, state)
 		if err != nil {

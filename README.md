@@ -97,7 +97,11 @@ ai-novel/
 
 3. **体验流式 API**:
    ```bash
+   # 基础用法：从大纲生成
    curl -N "http://localhost:8080/api/v1/novel/generate?novel_id=test-001&outline=写一个主角在深山发现古老遗迹的故事"
+
+   # 人工干预/共创：注入作者指令与手工资料
+   curl -N "http://localhost:8080/api/v1/novel/generate?novel_id=test-001&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默的语气, 禁用第一人称&manual_context=青阳镇位于群山脚下, 镇北有一条小河"
    ```
 
 ## 📋 任务路线图 (Roadmap)
@@ -116,5 +120,4 @@ ai-novel/
 - [x] 实现 World Agent (维护地理、武学、势力等世界观设定)
 - [x] 优化 Librarian 检索算法 (支持智能检索计划与结构化档案提取)
 - [x] 实现 Graph RAG (基于角色关系网 + 结构化设定库 + 向量记忆的混合检索)
-- [ ] **Next: 实现 Human-in-the-loop (支持人工干预并修改生成的剧情)**
-
+- [x] 实现 Human-in-the-loop：新增 editor_notes 与 manual_context，支持“人工干预/共创”

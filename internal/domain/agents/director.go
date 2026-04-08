@@ -28,7 +28,11 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 
 请直接输出场景卡的文本内容，不要有多余的寒暄。`
 
-	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n\n请输出场景卡：", state.Outline)
+	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n", state.Outline)
+	if state.EditorNotes != "" {
+		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
+	}
+	userPrompt += "\n请输出场景卡："
 
 	sceneCard, err := d.llm.Generate(ctx, systemPrompt, userPrompt)
 	if err != nil {

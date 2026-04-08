@@ -19,18 +19,20 @@ const (
 
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
-	NovelID      string
-	ChapterID    string
-	ChapterIndex int    // 当前章节序号
-	Idea         string // 初始想法 (一句话 Idea)
-	FullOutline  string // 全书大纲 (由 Architect Agent 生成)
-	Outline      string // 当前章节剧情大纲 (由 Plot Agent 生成)
-	SceneCard    string // 导演拆解出的场景卡
-	Context      string // 图书管理员检索出的背景资料 (角色设定、前情提要)
-	Draft        string // 主笔生成的草稿
-	Critique     string // 审查员的修改意见
-	RetryCount   int    // 重试次数
-	IsApproved   bool   // 是否通过审查
+	NovelID       string
+	ChapterID     string
+	ChapterIndex  int    // 当前章节序号
+	Idea          string // 初始想法 (一句话 Idea)
+	FullOutline   string // 全书大纲 (由 Architect Agent 生成)
+	Outline       string // 当前章节剧情大纲 (由 Plot Agent 生成)
+	SceneCard     string // 导演拆解出的场景卡
+	EditorNotes   string // 人工干预：作者/编辑给出的指令或限制
+	ManualContext string // 人工补充的资料片段（优先注入到 Context）
+	Context       string // 图书管理员检索出的背景资料 (角色设定、前情提要)
+	Draft         string // 主笔生成的草稿
+	Critique      string // 审查员的修改意见
+	RetryCount    int    // 重试次数
+	IsApproved    bool   // 是否通过审查
 }
 
 // Agent 是所有智能体的顶级抽象接口

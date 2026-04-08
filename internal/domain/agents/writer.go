@@ -37,6 +37,12 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 
 	// 2. 构建 User Prompt：拼装当前状态中的各类上下文
 	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n", state.SceneCard, state.Context)
+	if state.ManualContext != "" {
+		userPrompt += fmt.Sprintf("\n【人工补充资料】\n%s\n", state.ManualContext)
+	}
+	if state.EditorNotes != "" {
+		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
+	}
 
 	if state.Critique != "" {
 		userPrompt += fmt.Sprintf("\n【前一版草稿】\n%s\n\n【审查员的修改意见】\n%s\n\n请根据以上意见，重新撰写本章正文：", state.Draft, state.Critique)
