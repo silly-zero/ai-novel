@@ -30,6 +30,7 @@ func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus) *Server {
 	s.router.Use(middleware.Recoverer)
 
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
+	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
 	return s
 }
@@ -130,4 +131,54 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// HandlePreviewContext 仅生成“场景卡 + 背景资料 + 共创指令”的合成上下文，不进入写作
+func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	novelID := r.URL.Query().Get("novel_id")
+	outline := r.URL.Query().Get("outline")
+	idea := r.URL.Query().Get("idea")
+	editorNotes := r.URL.Query().Get("editor_notes")
+	manualContext := r.URL.Query().Get("manual_context")
+	chapterIndexStr := r.URL.Query().Get("chapter_index")
+	chapterIndex := 1
+	if chapterIndexStr != "" {
+		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
+	}
+
+	if novelID == "" || (outline == "" && idea == "") {
+		http.Error(w, "Missing novel_id and both outline/idea", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	state := &agents.GenerationState{
+		NovelID:       novelID,
+		ChapterIndex:  chapterIndex,
+		Outline:       outline,
+		Idea:          idea,
+		EditorNotes:   editorNotes,
+		ManualContext: manualContext,
+	}
+
+	res, err := s.engine.PrepareContext(ctx, state)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	payload := map[string]interface{}{
+		"novel_id":       res.NovelID,
+		"chapter_index":  res.ChapterIndex,
+		"full_outline":   res.FullOutline,
+		"outline":        res.Outline,
+		"scene_card":     res.SceneCard,
+		"context":        res.Context,
+		"editor_notes":   res.EditorNotes,
+		"manual_context": res.ManualContext,
+	}
+	enc := json.NewEncoder(w)
+	_ = enc.Encode(payload)
 }

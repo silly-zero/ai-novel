@@ -12,8 +12,9 @@ import (
 
 // WorkflowEngine 是基于 eino 框架的状态机引擎，用于控制 Agent 之间的流转
 type WorkflowEngine struct {
-	graph    compose.Runnable[*agents.GenerationState, *agents.GenerationState]
-	eventBus events.Bus
+	graph        compose.Runnable[*agents.GenerationState, *agents.GenerationState]
+	contextGraph compose.Runnable[*agents.GenerationState, *agents.GenerationState]
+	eventBus     events.Bus
 }
 
 // NewWorkflowEngine 初始化一个新引擎，编排多个 Agent
@@ -80,9 +81,33 @@ func NewWorkflowEngine(
 		return nil, fmt.Errorf("failed to compile eino graph: %w", err)
 	}
 
+	// 构建仅用于生成上下文的精简图：architect -> plot -> director -> librarian
+	gCtx := compose.NewGraph[*agents.GenerationState, *agents.GenerationState]()
+	_ = gCtx.AddLambdaNode("architect", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return architect.Run(ctx, s)
+	}))
+	_ = gCtx.AddLambdaNode("plot", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return plot.Run(ctx, s)
+	}))
+	_ = gCtx.AddLambdaNode("director", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return director.Run(ctx, s)
+	}))
+	_ = gCtx.AddLambdaNode("librarian", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
+		return librarian.Run(ctx, s)
+	}))
+	_ = gCtx.AddEdge(compose.START, "architect")
+	_ = gCtx.AddEdge("architect", "plot")
+	_ = gCtx.AddEdge("plot", "director")
+	_ = gCtx.AddEdge("director", "librarian")
+	ctxRunnable, err := gCtx.Compile(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile context graph: %w", err)
+	}
+
 	return &WorkflowEngine{
-		graph:    runnable,
-		eventBus: eventBus,
+		graph:        runnable,
+		contextGraph: ctxRunnable,
+		eventBus:     eventBus,
 	}, nil
 }
 
@@ -109,4 +134,16 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	}
 
 	return finalState, nil
+}
+
+// PrepareContext 仅生成“场景卡 + 背景资料 + 共创指令”合成上下文，不进入写作与审查
+func (e *WorkflowEngine) PrepareContext(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+	if e.contextGraph == nil {
+		return nil, fmt.Errorf("context graph is not initialized")
+	}
+	res, err := e.contextGraph.Invoke(ctx, state)
+	if err != nil {
+		return nil, fmt.Errorf("context preparation failed: %w", err)
+	}
+	return res, nil
 }
