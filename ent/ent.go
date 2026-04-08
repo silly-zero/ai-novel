@@ -17,6 +17,7 @@ import (
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/worldsetting"
 )
 
 // ent aliases to avoid import conflicts in user's code.
@@ -82,6 +83,7 @@ func checkColumn(t, c string) error {
 			memoryentry.Table:  memoryentry.ValidColumn,
 			novel.Table:        novel.ValidColumn,
 			relationship.Table: relationship.ValidColumn,
+			worldsetting.Table: worldsetting.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

@@ -22,6 +22,8 @@ type Tx struct {
 	Novel *NovelClient
 	// Relationship is the client for interacting with the Relationship builders.
 	Relationship *RelationshipClient
+	// WorldSetting is the client for interacting with the WorldSetting builders.
+	WorldSetting *WorldSettingClient
 
 	// lazily loaded.
 	client     *Client
@@ -158,6 +160,7 @@ func (tx *Tx) init() {
 	tx.MemoryEntry = NewMemoryEntryClient(tx.config)
 	tx.Novel = NewNovelClient(tx.config)
 	tx.Relationship = NewRelationshipClient(tx.config)
+	tx.WorldSetting = NewWorldSettingClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

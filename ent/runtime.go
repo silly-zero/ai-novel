@@ -11,6 +11,7 @@ import (
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
 	"github.com/ai-novel/studio/ent/schema"
+	"github.com/ai-novel/studio/ent/worldsetting"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -79,4 +80,16 @@ func init() {
 	relationship.DefaultUpdatedAt = relationshipDescUpdatedAt.Default.(func() time.Time)
 	// relationship.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	relationship.UpdateDefaultUpdatedAt = relationshipDescUpdatedAt.UpdateDefault.(func() time.Time)
+	worldsettingFields := schema.WorldSetting{}.Fields()
+	_ = worldsettingFields
+	// worldsettingDescCreatedAt is the schema descriptor for created_at field.
+	worldsettingDescCreatedAt := worldsettingFields[5].Descriptor()
+	// worldsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
+	worldsetting.DefaultCreatedAt = worldsettingDescCreatedAt.Default.(func() time.Time)
+	// worldsettingDescUpdatedAt is the schema descriptor for updated_at field.
+	worldsettingDescUpdatedAt := worldsettingFields[6].Descriptor()
+	// worldsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	worldsetting.DefaultUpdatedAt = worldsettingDescUpdatedAt.Default.(func() time.Time)
+	// worldsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	worldsetting.UpdateDefaultUpdatedAt = worldsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
 }

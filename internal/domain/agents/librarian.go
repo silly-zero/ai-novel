@@ -16,14 +16,22 @@ type LibrarianAgent struct {
 	embedder    memory.Embedder
 	vectorStore memory.VectorStore
 	charRepo    domain.CharacterRepository
+	worldRepo   domain.WorldRepository
 }
 
-func NewLibrarianAgent(llm LLMService, emb memory.Embedder, vs memory.VectorStore, charRepo domain.CharacterRepository) *LibrarianAgent {
+func NewLibrarianAgent(
+	llm LLMService,
+	emb memory.Embedder,
+	vs memory.VectorStore,
+	charRepo domain.CharacterRepository,
+	worldRepo domain.WorldRepository,
+) *LibrarianAgent {
 	return &LibrarianAgent{
 		llm:         llm,
 		embedder:    emb,
 		vectorStore: vs,
 		charRepo:    charRepo,
+		worldRepo:   worldRepo,
 	}
 }
 
@@ -34,6 +42,7 @@ func (l *LibrarianAgent) Role() AgentRole {
 // RetrievalPlan 检索计划
 type RetrievalPlan struct {
 	CharacterNames []string `json:"character_names"` // 需要查询的角色名
+	WorldSettings  []string `json:"world_settings"`  // 需要查询的世界观名称 (地理、武学等)
 	SearchQueries  []string `json:"search_queries"`  // 针对向量库的优化查询句
 }
 
@@ -45,16 +54,14 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	}
 
 	// 2. 制定检索计划 (Query Rewriting)
-	// 让 LLM 分析当前场景，决定搜什么
 	plan, err := l.makeRetrievalPlan(ctx, state)
 	if err != nil {
-		// 容错：如果计划制定失败，直接拿大纲搜
 		plan = &RetrievalPlan{SearchQueries: []string{state.Outline}}
 	}
 
 	contextBuilder := strings.Builder{}
 
-	// 3. 检索角色档案 (结构化数据检索)
+	// 3. 检索角色档案
 	if l.charRepo != nil && len(plan.CharacterNames) > 0 {
 		contextBuilder.WriteString("【相关角色卡】\n")
 		for _, name := range plan.CharacterNames {
@@ -67,7 +74,20 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		contextBuilder.WriteString("\n")
 	}
 
-	// 4. 检索历史记忆 (向量检索)
+	// 4. 检索世界观设定 (结构化数据检索)
+	if l.worldRepo != nil && len(plan.WorldSettings) > 0 {
+		contextBuilder.WriteString("【世界观设定】\n")
+		for _, name := range plan.WorldSettings {
+			setting, err := l.worldRepo.FindByName(ctx, state.NovelID, name)
+			if err == nil && setting != nil {
+				contextBuilder.WriteString(fmt.Sprintf("- [%s] %s: %s\n",
+					setting.Category, setting.Name, setting.Description))
+			}
+		}
+		contextBuilder.WriteString("\n")
+	}
+
+	// 5. 检索历史记忆 (向量检索)
 	contextBuilder.WriteString("【前情提要与伏笔】\n")
 	allMemories := make(map[string]bool) // 去重
 	for _, query := range plan.SearchQueries {
@@ -95,6 +115,7 @@ func (l *LibrarianAgent) makeRetrievalPlan(ctx context.Context, state *Generatio
 请输出 JSON 格式：
 {
   "character_names": ["角色A", "角色B"],
+  "world_settings": ["某武学境界", "某地理位置", "某势力名称"],
   "search_queries": ["角色A和角色B之前的关系如何？", "关于某地点的历史设定是什么？"]
 }
 务必确保输出是合法的 JSON。`
@@ -114,4 +135,3 @@ func (l *LibrarianAgent) makeRetrievalPlan(ctx context.Context, state *Generatio
 	}
 	return &plan, nil
 }
-

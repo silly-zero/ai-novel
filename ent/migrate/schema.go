@@ -116,6 +116,23 @@ var (
 			},
 		},
 	}
+	// WorldSettingsColumns holds the columns for the "world_settings" table.
+	WorldSettingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "novel_id", Type: field.TypeString},
+		{Name: "category", Type: field.TypeString},
+		{Name: "name", Type: field.TypeString},
+		{Name: "description", Type: field.TypeString, Size: 2147483647},
+		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+	}
+	// WorldSettingsTable holds the schema information for the "world_settings" table.
+	WorldSettingsTable = &schema.Table{
+		Name:       "world_settings",
+		Columns:    WorldSettingsColumns,
+		PrimaryKey: []*schema.Column{WorldSettingsColumns[0]},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ChaptersTable,
@@ -123,6 +140,7 @@ var (
 		MemoryEntriesTable,
 		NovelsTable,
 		RelationshipsTable,
+		WorldSettingsTable,
 	}
 )
 

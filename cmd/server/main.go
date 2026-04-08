@@ -78,6 +78,14 @@ func main() {
 		return charUC.HandleChapterGenerated(ctx, event)
 	})
 
+	// 初始化 World 业务逻辑并订阅事件
+	worldRepo := database.NewWorldRepository(dbClient.Client)
+	worldAgent := agents.NewWorldAgent(llmAdapter, worldRepo)
+	worldUC := usecases.NewWorldUseCase(worldAgent)
+	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
+		return worldUC.HandleChapterGenerated(ctx, event)
+	})
+
 	// 4. 初始化各个 Agent
 	architect := agents.NewArchitectAgent(llmAdapter)
 	plot := agents.NewPlotAgent(llmAdapter)
@@ -85,8 +93,8 @@ func main() {
 	writer := agents.NewWriterAgent(llmAdapter, eventBus)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
 
-	// LibrarianAgent 现在拥有真实的 LLM, Embedder, VectorStore 和 CharacterRepo
-	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo)
+	// LibrarianAgent 现在拥有真实的 LLM, Embedder, VectorStore, CharacterRepo 和 WorldRepo
+	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo)
 
 	// 5. 初始化 Eino 工作流引擎
 	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
