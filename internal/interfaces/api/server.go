@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
@@ -89,27 +90,55 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	// 确保在请求结束时取消订阅
 	defer s.eventBus.Unsubscribe("token.generated", subID)
 
-	// 3. 异步启动生成任务
+	// 3. 先推送 start，保证前端立即进入流式状态
+	fmt.Fprintf(w, "event: start\ndata: %s\n\n", "Generation started")
+	flusher.Flush()
+
+	// 4. 预先生成场景卡与背景资料（只改不写），并推送元信息
+	state := &agents.GenerationState{
+		NovelID:       novelID,
+		ChapterIndex:  chapterIndex,
+		Outline:       outline,
+		Idea:          idea,
+		EditorNotes:   editorNotes,
+		ManualContext: manualContext,
+	}
+
+	prepared, prepErr := s.engine.PrepareContext(ctx, state)
+	if prepErr != nil {
+		fmt.Fprintf(w, "event: error\ndata: %v\n\n", prepErr)
+		flusher.Flush()
+		return
+	}
+
+	meta := map[string]interface{}{
+		"type":                 "context_meta",
+		"novel_id":             prepared.NovelID,
+		"chapter_index":        prepared.ChapterIndex,
+		"editor_notes":         prepared.EditorNotes,
+		"manual_context":       prepared.ManualContext,
+		"full_outline_preview": truncate(prepared.FullOutline, 400),
+		"outline_preview":      truncate(prepared.Outline, 300),
+		"scene_card_preview":   truncate(prepared.SceneCard, 500),
+		"context_preview":      truncate(prepared.Context, 800),
+		"context_stats": map[string]int{
+			"context_lines":    1 + strings.Count(prepared.Context, "\n"),
+			"scene_card_lines": 1 + strings.Count(prepared.SceneCard, "\n"),
+		},
+	}
+	metaBytes, _ := json.Marshal(meta)
+	fmt.Fprintf(w, "event: context_meta\ndata: %s\n\n", string(metaBytes))
+	flusher.Flush()
+
+	// 5. 异步启动生成任务（writer/reviewer）
 	errChan := make(chan error, 1)
 	go func() {
-		state := &agents.GenerationState{
-			NovelID:       novelID,
-			ChapterIndex:  chapterIndex,
-			Outline:       outline,
-			Idea:          idea,
-			EditorNotes:   editorNotes,
-			ManualContext: manualContext,
-		}
-		_, err := s.engine.RunChapterGeneration(ctx, state)
+		_, err := s.engine.RunChapterGeneration(ctx, prepared)
 		if err != nil {
 			errChan <- err
 		}
 		close(tokenChan)
 	}()
-
-	// 4. 将 Token 流式推向客户端
-	fmt.Fprintf(w, "event: start\ndata: %s\n\n", "Generation started")
-	flusher.Flush()
 
 	for {
 		select {
@@ -131,6 +160,18 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func truncate(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || s == "" {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "..."
 }
 
 // HandlePreviewContext 仅生成“场景卡 + 背景资料 + 共创指令”的合成上下文，不进入写作

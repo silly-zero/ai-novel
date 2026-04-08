@@ -19,6 +19,10 @@ func (d *DirectorAgent) Role() AgentRole {
 }
 
 func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
+	if state.SceneCard != "" {
+		return state, nil
+	}
+
 	systemPrompt := `你是一位资深小说主编。你的任务是根据提供的【本章大纲】，拆解出本章的【场景卡(Scene Cards)】。
 场景卡应该包含：
 1. 本章发生的时间、地点。

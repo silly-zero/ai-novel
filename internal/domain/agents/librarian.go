@@ -53,6 +53,10 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		return state, nil
 	}
 
+	if state.Context != "" {
+		return state, nil
+	}
+
 	// 2. 制定检索计划 (Query Rewriting)
 	plan, err := l.makeRetrievalPlan(ctx, state)
 	if err != nil {

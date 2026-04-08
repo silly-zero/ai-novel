@@ -104,6 +104,8 @@ ai-novel/
    curl -N "http://localhost:8080/api/v1/novel/generate?novel_id=test-001&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默的语气, 禁用第一人称&manual_context=青阳镇位于群山脚下, 镇北有一条小河"
    ```
 
+   说明：SSE 会先推送 `event: context_meta`（本次生成使用的指令/资料摘要），随后才开始逐 token 推送正文。
+
 4. **预览/下载合成上下文（只改不写）**:
    ```bash
    # 仅生成“场景卡 + 背景资料 + 共创指令”，不进入写作/审查
