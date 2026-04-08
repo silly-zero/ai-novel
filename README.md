@@ -18,7 +18,7 @@
 - **Character Agent (人设师)**: **(新)** 自动从剧情中提取并维护角色卡（姓名、外貌、性格、地位），确保人物设定不崩坏。
 - **Plot Agent (编剧)**: 根据全书大纲和当前章节序号，自动生成详细的本章剧情大纲。
 - **Director Agent (主编)**: 拆解大纲，规划场景，生成“场景卡”。
-- **Librarian Agent (资料员)**: 执行 RAG 检索。利用向量数据库，从数万字的历史剧情中精准提取角色设定与伏笔。
+- **Librarian Agent (资料员)**: 执行 **智能 RAG 检索**。利用 LLM 制定检索计划，结合结构化角色档案检索与向量数据库检索，为写作提供精准的上下文。
 - **Writer Agent (主笔)**: 负责具体章节撰写，根据场景卡与背景资料遣词造句。支持 **Token 级流式输出**。
 - **Reviewer Agent (审查员)**: 负责质量把关。如果不合格，会生成修改意见并触发 `Writer` 重写，形成 Actor-Critic 闭环。
 
@@ -111,9 +111,9 @@ ai-novel/
 - [x] 实现基于 SSE 的流式 API 接口
 - [x] 实现 Plot Agent (自动生成章节剧情大纲)
 - [x] 实现 Architect Agent (从 Idea 扩展为全书大纲路线图)
-- [x] **实现 Character Agent (自动生成并维护角色卡与关系网)**
-- [ ] **Next: 优化 Librarian 检索算法 (支持多维检索与语义重写)**
+- [x] 实现 Character Agent (自动生成并维护角色卡与关系网)
+- [x] **优化 Librarian 检索算法 (支持智能检索计划与结构化档案提取)**
 - [ ] **Next: 实现 World Agent (维护地理、武学、势力等世界观设定)**
+- [ ] **Next: 实现 Graph RAG (基于知识图谱的角色关系深度检索)**
 
----
-*本项目由 Trae IDE 辅助开发，致力于打造 Golang 生态下最优雅的 AI Agent 应用范式。*
+

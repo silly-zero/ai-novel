@@ -85,8 +85,8 @@ func main() {
 	writer := agents.NewWriterAgent(llmAdapter, eventBus)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
 
-	// LibrarianAgent 现在拥有真实的 Embedder 和 VectorStore
-	librarian := agents.NewLibrarianAgent(embedder, vStore)
+	// LibrarianAgent 现在拥有真实的 LLM, Embedder, VectorStore 和 CharacterRepo
+	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo)
 
 	// 5. 初始化 Eino 工作流引擎
 	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
