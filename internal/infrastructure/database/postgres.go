@@ -18,6 +18,7 @@ type PostgresConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+	EnableForeignKeys bool
 }
 
 // Client 包装了 ent.Client
@@ -36,7 +37,7 @@ func NewClient(ctx context.Context, cfg *PostgresConfig) (*Client, error) {
 	}
 
 	// 运行自动迁移
-	if err := client.Schema.Create(ctx, migrate.WithForeignKeys(false)); err != nil {
+	if err := client.Schema.Create(ctx, migrate.WithForeignKeys(cfg.EnableForeignKeys)); err != nil {
 		return nil, fmt.Errorf("failed creating schema resources: %w", err)
 	}
 

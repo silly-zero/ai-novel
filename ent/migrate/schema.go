@@ -18,7 +18,7 @@ var (
 		{Name: "status", Type: field.TypeString, Default: "Draft"},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
-		{Name: "novel_chapters", Type: field.TypeInt, Nullable: true},
+		{Name: "novel_chapters", Type: field.TypeInt},
 	}
 	// ChaptersTable holds the schema information for the "chapters" table.
 	ChaptersTable = &schema.Table{
@@ -30,7 +30,7 @@ var (
 				Symbol:     "chapters_novels_chapters",
 				Columns:    []*schema.Column{ChaptersColumns[8]},
 				RefColumns: []*schema.Column{NovelsColumns[0]},
-				OnDelete:   schema.SetNull,
+				OnDelete:   schema.NoAction,
 			},
 		},
 	}

@@ -31,6 +31,7 @@ func (Chapter) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.From("novel", Novel.Type).
 			Ref("chapters").
-			Unique(),
+			Unique().
+			Required(),
 	}
 }

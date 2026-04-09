@@ -93,14 +93,6 @@ func (_c *ChapterCreate) SetNovelID(id int) *ChapterCreate {
 	return _c
 }
 
-// SetNillableNovelID sets the "novel" edge to the Novel entity by ID if the given value is not nil.
-func (_c *ChapterCreate) SetNillableNovelID(id *int) *ChapterCreate {
-	if id != nil {
-		_c = _c.SetNovelID(*id)
-	}
-	return _c
-}
-
 // SetNovel sets the "novel" edge to the Novel entity.
 func (_c *ChapterCreate) SetNovel(v *Novel) *ChapterCreate {
 	return _c.SetNovelID(v.ID)
@@ -177,6 +169,9 @@ func (_c *ChapterCreate) check() error {
 	}
 	if _, ok := _c.mutation.UpdatedAt(); !ok {
 		return &ValidationError{Name: "updated_at", err: errors.New(`ent: missing required field "Chapter.updated_at"`)}
+	}
+	if len(_c.mutation.NovelIDs()) == 0 {
+		return &ValidationError{Name: "novel", err: errors.New(`ent: missing required edge "Chapter.novel"`)}
 	}
 	return nil
 }

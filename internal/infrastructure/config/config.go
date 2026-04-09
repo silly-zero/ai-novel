@@ -28,6 +28,7 @@ type PostgresConfig struct {
 	Password string `mapstructure:"password"`
 	DBName   string `mapstructure:"dbname"`
 	SSLMode  string `mapstructure:"sslmode"`
+	EnableForeignKeys bool `mapstructure:"enable_foreign_keys"`
 }
 
 type LLMConfig struct {

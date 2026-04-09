@@ -139,14 +139,6 @@ func (_u *ChapterUpdate) SetNovelID(id int) *ChapterUpdate {
 	return _u
 }
 
-// SetNillableNovelID sets the "novel" edge to the Novel entity by ID if the given value is not nil.
-func (_u *ChapterUpdate) SetNillableNovelID(id *int) *ChapterUpdate {
-	if id != nil {
-		_u = _u.SetNovelID(*id)
-	}
-	return _u
-}
-
 // SetNovel sets the "novel" edge to the Novel entity.
 func (_u *ChapterUpdate) SetNovel(v *Novel) *ChapterUpdate {
 	return _u.SetNovelID(v.ID)
@@ -199,7 +191,18 @@ func (_u *ChapterUpdate) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *ChapterUpdate) check() error {
+	if _u.mutation.NovelCleared() && len(_u.mutation.NovelIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "Chapter.novel"`)
+	}
+	return nil
+}
+
 func (_u *ChapterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(chapter.Table, chapter.Columns, sqlgraph.NewFieldSpec(chapter.FieldID, field.TypeInt))
 	if ps := _u.mutation.predicates; len(ps) > 0 {
 		_spec.Predicate = func(selector *sql.Selector) {
@@ -394,14 +397,6 @@ func (_u *ChapterUpdateOne) SetNovelID(id int) *ChapterUpdateOne {
 	return _u
 }
 
-// SetNillableNovelID sets the "novel" edge to the Novel entity by ID if the given value is not nil.
-func (_u *ChapterUpdateOne) SetNillableNovelID(id *int) *ChapterUpdateOne {
-	if id != nil {
-		_u = _u.SetNovelID(*id)
-	}
-	return _u
-}
-
 // SetNovel sets the "novel" edge to the Novel entity.
 func (_u *ChapterUpdateOne) SetNovel(v *Novel) *ChapterUpdateOne {
 	return _u.SetNovelID(v.ID)
@@ -467,7 +462,18 @@ func (_u *ChapterUpdateOne) defaults() {
 	}
 }
 
+// check runs all checks and user-defined validators on the builder.
+func (_u *ChapterUpdateOne) check() error {
+	if _u.mutation.NovelCleared() && len(_u.mutation.NovelIDs()) > 0 {
+		return errors.New(`ent: clearing a required unique edge "Chapter.novel"`)
+	}
+	return nil
+}
+
 func (_u *ChapterUpdateOne) sqlSave(ctx context.Context) (_node *Chapter, err error) {
+	if err := _u.check(); err != nil {
+		return _node, err
+	}
 	_spec := sqlgraph.NewUpdateSpec(chapter.Table, chapter.Columns, sqlgraph.NewFieldSpec(chapter.FieldID, field.TypeInt))
 	id, ok := _u.mutation.ID()
 	if !ok {

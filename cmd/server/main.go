@@ -29,12 +29,13 @@ func main() {
 	// 2. 初始化基础设施 (数据库)
 	// 使用本地定义的结构体转换，确保解耦和稳定性
 	dbClient, err := database.NewClient(ctx, &database.PostgresConfig{
-		Host:     cfg.Database.Postgres.Host,
-		Port:     cfg.Database.Postgres.Port,
-		User:     cfg.Database.Postgres.User,
-		Password: cfg.Database.Postgres.Password,
-		DBName:   cfg.Database.Postgres.DBName,
-		SSLMode:  cfg.Database.Postgres.SSLMode,
+		Host:              cfg.Database.Postgres.Host,
+		Port:              cfg.Database.Postgres.Port,
+		User:              cfg.Database.Postgres.User,
+		Password:          cfg.Database.Postgres.Password,
+		DBName:            cfg.Database.Postgres.DBName,
+		SSLMode:           cfg.Database.Postgres.SSLMode,
+		EnableForeignKeys: cfg.Database.Postgres.EnableForeignKeys,
 	})
 	if err != nil {
 		log.Fatalf("初始化数据库失败: %v", err)
