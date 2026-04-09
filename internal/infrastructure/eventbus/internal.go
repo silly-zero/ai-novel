@@ -15,18 +15,35 @@ type subscription struct {
 	handler events.Handler
 }
 
+type dispatchJob struct {
+	ctx     context.Context
+	event   events.Event
+	handler events.Handler
+}
+
 // InternalEventBus 基于内存 Channel 的轻量级异步事件总线实现
 type InternalEventBus struct {
 	mu          sync.RWMutex
 	subscribers map[string][]subscription
 	counter     uint64
+	queue       chan dispatchJob
 }
+
+const (
+	defaultQueueSize  = 4096
+	defaultWorkerSize = 8
+)
 
 // NewInternalEventBus 构造函数
 func NewInternalEventBus() *InternalEventBus {
-	return &InternalEventBus{
+	b := &InternalEventBus{
 		subscribers: make(map[string][]subscription),
+		queue:       make(chan dispatchJob, defaultQueueSize),
 	}
+	for i := 0; i < defaultWorkerSize; i++ {
+		go b.worker()
+	}
+	return b
 }
 
 // Subscribe 订阅某个主题的事件，返回订阅 ID
@@ -71,14 +88,41 @@ func (b *InternalEventBus) Publish(ctx context.Context, event events.Event) erro
 		return nil
 	}
 
-	// 异步并发执行所有 Handler，不阻塞主流程
+	subs = append([]subscription(nil), subs...)
+	topic := event.Topic()
 	for _, sub := range subs {
-		go func(h events.Handler) {
-			if err := h(ctx, event); err != nil {
-				log.Printf("[EventBus] 处理事件主题 %s 失败: %v", event.Topic(), err)
+		if sub.handler == nil {
+			continue
+		}
+		job := dispatchJob{ctx: ctx, event: event, handler: sub.handler}
+		if topic == "token.generated" {
+			select {
+			case b.queue <- job:
+			default:
 			}
-		}(sub.handler)
+			continue
+		}
+		select {
+		case b.queue <- job:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	return nil
+}
+
+func (b *InternalEventBus) worker() {
+	for job := range b.queue {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[EventBus] handler panic: %v", r)
+				}
+			}()
+			if err := job.handler(job.ctx, job.event); err != nil {
+				log.Printf("[EventBus] 处理事件主题 %s 失败: %v", job.event.Topic(), err)
+			}
+		}()
+	}
 }
