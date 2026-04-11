@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/ai-novel/studio/ent"
+	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/ai-novel/studio/internal/domain/events"
@@ -17,23 +20,70 @@ import (
 type Server struct {
 	engine   *workflows.WorkflowEngine
 	eventBus events.Bus
+	db       *ent.Client
 	router   *chi.Mux
 }
 
-func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus) *Server {
+func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Client) *Server {
 	s := &Server{
 		engine:   engine,
 		eventBus: eventBus,
+		db:       db,
 		router:   chi.NewRouter(),
 	}
 
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
 
+	s.router.Get("/api/v1/novels", s.HandleListNovels)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
 	return s
+}
+
+type NovelSummary struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description,omitempty"`
+	Status      string    `json:"status"`
+	Tags        []string  `json:"tags,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+func (s *Server) HandleListNovels(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	rows, err := s.db.Novel.
+		Query().
+		Order(ent.Desc(novel.FieldUpdatedAt), ent.Desc(novel.FieldCreatedAt)).
+		All(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]NovelSummary, 0, len(rows))
+	for _, n := range rows {
+		items = append(items, NovelSummary{
+			ID:          fmt.Sprintf("%d", n.ID),
+			Title:       n.Title,
+			Description: n.Description,
+			Status:      n.Status,
+			Tags:        n.Tags,
+			CreatedAt:   n.CreatedAt,
+			UpdatedAt:   n.UpdatedAt,
+		})
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
 }
 
 func (s *Server) Start(addr string) error {
@@ -42,6 +92,12 @@ func (s *Server) Start(addr string) error {
 }
 
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		http.Error(w, "engine not configured", http.StatusInternalServerError)
+		return
+	}
+
 	// 1. 设置 SSE 响应头
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -176,6 +232,11 @@ func truncate(s string, max int) string {
 
 // HandlePreviewContext 仅生成“场景卡 + 背景资料 + 共创指令”的合成上下文，不进入写作
 func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "engine not configured", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	novelID := r.URL.Query().Get("novel_id")
