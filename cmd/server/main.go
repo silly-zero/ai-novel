@@ -103,7 +103,7 @@ func main() {
 	}
 
 	server := api.NewServer(engine, eventBus, dbClient.Client)
-	if err := server.Start(":8080"); err != nil {
+	if err := server.Start(":8081"); err != nil {
 		log.Fatalf("API Server 启动失败: %v", err)
 	}
 }

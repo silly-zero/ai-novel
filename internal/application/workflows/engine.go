@@ -100,6 +100,7 @@ func NewWorkflowEngine(
 	_ = gCtx.AddEdge("architect", "plot")
 	_ = gCtx.AddEdge("plot", "director")
 	_ = gCtx.AddEdge("director", "librarian")
+	_ = gCtx.AddEdge("librarian", compose.END)
 	ctxRunnable, err := gCtx.Compile(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile context graph: %w", err)

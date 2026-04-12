@@ -36,6 +36,8 @@ func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Cl
 	s.router.Use(middleware.Recoverer)
 
 	s.router.Get("/api/v1/novels", s.HandleListNovels)
+	s.router.Post("/api/v1/novels", s.HandleCreateNovel)
+	s.router.Options("/api/v1/novels", s.HandleOptions)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
@@ -50,6 +52,13 @@ type NovelSummary struct {
 	Tags        []string  `json:"tags,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type CreateNovelRequest struct {
+	Title       string   `json:"title"`
+	Description string   `json:"description,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
 }
 
 func (s *Server) HandleListNovels(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +93,79 @@ func (s *Server) HandleListNovels(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
+}
+
+func (s *Server) HandleOptions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) HandleCreateNovel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var req CreateNovelRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		http.Error(w, "title is required", http.StatusBadRequest)
+		return
+	}
+
+	description := strings.TrimSpace(req.Description)
+	novelType := strings.TrimSpace(req.Type)
+	tags := make([]string, 0, len(req.Tags)+1)
+	if novelType != "" {
+		tags = append(tags, novelType)
+	}
+	for _, t := range req.Tags {
+		tt := strings.TrimSpace(t)
+		if tt == "" {
+			continue
+		}
+		if novelType != "" && tt == novelType {
+			continue
+		}
+		tags = append(tags, tt)
+	}
+
+	row, err := s.db.Novel.
+		Create().
+		SetTitle(title).
+		SetDescription(description).
+		SetStatus("Draft").
+		SetTags(tags).
+		Save(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	item := NovelSummary{
+		ID:          fmt.Sprintf("%d", row.ID),
+		Title:       row.Title,
+		Description: row.Description,
+		Status:      row.Status,
+		Tags:        row.Tags,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
 }
 
 func (s *Server) Start(addr string) error {
