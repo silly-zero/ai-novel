@@ -49,23 +49,23 @@ func ensureDatabaseExists(ctx context.Context, cfg *PostgresConfig) error {
 		return fmt.Errorf("postgres dbname is empty")
 	}
 	adminDSN := buildDSN(cfg, "postgres")
-	db, err := sql.Open("postgres", adminDSN)
-	if err != nil {
-		return fmt.Errorf("open postgres admin connection: %w", err)
+	db, openErr := sql.Open("postgres", adminDSN)
+	if openErr != nil {
+		return fmt.Errorf("open postgres admin connection: %w", openErr)
 	}
 	defer db.Close()
 
 	var exists bool
-	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)`, cfg.DBName).Scan(&exists); err != nil {
-		return fmt.Errorf("check database exists: %w", err)
+	if queryErr := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)`, cfg.DBName).Scan(&exists); queryErr != nil {
+		return fmt.Errorf("check database exists: %w", queryErr)
 	}
 	if exists {
 		return nil
 	}
 
-	_, err = db.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %s`, pq.QuoteIdentifier(cfg.DBName)))
-	if err != nil {
-		return fmt.Errorf("create database %q: %w", cfg.DBName, err)
+	_, execErr := db.ExecContext(ctx, fmt.Sprintf(`CREATE DATABASE %s`, pq.QuoteIdentifier(cfg.DBName)))
+	if execErr != nil {
+		return fmt.Errorf("create database %q: %w", cfg.DBName, execErr)
 	}
 	return nil
 }
