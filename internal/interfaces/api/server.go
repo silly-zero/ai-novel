@@ -46,6 +46,7 @@ func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Cl
 	s.router.Options("/api/v1/novels/{id}/chapters", s.HandleOptions)
 	s.router.Get("/api/v1/chapters/{id}", s.HandleGetChapter)
 	s.router.Put("/api/v1/chapters/{id}", s.HandleUpdateChapter)
+	s.router.Delete("/api/v1/chapters/{id}", s.HandleDeleteChapter)
 	s.router.Options("/api/v1/chapters/{id}", s.HandleOptions)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
@@ -132,7 +133,7 @@ func (s *Server) HandleListNovels(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleOptions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -520,6 +521,32 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
+}
+
+func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	id, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.db.Chapter.DeleteOneID(id).Exec(r.Context()); err != nil {
+		if ent.IsNotFound(err) {
+			http.Error(w, "chapter not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) Start(addr string) error {
