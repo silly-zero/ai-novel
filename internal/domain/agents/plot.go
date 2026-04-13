@@ -24,9 +24,8 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 		return state, nil
 	}
 
-	// 2. 如果 Idea 为空，报错
-	if state.Idea == "" {
-		return state, fmt.Errorf("plot agent requires an idea but it's empty")
+	if state.FullOutline == "" && state.Idea == "" {
+		return state, fmt.Errorf("plot agent requires full outline or idea but both are empty")
 	}
 
 	systemPrompt := `你是一位资深网文编剧。你的任务是根据【小说想法】和【全书大纲】，为指定的【章节序号】撰写详细的本章剧情大纲。
@@ -36,8 +35,17 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 - 字数在 200-400 字之间。
 - 直接输出大纲内容，不要有多余的描述。`
 
-	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n请输出本章详细大纲：", 
-		state.Idea, state.FullOutline, state.ChapterIndex)
+	idea := state.Idea
+	if idea == "" {
+		idea = "（未提供）"
+	}
+	fullOutline := state.FullOutline
+	if fullOutline == "" {
+		fullOutline = "（未提供）"
+	}
+
+	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n请输出本章详细大纲：",
+		idea, fullOutline, state.ChapterIndex)
 
 	outline, err := p.llm.Generate(ctx, systemPrompt, userPrompt)
 	if err != nil {

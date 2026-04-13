@@ -838,8 +838,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		NovelID:       novelID,
 		ChapterID:     chapterID,
 		ChapterIndex:  chapterIndex,
-		Outline:       outline,
 		Idea:          idea,
+		FullOutline:   outline,
 		EditorNotes:   editorNotes,
 		ManualContext: manualContext,
 	}
@@ -959,8 +959,8 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	state := &agents.GenerationState{
 		NovelID:       novelID,
 		ChapterIndex:  chapterIndex,
-		Outline:       outline,
 		Idea:          idea,
+		FullOutline:   outline,
 		EditorNotes:   editorNotes,
 		ManualContext: manualContext,
 	}
