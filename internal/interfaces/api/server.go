@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ai-novel/studio/ent"
+	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
@@ -38,6 +40,9 @@ func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Cl
 	s.router.Get("/api/v1/novels", s.HandleListNovels)
 	s.router.Post("/api/v1/novels", s.HandleCreateNovel)
 	s.router.Options("/api/v1/novels", s.HandleOptions)
+	s.router.Get("/api/v1/novels/{id}", s.HandleGetNovel)
+	s.router.Get("/api/v1/novels/{id}/chapters", s.HandleListChapters)
+	s.router.Get("/api/v1/chapters/{id}", s.HandleGetChapter)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
@@ -52,6 +57,18 @@ type NovelSummary struct {
 	Tags        []string  `json:"tags,omitempty"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type ChapterItem struct {
+	ID        string    `json:"id"`
+	NovelID   string    `json:"novel_id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	WordCount int       `json:"word_count"`
+	Order     int       `json:"order"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type CreateNovelRequest struct {
@@ -168,9 +185,250 @@ func (s *Server) HandleCreateNovel(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
 }
 
+func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	id, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	row, err := s.db.Novel.
+		Query().
+		Where(novel.ID(id)).
+		WithChapters(func(q *ent.ChapterQuery) {
+			q.Order(ent.Asc(chapter.FieldOrder), ent.Asc(chapter.FieldCreatedAt))
+		}).
+		Only(r.Context())
+	if err != nil {
+		if ent.IsNotFound(err) {
+			http.Error(w, "novel not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	item := NovelSummary{
+		ID:          fmt.Sprintf("%d", row.ID),
+		Title:       row.Title,
+		Description: row.Description,
+		Status:      row.Status,
+		Tags:        row.Tags,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+
+	chapters := make([]ChapterItem, 0, len(row.Edges.Chapters))
+	for _, c := range row.Edges.Chapters {
+		chapters = append(chapters, ChapterItem{
+			ID:        fmt.Sprintf("%d", c.ID),
+			NovelID:   item.ID,
+			Title:     c.Title,
+			Content:   c.Content,
+			WordCount: c.WordCount,
+			Order:     c.Order,
+			Status:    c.Status,
+			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
+		})
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"item":     item,
+		"chapters": chapters,
+	})
+}
+
+func (s *Server) HandleListChapters(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	novelID, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	limit := 50
+	offset := 0
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	if v := strings.TrimSpace(r.URL.Query().Get("offset")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+
+	rows, err := s.db.Chapter.
+		Query().
+		Where(chapter.HasNovelWith(novel.ID(novelID))).
+		Order(ent.Asc(chapter.FieldOrder), ent.Asc(chapter.FieldCreatedAt)).
+		Limit(limit).
+		Offset(offset).
+		All(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]ChapterItem, 0, len(rows))
+	for _, c := range rows {
+		items = append(items, ChapterItem{
+			ID:        fmt.Sprintf("%d", c.ID),
+			NovelID:   fmt.Sprintf("%d", novelID),
+			Title:     c.Title,
+			Content:   c.Content,
+			WordCount: c.WordCount,
+			Order:     c.Order,
+			Status:    c.Status,
+			CreatedAt: c.CreatedAt,
+			UpdatedAt: c.UpdatedAt,
+		})
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
+}
+
+func (s *Server) HandleGetChapter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	id, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	row, err := s.db.Chapter.
+		Query().
+		Where(chapter.ID(id)).
+		WithNovel().
+		Only(r.Context())
+	if err != nil {
+		if ent.IsNotFound(err) {
+			http.Error(w, "chapter not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	novelID := ""
+	if row.Edges.Novel != nil {
+		novelID = fmt.Sprintf("%d", row.Edges.Novel.ID)
+	}
+
+	item := ChapterItem{
+		ID:        fmt.Sprintf("%d", row.ID),
+		NovelID:   novelID,
+		Title:     row.Title,
+		Content:   row.Content,
+		WordCount: row.WordCount,
+		Order:     row.Order,
+		Status:    row.Status,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
+}
+
 func (s *Server) Start(addr string) error {
 	fmt.Printf("🚀 API Server started at %s\n", addr)
 	return http.ListenAndServe(addr, s.router)
+}
+
+func parseIntParam(v string) (int, error) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, fmt.Errorf("empty id")
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid id: %q", v)
+	}
+	return n, nil
+}
+
+func wordCountOf(s string) int {
+	return len([]rune(strings.TrimSpace(s)))
+}
+
+func chapterTitle(index int) string {
+	if index <= 0 {
+		return "未命名章节"
+	}
+	return fmt.Sprintf("第%d章", index)
+}
+
+func (s *Server) ensureChapterRecord(ctx context.Context, novelID int, chapterIndex int) (int, error) {
+	if s.db == nil {
+		return 0, fmt.Errorf("database not configured")
+	}
+	if novelID <= 0 {
+		return 0, fmt.Errorf("invalid novel id")
+	}
+	if chapterIndex <= 0 {
+		return 0, fmt.Errorf("invalid chapter index")
+	}
+
+	row, err := s.db.Chapter.
+		Query().
+		Where(
+			chapter.OrderEQ(chapterIndex),
+			chapter.HasNovelWith(novel.ID(novelID)),
+		).
+		Only(ctx)
+	if err == nil && row != nil {
+		if err := s.db.Chapter.
+			UpdateOneID(row.ID).
+			SetTitle(chapterTitle(chapterIndex)).
+			SetContent("").
+			SetWordCount(0).
+			SetStatus("Generating").
+			Exec(ctx); err != nil {
+			return 0, err
+		}
+		return row.ID, nil
+	}
+	if err != nil && !ent.IsNotFound(err) {
+		return 0, err
+	}
+
+	created, err := s.db.Chapter.
+		Create().
+		SetNovelID(novelID).
+		SetTitle(chapterTitle(chapterIndex)).
+		SetContent("").
+		SetWordCount(0).
+		SetOrder(chapterIndex).
+		SetStatus("Generating").
+		Save(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return created.ID, nil
 }
 
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
@@ -209,8 +467,27 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	novelIDInt, err := parseIntParam(novelID)
+	if err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+		return
+	}
+
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	chapterIDInt := 0
+	if s.db != nil {
+		saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		chapterIDInt, err = s.ensureChapterRecord(saveCtx, novelIDInt, chapterIndex)
+		saveCancel()
+		if err != nil {
+			fmt.Fprintf(w, "event: error\ndata: %v\n\n", err)
+			flusher.Flush()
+			return
+		}
+	}
 
 	// 2. 订阅 Token 生成事件
 	tokenChan := make(chan string, 100)
@@ -233,8 +510,13 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	// 4. 预先生成场景卡与背景资料（只改不写），并推送元信息
+	chapterID := ""
+	if chapterIDInt > 0 {
+		chapterID = fmt.Sprintf("%d", chapterIDInt)
+	}
 	state := &agents.GenerationState{
 		NovelID:       novelID,
+		ChapterID:     chapterID,
 		ChapterIndex:  chapterIndex,
 		Outline:       outline,
 		Idea:          idea,
@@ -271,9 +553,23 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	// 5. 异步启动生成任务（writer/reviewer）
 	errChan := make(chan error, 1)
 	go func() {
-		_, err := s.engine.RunChapterGeneration(ctx, prepared)
+		finalState, err := s.engine.RunChapterGeneration(ctx, prepared)
 		if err != nil {
 			errChan <- err
+			close(tokenChan)
+			return
+		}
+
+		if s.db != nil && finalState != nil && chapterIDInt > 0 {
+			saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			_, _ = s.db.Chapter.
+				UpdateOneID(chapterIDInt).
+				SetTitle(chapterTitle(finalState.ChapterIndex)).
+				SetContent(finalState.Draft).
+				SetWordCount(wordCountOf(finalState.Draft)).
+				SetStatus("Draft").
+				Save(saveCtx)
+			saveCancel()
 		}
 		close(tokenChan)
 	}()
