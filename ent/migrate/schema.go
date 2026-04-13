@@ -74,6 +74,8 @@ var (
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "title", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "idea", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "outline", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "status", Type: field.TypeString, Default: "Draft"},
 		{Name: "tags", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},

@@ -18,6 +18,8 @@ func (Novel) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("title"),
 		field.Text("description").Optional(),
+		field.Text("idea").Optional(),
+		field.Text("outline").Optional(),
 		field.String("status").Default("Draft"),
 		field.JSON("tags", []string{}).Optional(),
 		field.Time("created_at").Default(time.Now),

@@ -55,15 +55,15 @@ func init() {
 	novelFields := schema.Novel{}.Fields()
 	_ = novelFields
 	// novelDescStatus is the schema descriptor for status field.
-	novelDescStatus := novelFields[2].Descriptor()
+	novelDescStatus := novelFields[4].Descriptor()
 	// novel.DefaultStatus holds the default value on creation for the status field.
 	novel.DefaultStatus = novelDescStatus.Default.(string)
 	// novelDescCreatedAt is the schema descriptor for created_at field.
-	novelDescCreatedAt := novelFields[4].Descriptor()
+	novelDescCreatedAt := novelFields[6].Descriptor()
 	// novel.DefaultCreatedAt holds the default value on creation for the created_at field.
 	novel.DefaultCreatedAt = novelDescCreatedAt.Default.(func() time.Time)
 	// novelDescUpdatedAt is the schema descriptor for updated_at field.
-	novelDescUpdatedAt := novelFields[5].Descriptor()
+	novelDescUpdatedAt := novelFields[7].Descriptor()
 	// novel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	novel.DefaultUpdatedAt = novelDescUpdatedAt.Default.(func() time.Time)
 	// novel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

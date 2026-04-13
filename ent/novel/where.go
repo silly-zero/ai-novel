@@ -65,6 +65,16 @@ func Description(v string) predicate.Novel {
 	return predicate.Novel(sql.FieldEQ(FieldDescription, v))
 }
 
+// Idea applies equality check predicate on the "idea" field. It's identical to IdeaEQ.
+func Idea(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldEQ(FieldIdea, v))
+}
+
+// Outline applies equality check predicate on the "outline" field. It's identical to OutlineEQ.
+func Outline(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldEQ(FieldOutline, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Novel {
 	return predicate.Novel(sql.FieldEQ(FieldStatus, v))
@@ -218,6 +228,156 @@ func DescriptionEqualFold(v string) predicate.Novel {
 // DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
 func DescriptionContainsFold(v string) predicate.Novel {
 	return predicate.Novel(sql.FieldContainsFold(FieldDescription, v))
+}
+
+// IdeaEQ applies the EQ predicate on the "idea" field.
+func IdeaEQ(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldEQ(FieldIdea, v))
+}
+
+// IdeaNEQ applies the NEQ predicate on the "idea" field.
+func IdeaNEQ(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldNEQ(FieldIdea, v))
+}
+
+// IdeaIn applies the In predicate on the "idea" field.
+func IdeaIn(vs ...string) predicate.Novel {
+	return predicate.Novel(sql.FieldIn(FieldIdea, vs...))
+}
+
+// IdeaNotIn applies the NotIn predicate on the "idea" field.
+func IdeaNotIn(vs ...string) predicate.Novel {
+	return predicate.Novel(sql.FieldNotIn(FieldIdea, vs...))
+}
+
+// IdeaGT applies the GT predicate on the "idea" field.
+func IdeaGT(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldGT(FieldIdea, v))
+}
+
+// IdeaGTE applies the GTE predicate on the "idea" field.
+func IdeaGTE(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldGTE(FieldIdea, v))
+}
+
+// IdeaLT applies the LT predicate on the "idea" field.
+func IdeaLT(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldLT(FieldIdea, v))
+}
+
+// IdeaLTE applies the LTE predicate on the "idea" field.
+func IdeaLTE(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldLTE(FieldIdea, v))
+}
+
+// IdeaContains applies the Contains predicate on the "idea" field.
+func IdeaContains(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldContains(FieldIdea, v))
+}
+
+// IdeaHasPrefix applies the HasPrefix predicate on the "idea" field.
+func IdeaHasPrefix(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldHasPrefix(FieldIdea, v))
+}
+
+// IdeaHasSuffix applies the HasSuffix predicate on the "idea" field.
+func IdeaHasSuffix(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldHasSuffix(FieldIdea, v))
+}
+
+// IdeaIsNil applies the IsNil predicate on the "idea" field.
+func IdeaIsNil() predicate.Novel {
+	return predicate.Novel(sql.FieldIsNull(FieldIdea))
+}
+
+// IdeaNotNil applies the NotNil predicate on the "idea" field.
+func IdeaNotNil() predicate.Novel {
+	return predicate.Novel(sql.FieldNotNull(FieldIdea))
+}
+
+// IdeaEqualFold applies the EqualFold predicate on the "idea" field.
+func IdeaEqualFold(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldEqualFold(FieldIdea, v))
+}
+
+// IdeaContainsFold applies the ContainsFold predicate on the "idea" field.
+func IdeaContainsFold(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldContainsFold(FieldIdea, v))
+}
+
+// OutlineEQ applies the EQ predicate on the "outline" field.
+func OutlineEQ(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldEQ(FieldOutline, v))
+}
+
+// OutlineNEQ applies the NEQ predicate on the "outline" field.
+func OutlineNEQ(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldNEQ(FieldOutline, v))
+}
+
+// OutlineIn applies the In predicate on the "outline" field.
+func OutlineIn(vs ...string) predicate.Novel {
+	return predicate.Novel(sql.FieldIn(FieldOutline, vs...))
+}
+
+// OutlineNotIn applies the NotIn predicate on the "outline" field.
+func OutlineNotIn(vs ...string) predicate.Novel {
+	return predicate.Novel(sql.FieldNotIn(FieldOutline, vs...))
+}
+
+// OutlineGT applies the GT predicate on the "outline" field.
+func OutlineGT(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldGT(FieldOutline, v))
+}
+
+// OutlineGTE applies the GTE predicate on the "outline" field.
+func OutlineGTE(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldGTE(FieldOutline, v))
+}
+
+// OutlineLT applies the LT predicate on the "outline" field.
+func OutlineLT(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldLT(FieldOutline, v))
+}
+
+// OutlineLTE applies the LTE predicate on the "outline" field.
+func OutlineLTE(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldLTE(FieldOutline, v))
+}
+
+// OutlineContains applies the Contains predicate on the "outline" field.
+func OutlineContains(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldContains(FieldOutline, v))
+}
+
+// OutlineHasPrefix applies the HasPrefix predicate on the "outline" field.
+func OutlineHasPrefix(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldHasPrefix(FieldOutline, v))
+}
+
+// OutlineHasSuffix applies the HasSuffix predicate on the "outline" field.
+func OutlineHasSuffix(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldHasSuffix(FieldOutline, v))
+}
+
+// OutlineIsNil applies the IsNil predicate on the "outline" field.
+func OutlineIsNil() predicate.Novel {
+	return predicate.Novel(sql.FieldIsNull(FieldOutline))
+}
+
+// OutlineNotNil applies the NotNil predicate on the "outline" field.
+func OutlineNotNil() predicate.Novel {
+	return predicate.Novel(sql.FieldNotNull(FieldOutline))
+}
+
+// OutlineEqualFold applies the EqualFold predicate on the "outline" field.
+func OutlineEqualFold(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldEqualFold(FieldOutline, v))
+}
+
+// OutlineContainsFold applies the ContainsFold predicate on the "outline" field.
+func OutlineContainsFold(v string) predicate.Novel {
+	return predicate.Novel(sql.FieldContainsFold(FieldOutline, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.

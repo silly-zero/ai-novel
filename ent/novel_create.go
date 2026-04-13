@@ -41,6 +41,34 @@ func (_c *NovelCreate) SetNillableDescription(v *string) *NovelCreate {
 	return _c
 }
 
+// SetIdea sets the "idea" field.
+func (_c *NovelCreate) SetIdea(v string) *NovelCreate {
+	_c.mutation.SetIdea(v)
+	return _c
+}
+
+// SetNillableIdea sets the "idea" field if the given value is not nil.
+func (_c *NovelCreate) SetNillableIdea(v *string) *NovelCreate {
+	if v != nil {
+		_c.SetIdea(*v)
+	}
+	return _c
+}
+
+// SetOutline sets the "outline" field.
+func (_c *NovelCreate) SetOutline(v string) *NovelCreate {
+	_c.mutation.SetOutline(v)
+	return _c
+}
+
+// SetNillableOutline sets the "outline" field if the given value is not nil.
+func (_c *NovelCreate) SetNillableOutline(v *string) *NovelCreate {
+	if v != nil {
+		_c.SetOutline(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *NovelCreate) SetStatus(v string) *NovelCreate {
 	_c.mutation.SetStatus(v)
@@ -200,6 +228,14 @@ func (_c *NovelCreate) createSpec() (*Novel, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(novel.FieldDescription, field.TypeString, value)
 		_node.Description = value
+	}
+	if value, ok := _c.mutation.Idea(); ok {
+		_spec.SetField(novel.FieldIdea, field.TypeString, value)
+		_node.Idea = value
+	}
+	if value, ok := _c.mutation.Outline(); ok {
+		_spec.SetField(novel.FieldOutline, field.TypeString, value)
+		_node.Outline = value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(novel.FieldStatus, field.TypeString, value)

@@ -64,6 +64,46 @@ func (_u *NovelUpdate) ClearDescription() *NovelUpdate {
 	return _u
 }
 
+// SetIdea sets the "idea" field.
+func (_u *NovelUpdate) SetIdea(v string) *NovelUpdate {
+	_u.mutation.SetIdea(v)
+	return _u
+}
+
+// SetNillableIdea sets the "idea" field if the given value is not nil.
+func (_u *NovelUpdate) SetNillableIdea(v *string) *NovelUpdate {
+	if v != nil {
+		_u.SetIdea(*v)
+	}
+	return _u
+}
+
+// ClearIdea clears the value of the "idea" field.
+func (_u *NovelUpdate) ClearIdea() *NovelUpdate {
+	_u.mutation.ClearIdea()
+	return _u
+}
+
+// SetOutline sets the "outline" field.
+func (_u *NovelUpdate) SetOutline(v string) *NovelUpdate {
+	_u.mutation.SetOutline(v)
+	return _u
+}
+
+// SetNillableOutline sets the "outline" field if the given value is not nil.
+func (_u *NovelUpdate) SetNillableOutline(v *string) *NovelUpdate {
+	if v != nil {
+		_u.SetOutline(*v)
+	}
+	return _u
+}
+
+// ClearOutline clears the value of the "outline" field.
+func (_u *NovelUpdate) ClearOutline() *NovelUpdate {
+	_u.mutation.ClearOutline()
+	return _u
+}
+
 // SetStatus sets the "status" field.
 func (_u *NovelUpdate) SetStatus(v string) *NovelUpdate {
 	_u.mutation.SetStatus(v)
@@ -211,6 +251,18 @@ func (_u *NovelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(novel.FieldDescription, field.TypeString)
 	}
+	if value, ok := _u.mutation.Idea(); ok {
+		_spec.SetField(novel.FieldIdea, field.TypeString, value)
+	}
+	if _u.mutation.IdeaCleared() {
+		_spec.ClearField(novel.FieldIdea, field.TypeString)
+	}
+	if value, ok := _u.mutation.Outline(); ok {
+		_spec.SetField(novel.FieldOutline, field.TypeString, value)
+	}
+	if _u.mutation.OutlineCleared() {
+		_spec.ClearField(novel.FieldOutline, field.TypeString)
+	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(novel.FieldStatus, field.TypeString, value)
 	}
@@ -327,6 +379,46 @@ func (_u *NovelUpdateOne) SetNillableDescription(v *string) *NovelUpdateOne {
 // ClearDescription clears the value of the "description" field.
 func (_u *NovelUpdateOne) ClearDescription() *NovelUpdateOne {
 	_u.mutation.ClearDescription()
+	return _u
+}
+
+// SetIdea sets the "idea" field.
+func (_u *NovelUpdateOne) SetIdea(v string) *NovelUpdateOne {
+	_u.mutation.SetIdea(v)
+	return _u
+}
+
+// SetNillableIdea sets the "idea" field if the given value is not nil.
+func (_u *NovelUpdateOne) SetNillableIdea(v *string) *NovelUpdateOne {
+	if v != nil {
+		_u.SetIdea(*v)
+	}
+	return _u
+}
+
+// ClearIdea clears the value of the "idea" field.
+func (_u *NovelUpdateOne) ClearIdea() *NovelUpdateOne {
+	_u.mutation.ClearIdea()
+	return _u
+}
+
+// SetOutline sets the "outline" field.
+func (_u *NovelUpdateOne) SetOutline(v string) *NovelUpdateOne {
+	_u.mutation.SetOutline(v)
+	return _u
+}
+
+// SetNillableOutline sets the "outline" field if the given value is not nil.
+func (_u *NovelUpdateOne) SetNillableOutline(v *string) *NovelUpdateOne {
+	if v != nil {
+		_u.SetOutline(*v)
+	}
+	return _u
+}
+
+// ClearOutline clears the value of the "outline" field.
+func (_u *NovelUpdateOne) ClearOutline() *NovelUpdateOne {
+	_u.mutation.ClearOutline()
 	return _u
 }
 
@@ -506,6 +598,18 @@ func (_u *NovelUpdateOne) sqlSave(ctx context.Context) (_node *Novel, err error)
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(novel.FieldDescription, field.TypeString)
+	}
+	if value, ok := _u.mutation.Idea(); ok {
+		_spec.SetField(novel.FieldIdea, field.TypeString, value)
+	}
+	if _u.mutation.IdeaCleared() {
+		_spec.ClearField(novel.FieldIdea, field.TypeString)
+	}
+	if value, ok := _u.mutation.Outline(); ok {
+		_spec.SetField(novel.FieldOutline, field.TypeString, value)
+	}
+	if _u.mutation.OutlineCleared() {
+		_spec.ClearField(novel.FieldOutline, field.TypeString)
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(novel.FieldStatus, field.TypeString, value)

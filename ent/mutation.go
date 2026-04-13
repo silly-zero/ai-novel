@@ -2448,6 +2448,8 @@ type NovelMutation struct {
 	id              *int
 	title           *string
 	description     *string
+	idea            *string
+	outline         *string
 	status          *string
 	tags            *[]string
 	appendtags      []string
@@ -2643,6 +2645,104 @@ func (m *NovelMutation) DescriptionCleared() bool {
 func (m *NovelMutation) ResetDescription() {
 	m.description = nil
 	delete(m.clearedFields, novel.FieldDescription)
+}
+
+// SetIdea sets the "idea" field.
+func (m *NovelMutation) SetIdea(s string) {
+	m.idea = &s
+}
+
+// Idea returns the value of the "idea" field in the mutation.
+func (m *NovelMutation) Idea() (r string, exists bool) {
+	v := m.idea
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldIdea returns the old "idea" field's value of the Novel entity.
+// If the Novel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NovelMutation) OldIdea(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldIdea is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldIdea requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldIdea: %w", err)
+	}
+	return oldValue.Idea, nil
+}
+
+// ClearIdea clears the value of the "idea" field.
+func (m *NovelMutation) ClearIdea() {
+	m.idea = nil
+	m.clearedFields[novel.FieldIdea] = struct{}{}
+}
+
+// IdeaCleared returns if the "idea" field was cleared in this mutation.
+func (m *NovelMutation) IdeaCleared() bool {
+	_, ok := m.clearedFields[novel.FieldIdea]
+	return ok
+}
+
+// ResetIdea resets all changes to the "idea" field.
+func (m *NovelMutation) ResetIdea() {
+	m.idea = nil
+	delete(m.clearedFields, novel.FieldIdea)
+}
+
+// SetOutline sets the "outline" field.
+func (m *NovelMutation) SetOutline(s string) {
+	m.outline = &s
+}
+
+// Outline returns the value of the "outline" field in the mutation.
+func (m *NovelMutation) Outline() (r string, exists bool) {
+	v := m.outline
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOutline returns the old "outline" field's value of the Novel entity.
+// If the Novel object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *NovelMutation) OldOutline(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOutline is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOutline requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOutline: %w", err)
+	}
+	return oldValue.Outline, nil
+}
+
+// ClearOutline clears the value of the "outline" field.
+func (m *NovelMutation) ClearOutline() {
+	m.outline = nil
+	m.clearedFields[novel.FieldOutline] = struct{}{}
+}
+
+// OutlineCleared returns if the "outline" field was cleared in this mutation.
+func (m *NovelMutation) OutlineCleared() bool {
+	_, ok := m.clearedFields[novel.FieldOutline]
+	return ok
+}
+
+// ResetOutline resets all changes to the "outline" field.
+func (m *NovelMutation) ResetOutline() {
+	m.outline = nil
+	delete(m.clearedFields, novel.FieldOutline)
 }
 
 // SetStatus sets the "status" field.
@@ -2906,12 +3006,18 @@ func (m *NovelMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *NovelMutation) Fields() []string {
-	fields := make([]string, 0, 6)
+	fields := make([]string, 0, 8)
 	if m.title != nil {
 		fields = append(fields, novel.FieldTitle)
 	}
 	if m.description != nil {
 		fields = append(fields, novel.FieldDescription)
+	}
+	if m.idea != nil {
+		fields = append(fields, novel.FieldIdea)
+	}
+	if m.outline != nil {
+		fields = append(fields, novel.FieldOutline)
 	}
 	if m.status != nil {
 		fields = append(fields, novel.FieldStatus)
@@ -2937,6 +3043,10 @@ func (m *NovelMutation) Field(name string) (ent.Value, bool) {
 		return m.Title()
 	case novel.FieldDescription:
 		return m.Description()
+	case novel.FieldIdea:
+		return m.Idea()
+	case novel.FieldOutline:
+		return m.Outline()
 	case novel.FieldStatus:
 		return m.Status()
 	case novel.FieldTags:
@@ -2958,6 +3068,10 @@ func (m *NovelMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldTitle(ctx)
 	case novel.FieldDescription:
 		return m.OldDescription(ctx)
+	case novel.FieldIdea:
+		return m.OldIdea(ctx)
+	case novel.FieldOutline:
+		return m.OldOutline(ctx)
 	case novel.FieldStatus:
 		return m.OldStatus(ctx)
 	case novel.FieldTags:
@@ -2988,6 +3102,20 @@ func (m *NovelMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDescription(v)
+		return nil
+	case novel.FieldIdea:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetIdea(v)
+		return nil
+	case novel.FieldOutline:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOutline(v)
 		return nil
 	case novel.FieldStatus:
 		v, ok := value.(string)
@@ -3050,6 +3178,12 @@ func (m *NovelMutation) ClearedFields() []string {
 	if m.FieldCleared(novel.FieldDescription) {
 		fields = append(fields, novel.FieldDescription)
 	}
+	if m.FieldCleared(novel.FieldIdea) {
+		fields = append(fields, novel.FieldIdea)
+	}
+	if m.FieldCleared(novel.FieldOutline) {
+		fields = append(fields, novel.FieldOutline)
+	}
 	if m.FieldCleared(novel.FieldTags) {
 		fields = append(fields, novel.FieldTags)
 	}
@@ -3070,6 +3204,12 @@ func (m *NovelMutation) ClearField(name string) error {
 	case novel.FieldDescription:
 		m.ClearDescription()
 		return nil
+	case novel.FieldIdea:
+		m.ClearIdea()
+		return nil
+	case novel.FieldOutline:
+		m.ClearOutline()
+		return nil
 	case novel.FieldTags:
 		m.ClearTags()
 		return nil
@@ -3086,6 +3226,12 @@ func (m *NovelMutation) ResetField(name string) error {
 		return nil
 	case novel.FieldDescription:
 		m.ResetDescription()
+		return nil
+	case novel.FieldIdea:
+		m.ResetIdea()
+		return nil
+	case novel.FieldOutline:
+		m.ResetOutline()
 		return nil
 	case novel.FieldStatus:
 		m.ResetStatus()

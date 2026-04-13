@@ -18,6 +18,10 @@ const (
 	FieldTitle = "title"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldIdea holds the string denoting the idea field in the database.
+	FieldIdea = "idea"
+	// FieldOutline holds the string denoting the outline field in the database.
+	FieldOutline = "outline"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldTags holds the string denoting the tags field in the database.
@@ -44,6 +48,8 @@ var Columns = []string{
 	FieldID,
 	FieldTitle,
 	FieldDescription,
+	FieldIdea,
+	FieldOutline,
 	FieldStatus,
 	FieldTags,
 	FieldCreatedAt,
@@ -87,6 +93,16 @@ func ByTitle(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
+}
+
+// ByIdea orders the results by the idea field.
+func ByIdea(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldIdea, opts...).ToFunc()
+}
+
+// ByOutline orders the results by the outline field.
+func ByOutline(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldOutline, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

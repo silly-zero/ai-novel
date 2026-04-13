@@ -22,6 +22,10 @@ type Novel struct {
 	Title string `json:"title,omitempty"`
 	// Description holds the value of the "description" field.
 	Description string `json:"description,omitempty"`
+	// Idea holds the value of the "idea" field.
+	Idea string `json:"idea,omitempty"`
+	// Outline holds the value of the "outline" field.
+	Outline string `json:"outline,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Tags holds the value of the "tags" field.
@@ -63,7 +67,7 @@ func (*Novel) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case novel.FieldID:
 			values[i] = new(sql.NullInt64)
-		case novel.FieldTitle, novel.FieldDescription, novel.FieldStatus:
+		case novel.FieldTitle, novel.FieldDescription, novel.FieldIdea, novel.FieldOutline, novel.FieldStatus:
 			values[i] = new(sql.NullString)
 		case novel.FieldCreatedAt, novel.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -99,6 +103,18 @@ func (_m *Novel) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
 				_m.Description = value.String
+			}
+		case novel.FieldIdea:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field idea", values[i])
+			} else if value.Valid {
+				_m.Idea = value.String
+			}
+		case novel.FieldOutline:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field outline", values[i])
+			} else if value.Valid {
+				_m.Outline = value.String
 			}
 		case novel.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -172,6 +188,12 @@ func (_m *Novel) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(_m.Description)
+	builder.WriteString(", ")
+	builder.WriteString("idea=")
+	builder.WriteString(_m.Idea)
+	builder.WriteString(", ")
+	builder.WriteString("outline=")
+	builder.WriteString(_m.Outline)
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)

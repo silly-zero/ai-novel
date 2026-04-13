@@ -41,6 +41,8 @@ func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Cl
 	s.router.Post("/api/v1/novels", s.HandleCreateNovel)
 	s.router.Options("/api/v1/novels", s.HandleOptions)
 	s.router.Get("/api/v1/novels/{id}", s.HandleGetNovel)
+	s.router.Put("/api/v1/novels/{id}", s.HandleUpdateNovel)
+	s.router.Options("/api/v1/novels/{id}", s.HandleOptions)
 	s.router.Get("/api/v1/novels/{id}/chapters", s.HandleListChapters)
 	s.router.Post("/api/v1/novels/{id}/chapters", s.HandleCreateChapter)
 	s.router.Options("/api/v1/novels/{id}/chapters", s.HandleOptions)
@@ -64,6 +66,18 @@ type NovelSummary struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+type NovelDetail struct {
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description,omitempty"`
+	Idea        string    `json:"idea,omitempty"`
+	Outline     string    `json:"outline,omitempty"`
+	Status      string    `json:"status"`
+	Tags        []string  `json:"tags,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type ChapterItem struct {
 	ID        string    `json:"id"`
 	NovelID   string    `json:"novel_id"`
@@ -81,6 +95,11 @@ type CreateNovelRequest struct {
 	Description string   `json:"description,omitempty"`
 	Type        string   `json:"type,omitempty"`
 	Tags        []string `json:"tags,omitempty"`
+}
+
+type UpdateNovelRequest struct {
+	Idea    *string `json:"idea,omitempty"`
+	Outline *string `json:"outline,omitempty"`
 }
 
 type CreateChapterRequest struct {
@@ -182,6 +201,8 @@ func (s *Server) HandleCreateNovel(w http.ResponseWriter, r *http.Request) {
 		Create().
 		SetTitle(title).
 		SetDescription(description).
+		SetIdea("").
+		SetOutline("").
 		SetStatus("Draft").
 		SetTags(tags).
 		Save(r.Context())
@@ -235,10 +256,12 @@ func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item := NovelSummary{
+	item := NovelDetail{
 		ID:          fmt.Sprintf("%d", row.ID),
 		Title:       row.Title,
 		Description: row.Description,
+		Idea:        row.Idea,
+		Outline:     row.Outline,
 		Status:      row.Status,
 		Tags:        row.Tags,
 		CreatedAt:   row.CreatedAt,
@@ -264,6 +287,62 @@ func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 		"item":     item,
 		"chapters": chapters,
 	})
+}
+
+func (s *Server) HandleUpdateNovel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+
+	id, parseErr := parseIntParam(chi.URLParam(r, "id"))
+	if parseErr != nil {
+		http.Error(w, parseErr.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req UpdateNovelRequest
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20))
+	dec.DisallowUnknownFields()
+	if decodeErr := dec.Decode(&req); decodeErr != nil {
+		http.Error(w, fmt.Sprintf("invalid json: %v", decodeErr), http.StatusBadRequest)
+		return
+	}
+
+	upd := s.db.Novel.UpdateOneID(id)
+	if req.Idea != nil {
+		upd.SetIdea(strings.TrimSpace(*req.Idea))
+	}
+	if req.Outline != nil {
+		upd.SetOutline(strings.TrimSpace(*req.Outline))
+	}
+
+	row, saveErr := upd.Save(r.Context())
+	if saveErr != nil {
+		if ent.IsNotFound(saveErr) {
+			http.Error(w, "novel not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, saveErr.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	item := NovelDetail{
+		ID:          fmt.Sprintf("%d", row.ID),
+		Title:       row.Title,
+		Description: row.Description,
+		Idea:        row.Idea,
+		Outline:     row.Outline,
+		Status:      row.Status,
+		Tags:        row.Tags,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
 }
 
 func (s *Server) HandleListChapters(w http.ResponseWriter, r *http.Request) {
@@ -650,6 +729,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	idea := r.URL.Query().Get("idea")
 	editorNotes := r.URL.Query().Get("editor_notes")
 	manualContext := r.URL.Query().Get("manual_context")
+	chapterIDStr := r.URL.Query().Get("chapter_id")
+	persistStr := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("persist")))
 	chapterIndexStr := r.URL.Query().Get("chapter_index")
 	chapterIndex := 1
 	if chapterIndexStr != "" {
@@ -672,10 +753,54 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
+	persist := true
+	if persistStr == "0" || persistStr == "false" || persistStr == "no" {
+		persist = false
+	}
+
 	chapterIDInt := 0
-	if s.db != nil {
+	if s.db != nil && persist {
 		saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		chapterIDInt, err = s.ensureChapterRecord(saveCtx, novelIDInt, chapterIndex)
+		if strings.TrimSpace(chapterIDStr) != "" {
+			chapterIDInt, err = parseIntParam(chapterIDStr)
+			if err != nil {
+				saveCancel()
+				fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+				flusher.Flush()
+				return
+			}
+			_, queryErr := s.db.Chapter.
+				Query().
+				Where(
+					chapter.ID(chapterIDInt),
+					chapter.HasNovelWith(novel.ID(novelIDInt)),
+				).
+				Only(saveCtx)
+			if queryErr != nil {
+				saveCancel()
+				if ent.IsNotFound(queryErr) {
+					fmt.Fprintf(w, "event: error\ndata: %s\n\n", "chapter not found")
+					flusher.Flush()
+					return
+				}
+				fmt.Fprintf(w, "event: error\ndata: %v\n\n", queryErr)
+				flusher.Flush()
+				return
+			}
+			if execErr := s.db.Chapter.
+				UpdateOneID(chapterIDInt).
+				SetContent("").
+				SetWordCount(0).
+				SetStatus("Generating").
+				Exec(saveCtx); execErr != nil {
+				saveCancel()
+				fmt.Fprintf(w, "event: error\ndata: %v\n\n", execErr)
+				flusher.Flush()
+				return
+			}
+		} else {
+			chapterIDInt, err = s.ensureChapterRecord(saveCtx, novelIDInt, chapterIndex)
+		}
 		saveCancel()
 		if err != nil {
 			fmt.Fprintf(w, "event: error\ndata: %v\n\n", err)
@@ -730,6 +855,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		"type":                 "context_meta",
 		"novel_id":             prepared.NovelID,
 		"chapter_index":        prepared.ChapterIndex,
+		"chapter_id":           chapterID,
+		"persist":              persist,
 		"editor_notes":         prepared.EditorNotes,
 		"manual_context":       prepared.ManualContext,
 		"full_outline_preview": truncate(prepared.FullOutline, 400),
@@ -755,7 +882,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if s.db != nil && finalState != nil && chapterIDInt > 0 {
+		if s.db != nil && persist && finalState != nil && chapterIDInt > 0 {
 			saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			_, _ = s.db.Chapter.
 				UpdateOneID(chapterIDInt).
