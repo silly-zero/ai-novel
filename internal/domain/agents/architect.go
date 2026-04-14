@@ -19,9 +19,23 @@ func (a *ArchitectAgent) Role() AgentRole {
 }
 
 func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
-	// 1. 如果 FullOutline 已经被显式传进来（通常是通过 inputMode=outline），则跳过生成
-	if state.FullOutline != "" {
+	// 已有大纲且未指定续写范围：直接复用，不触发生成/续写
+	if state.ExistingOutline != "" && state.OutlineStart <= 0 && state.OutlineEnd <= 0 {
+		if state.FullOutline == "" {
+			state.FullOutline = state.ExistingOutline
+		}
 		return state, nil
+	}
+
+	// FullOutline 已有且未指定续写范围：跳过生成
+	if state.FullOutline != "" && state.OutlineStart <= 0 && state.OutlineEnd <= 0 {
+		return state, nil
+	}
+
+	// 允许把 FullOutline 当作 ExistingOutline 来续写（如果调用方没显式传 ExistingOutline）
+	if state.ExistingOutline == "" && state.FullOutline != "" && (state.OutlineStart > 0 || state.OutlineEnd > 0) {
+		state.ExistingOutline = state.FullOutline
+		state.FullOutline = ""
 	}
 
 	// 2. 如果 Idea 为空，报错

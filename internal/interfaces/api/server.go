@@ -740,8 +740,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
 	}
 
-	if novelID == "" || (outline == "" && idea == "") {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id and both outline/idea")
+	if novelID == "" || (outline == "" && idea == "" && existingOutline == "") {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id and all of outline/idea/existing_outline")
 		flusher.Flush()
 		return
 	}
@@ -960,8 +960,8 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
 	}
 
-	if novelID == "" || (outline == "" && idea == "") {
-		http.Error(w, "Missing novel_id and both outline/idea", http.StatusBadRequest)
+	if novelID == "" || (outline == "" && idea == "" && existingOutline == "") {
+		http.Error(w, "Missing novel_id and all of outline/idea/existing_outline", http.StatusBadRequest)
 		return
 	}
 
