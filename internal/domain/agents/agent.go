@@ -22,9 +22,12 @@ type GenerationState struct {
 	NovelID       string
 	ChapterID     string
 	ChapterIndex  int    // 当前章节序号
-	Idea          string // 初始想法 (一句话 Idea)
-	FullOutline   string // 全书大纲 (由 Architect Agent 生成)
-	Outline       string // 当前章节剧情大纲 (由 Plot Agent 生成)
+	Idea            string // 初始想法 (一句话 Idea)
+	FullOutline     string // 全书大纲 (由 Architect Agent 生成)
+	ExistingOutline string // 已有全书大纲（续写时参考）
+	OutlineStart    int    // 生成大纲的起始章
+	OutlineEnd      int    // 生成大纲的结束章
+	Outline         string // 当前章节剧情大纲 (由 Plot Agent 生成)
 	SceneCard     string // 导演拆解出的场景卡
 	EditorNotes   string // 人工干预：作者/编辑给出的指令或限制
 	ManualContext string // 人工补充的资料片段（优先注入到 Context）

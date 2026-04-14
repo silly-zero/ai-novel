@@ -729,6 +729,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	idea := r.URL.Query().Get("idea")
 	editorNotes := r.URL.Query().Get("editor_notes")
 	manualContext := r.URL.Query().Get("manual_context")
+	existingOutline := strings.TrimSpace(r.URL.Query().Get("existing_outline"))
+	outlineStart, _ := strconv.Atoi(r.URL.Query().Get("outline_start"))
+	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
 	chapterIDStr := r.URL.Query().Get("chapter_id")
 	persistStr := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("persist")))
 	chapterIndexStr := r.URL.Query().Get("chapter_index")
@@ -835,13 +838,16 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		chapterID = fmt.Sprintf("%d", chapterIDInt)
 	}
 	state := &agents.GenerationState{
-		NovelID:       novelID,
-		ChapterID:     chapterID,
-		ChapterIndex:  chapterIndex,
-		Idea:          idea,
-		FullOutline:   outline,
-		EditorNotes:   editorNotes,
-		ManualContext: manualContext,
+		NovelID:         novelID,
+		ChapterID:       chapterID,
+		ChapterIndex:    chapterIndex,
+		Idea:            idea,
+		FullOutline:     outline,
+		EditorNotes:     editorNotes,
+		ManualContext:   manualContext,
+		ExistingOutline: existingOutline,
+		OutlineStart:    outlineStart,
+		OutlineEnd:      outlineEnd,
 	}
 
 	prepared, prepErr := s.engine.PrepareContext(ctx, state)
@@ -940,10 +946,14 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	novelID := r.URL.Query().Get("novel_id")
-	outline := r.URL.Query().Get("outline")
-	idea := r.URL.Query().Get("idea")
-	editorNotes := r.URL.Query().Get("editor_notes")
-	manualContext := r.URL.Query().Get("manual_context")
+	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
+	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
+	editorNotes := strings.TrimSpace(r.URL.Query().Get("editor_notes"))
+	manualContext := strings.TrimSpace(r.URL.Query().Get("manual_context"))
+	existingOutline := strings.TrimSpace(r.URL.Query().Get("existing_outline"))
+	outlineStart, _ := strconv.Atoi(r.URL.Query().Get("outline_start"))
+	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
+
 	chapterIndexStr := r.URL.Query().Get("chapter_index")
 	chapterIndex := 1
 	if chapterIndexStr != "" {
@@ -957,12 +967,15 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	state := &agents.GenerationState{
-		NovelID:       novelID,
-		ChapterIndex:  chapterIndex,
-		Idea:          idea,
-		FullOutline:   outline,
-		EditorNotes:   editorNotes,
-		ManualContext: manualContext,
+		NovelID:         novelID,
+		ChapterIndex:    chapterIndex,
+		FullOutline:     outline,
+		Idea:            idea,
+		EditorNotes:     editorNotes,
+		ManualContext:   manualContext,
+		ExistingOutline: existingOutline,
+		OutlineStart:    outlineStart,
+		OutlineEnd:      outlineEnd,
 	}
 
 	res, err := s.engine.PrepareContext(ctx, state)
