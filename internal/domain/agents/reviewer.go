@@ -35,10 +35,22 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		return state, fmt.Errorf("draft is empty, nothing to review")
 	}
 
+	wordCount := len([]rune(strings.TrimSpace(state.Draft)))
+	if wordCount < 2500 || wordCount > 4000 {
+		state.IsApproved = false
+		if wordCount < 2500 {
+			state.Critique = fmt.Sprintf("字数不达标：当前约 %d 字。请补写细节与推进剧情，使正文总字数达到 2500-4000 字（按中文字符计），同时保持与场景卡一致。", wordCount)
+		} else {
+			state.Critique = fmt.Sprintf("字数超标：当前约 %d 字。请删减冗余描写与重复表达，使正文总字数控制在 2500-4000 字（按中文字符计），同时保持与场景卡一致。", wordCount)
+		}
+		return state, nil
+	}
+
 	systemPrompt := `你是一位严厉的小说主编和审查员。你的任务是审查作者提交的【小说草稿】，并对比【场景卡】和【背景资料】，检查是否存在以下问题：
 1. 剧情偏离：是否漏写了场景卡中要求的重要情节？
 2. 角色 OOC：角色的行为、语言是否与背景资料中的设定相冲突？
 3. 行文质量：是否存在逻辑硬伤、水字数、或者描写过于干瘪？
+4. 字数要求：正文总字数（按中文字符计）是否在 2500-4000 字之间？
 
 请你严格审查，并输出 JSON 格式的审查结果：
 {

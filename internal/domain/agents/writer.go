@@ -33,6 +33,7 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 要求：
 - 细节描写丰富，动作与神态刻画生动。
 - 严格遵循背景资料中的世界观和角色设定，避免 OOC。
+- 正文总字数（按中文字符计）控制在 2500-4000 字之间。
 - 如果有【修改意见(Critique)】，请务必针对意见对原稿进行重写修正。`
 
 	// 2. 构建 User Prompt：拼装当前状态中的各类上下文
