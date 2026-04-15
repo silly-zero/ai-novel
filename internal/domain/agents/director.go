@@ -29,6 +29,7 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 2. 出场人物及其当前状态。
 3. 核心矛盾与情节推进点。
 4. 给作者（主笔）的写作建议。
+- 5. 分章节奏约束：本章必须停在“阶段性节点”，不能把整件大事一次写完；结尾要保留下一章的悬念或未完成目标。
 
 请直接输出场景卡的文本内容，不要有多余的寒暄。`
 
