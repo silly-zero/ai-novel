@@ -837,6 +837,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	// 2. 订阅 Token 生成事件
 	tokenChan := make(chan string, 100)
+	retryChan := make(chan events.ChapterRetryEvent, 8)
 	subID := s.eventBus.Subscribe("token.generated", func(ctx context.Context, event events.Event) error {
 		e, ok := event.(events.TokenGeneratedEvent)
 		if ok && e.NovelID == novelID {
@@ -848,8 +849,19 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}
 		return nil
 	})
+	retrySubID := s.eventBus.Subscribe("chapter.retry", func(ctx context.Context, event events.Event) error {
+		e, ok := event.(events.ChapterRetryEvent)
+		if ok && e.NovelID == novelID {
+			select {
+			case retryChan <- e:
+			default:
+			}
+		}
+		return nil
+	})
 	// 确保在请求结束时取消订阅
 	defer s.eventBus.Unsubscribe("token.generated", subID)
+	defer s.eventBus.Unsubscribe("chapter.retry", retrySubID)
 
 	// 3. 先推送 start，保证前端立即进入流式状态
 	fmt.Fprintf(w, "event: start\ndata: %s\n\n", "Generation started")
@@ -933,6 +945,13 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "event: error\ndata: %v\n\n", err)
 			flusher.Flush()
 			return
+		case retryEvt := <-retryChan:
+			payload, _ := json.Marshal(map[string]interface{}{
+				"retry_count": retryEvt.RetryCount,
+				"critique":    retryEvt.Critique,
+			})
+			fmt.Fprintf(w, "event: retry\ndata: %s\n\n", string(payload))
+			flusher.Flush()
 		case token, ok := <-tokenChan:
 			if !ok {
 				fmt.Fprintf(w, "event: end\ndata: %s\n\n", "Generation finished")

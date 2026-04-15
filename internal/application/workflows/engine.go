@@ -70,6 +70,15 @@ func NewWorkflowEngine(
 
 		// 没通过审查，增加重试次数，打回给 writer 重新写
 		state.RetryCount++
+		if eventBus != nil {
+			_ = eventBus.Publish(ctx, events.ChapterRetryEvent{
+				NovelID:    state.NovelID,
+				ChapterID:  state.ChapterID,
+				RetryCount: state.RetryCount,
+				Critique:   state.Critique,
+				Timestamp:  time.Now(),
+			})
+		}
 		return "writer", nil
 	}, map[string]bool{
 		compose.END: true,
