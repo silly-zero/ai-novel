@@ -725,10 +725,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	novelID := r.URL.Query().Get("novel_id")
-	outline := r.URL.Query().Get("outline")
-	idea := r.URL.Query().Get("idea")
-	editorNotes := r.URL.Query().Get("editor_notes")
-	manualContext := r.URL.Query().Get("manual_context")
+	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
+	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
+	editorNotes := strings.TrimSpace(r.URL.Query().Get("editor_notes"))
+	manualContext := strings.TrimSpace(r.URL.Query().Get("manual_context"))
 	existingOutline := strings.TrimSpace(r.URL.Query().Get("existing_outline"))
 	outlineStart, _ := strconv.Atoi(r.URL.Query().Get("outline_start"))
 	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
@@ -740,8 +740,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
 	}
 
-	if novelID == "" || (outline == "" && idea == "" && existingOutline == "") {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id and all of outline/idea/existing_outline")
+	if strings.TrimSpace(novelID) == "" {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id")
 		flusher.Flush()
 		return
 	}
@@ -755,6 +755,29 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
+		loadCtx, loadCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
+		loadCancel()
+		if qErr == nil && row != nil {
+			if idea == "" {
+				idea = strings.TrimSpace(row.Idea)
+			}
+			if outline == "" {
+				outline = strings.TrimSpace(row.Outline)
+			}
+			if existingOutline == "" {
+				existingOutline = strings.TrimSpace(row.Outline)
+			}
+		}
+	}
+
+	if outline == "" && idea == "" && existingOutline == "" {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing outline and idea (no saved outline found)")
+		flusher.Flush()
+		return
+	}
 
 	persist := true
 	if persistStr == "0" || persistStr == "false" || persistStr == "no" {
@@ -960,12 +983,40 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
 	}
 
-	if novelID == "" || (outline == "" && idea == "" && existingOutline == "") {
+	if strings.TrimSpace(novelID) == "" {
 		http.Error(w, "Missing novel_id and all of outline/idea/existing_outline", http.StatusBadRequest)
 		return
 	}
 
 	ctx := r.Context()
+	novelIDInt, err := parseIntParam(novelID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
+		loadCtx, loadCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
+		loadCancel()
+		if qErr == nil && row != nil {
+			if idea == "" {
+				idea = strings.TrimSpace(row.Idea)
+			}
+			if outline == "" {
+				outline = strings.TrimSpace(row.Outline)
+			}
+			if existingOutline == "" {
+				existingOutline = strings.TrimSpace(row.Outline)
+			}
+		}
+	}
+
+	if outline == "" && idea == "" && existingOutline == "" {
+		http.Error(w, "Missing outline and idea (no saved outline found)", http.StatusBadRequest)
+		return
+	}
+
 	state := &agents.GenerationState{
 		NovelID:         novelID,
 		ChapterIndex:    chapterIndex,
