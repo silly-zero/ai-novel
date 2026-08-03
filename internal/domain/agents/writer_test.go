@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/ai-novel/studio/internal/domain/events"
 )
 
 type writerTestLLM struct {
@@ -30,6 +32,41 @@ func (f *writerTestLLM) StreamGenerate(ctx context.Context, _, _ string, onChunk
 		f.afterStream()
 	}
 	return f.streamErr
+}
+
+type writerTestBus struct {
+	event events.Event
+}
+
+func (b *writerTestBus) Publish(_ context.Context, event events.Event) error {
+	b.event = event
+	return nil
+}
+
+func (b *writerTestBus) Subscribe(string, events.Handler) string { return "" }
+func (b *writerTestBus) Unsubscribe(string, string)              {}
+
+func TestWriterRunPropagatesGenerationID(t *testing.T) {
+	bus := &writerTestBus{}
+	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"正文"}}, bus)
+	state := &GenerationState{
+		GenerationID: "run-123",
+		NovelID:      "7",
+		ChapterID:    "11",
+		SceneCard:    "场景",
+		Context:      "背景",
+	}
+
+	if _, err := writer.Run(context.Background(), state); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	event, ok := bus.event.(events.TokenGeneratedEvent)
+	if !ok {
+		t.Fatalf("event = %T, want TokenGeneratedEvent", bus.event)
+	}
+	if event.GenerationID != "run-123" {
+		t.Fatalf("GenerationID = %q, want %q", event.GenerationID, "run-123")
+	}
 }
 
 func TestWriterRunCompletesStream(t *testing.T) {

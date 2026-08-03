@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ai-novel/studio/ent"
@@ -19,19 +20,61 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+type generationEngine interface {
+	PrepareContext(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+	RunChapterGeneration(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+}
+
+type generationGuard struct {
+	mu     sync.Mutex
+	active map[int]string
+}
+
+func newGenerationGuard() *generationGuard {
+	return &generationGuard{active: make(map[int]string)}
+}
+
+func (g *generationGuard) acquire(novelID int, generationID string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, exists := g.active[novelID]; exists {
+		return false
+	}
+	g.active[novelID] = generationID
+	return true
+}
+
+func (g *generationGuard) release(novelID int, generationID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if activeID, exists := g.active[novelID]; exists && activeID == generationID {
+		delete(g.active, novelID)
+	}
+}
+
 type Server struct {
-	engine   *workflows.WorkflowEngine
-	eventBus events.Bus
-	db       *ent.Client
-	router   *chi.Mux
+	engine          generationEngine
+	eventBus        events.Bus
+	db              *ent.Client
+	router          *chi.Mux
+	generationGuard *generationGuard
 }
 
 func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Client) *Server {
+	var engineAdapter generationEngine
+	if engine != nil {
+		engineAdapter = engine
+	}
+	return newServer(engineAdapter, eventBus, db)
+}
+
+func newServer(engine generationEngine, eventBus events.Bus, db *ent.Client) *Server {
 	s := &Server{
-		engine:   engine,
-		eventBus: eventBus,
-		db:       db,
-		router:   chi.NewRouter(),
+		engine:          engine,
+		eventBus:        eventBus,
+		db:              db,
+		router:          chi.NewRouter(),
+		generationGuard: newGenerationGuard(),
 	}
 
 	s.router.Use(middleware.Logger)
@@ -706,17 +749,42 @@ func (s *Server) ensureChapterRecord(ctx context.Context, novelID int, chapterIn
 }
 
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if s.engine == nil {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 		http.Error(w, "engine not configured", http.StatusInternalServerError)
 		return
 	}
 
-	// 1. 设置 SSE 响应头
+	novelIDRaw := strings.TrimSpace(r.URL.Query().Get("novel_id"))
+	if novelIDRaw == "" {
+		http.Error(w, "Missing novel_id", http.StatusBadRequest)
+		return
+	}
+	novelIDInt, err := parseIntParam(novelIDRaw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	novelID := strconv.Itoa(novelIDInt)
+	generationID, err := agents.NewGenerationID()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !s.generationGuard.acquire(novelIDInt, generationID) {
+		http.Error(w, "该小说正在生成，请等待当前任务完成后再试", http.StatusConflict)
+		return
+	}
+	leaseOwnedByHandler := true
+	defer func() {
+		if leaseOwnedByHandler {
+			s.generationGuard.release(novelIDInt, generationID)
+		}
+	}()
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -724,7 +792,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	novelID := r.URL.Query().Get("novel_id")
 	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
 	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
 	editorNotes := strings.TrimSpace(r.URL.Query().Get("editor_notes"))
@@ -738,19 +805,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	chapterIndex := 1
 	if chapterIndexStr != "" {
 		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
-	}
-
-	if strings.TrimSpace(novelID) == "" {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing novel_id")
-		flusher.Flush()
-		return
-	}
-
-	novelIDInt, err := parseIntParam(novelID)
-	if err != nil {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-		flusher.Flush()
-		return
 	}
 
 	ctx, cancel := context.WithCancel(r.Context())
@@ -840,7 +894,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	retryChan := make(chan events.ChapterRetryEvent, 8)
 	subID := s.eventBus.Subscribe("token.generated", func(ctx context.Context, event events.Event) error {
 		e, ok := event.(events.TokenGeneratedEvent)
-		if ok && e.NovelID == novelID {
+		if ok && e.NovelID == novelID && e.GenerationID == generationID {
 			// 非阻塞发送，防止 EventBus 协程阻塞
 			select {
 			case tokenChan <- e.Token:
@@ -851,7 +905,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	})
 	retrySubID := s.eventBus.Subscribe("chapter.retry", func(ctx context.Context, event events.Event) error {
 		e, ok := event.(events.ChapterRetryEvent)
-		if ok && e.NovelID == novelID {
+		if ok && e.NovelID == novelID && e.GenerationID == generationID {
 			select {
 			case retryChan <- e:
 			default:
@@ -873,6 +927,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		chapterID = fmt.Sprintf("%d", chapterIDInt)
 	}
 	state := &agents.GenerationState{
+		GenerationID:    generationID,
 		NovelID:         novelID,
 		ChapterID:       chapterID,
 		ChapterIndex:    chapterIndex,
@@ -891,9 +946,12 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return
 	}
+	prepared.GenerationID = generationID
+	prepared.NovelID = novelID
 
 	meta := map[string]interface{}{
 		"type":                 "context_meta",
+		"generation_id":        prepared.GenerationID,
 		"novel_id":             prepared.NovelID,
 		"chapter_index":        prepared.ChapterIndex,
 		"chapter_id":           chapterID,
@@ -915,7 +973,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	// 5. 异步启动生成任务（writer/reviewer）
 	errChan := make(chan error, 1)
+	leaseOwnedByHandler = false
 	go func() {
+		defer s.generationGuard.release(novelIDInt, generationID)
 		finalState, err := s.engine.RunChapterGeneration(ctx, prepared)
 		if err != nil {
 			errChan <- err

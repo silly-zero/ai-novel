@@ -93,7 +93,13 @@ func main() {
 
 		if os.Getenv("AI_NOVEL_RUN_LOCAL_TEST") == "1" {
 			go func() {
+				generationID, genErr := agents.NewGenerationID()
+				if genErr != nil {
+					log.Printf("生成本地测试运行 ID 失败: %v", genErr)
+					return
+				}
 				_, _ = engine.RunChapterGeneration(ctx, &agents.GenerationState{
+					GenerationID: generationID,
 					NovelID:      "test-novel-001",
 					ChapterIndex: 1,
 					Idea:         "一个普通的少年在山洞中捡到了一枚神秘的戒指，从此踏上了修仙之路。",

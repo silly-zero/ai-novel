@@ -28,10 +28,11 @@ type Bus interface {
 
 // ChapterGeneratedEvent 章节生成成功的领域事件
 type ChapterGeneratedEvent struct {
-	NovelID   string
-	ChapterID string
-	Content   string
-	Timestamp time.Time
+	GenerationID string
+	NovelID      string
+	ChapterID    string
+	Content      string
+	Timestamp    time.Time
 }
 
 func (e ChapterGeneratedEvent) Topic() string         { return "chapter.generated" }
@@ -39,10 +40,11 @@ func (e ChapterGeneratedEvent) OccurredAt() time.Time { return e.Timestamp }
 
 // TokenGeneratedEvent 实时生成中的 Token 事件 (用于流式展示)
 type TokenGeneratedEvent struct {
-	NovelID   string
-	ChapterID string
-	Token     string
-	Timestamp time.Time
+	GenerationID string
+	NovelID      string
+	ChapterID    string
+	Token        string
+	Timestamp    time.Time
 }
 
 func (e TokenGeneratedEvent) Topic() string         { return "token.generated" }
@@ -50,11 +52,12 @@ func (e TokenGeneratedEvent) OccurredAt() time.Time { return e.Timestamp }
 
 // ChapterRetryEvent 章节被审查打回后进入重写轮次
 type ChapterRetryEvent struct {
-	NovelID    string
-	ChapterID  string
-	RetryCount int
-	Critique   string
-	Timestamp  time.Time
+	GenerationID string
+	NovelID      string
+	ChapterID    string
+	RetryCount   int
+	Critique     string
+	Timestamp    time.Time
 }
 
 func (e ChapterRetryEvent) Topic() string         { return "chapter.retry" }

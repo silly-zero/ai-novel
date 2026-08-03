@@ -59,10 +59,11 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 		// 发送实时 Token 事件
 		if w.eventBus != nil {
 			if err := w.eventBus.Publish(ctx, events.TokenGeneratedEvent{
-				NovelID:   state.NovelID,
-				ChapterID: state.ChapterID,
-				Token:     content,
-				Timestamp: time.Now(),
+				GenerationID: state.GenerationID,
+				NovelID:      state.NovelID,
+				ChapterID:    state.ChapterID,
+				Token:        content,
+				Timestamp:    time.Now(),
 			}); err != nil {
 				return err
 			}

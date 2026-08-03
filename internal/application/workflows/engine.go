@@ -72,11 +72,12 @@ func NewWorkflowEngine(
 		state.RetryCount++
 		if eventBus != nil {
 			_ = eventBus.Publish(ctx, events.ChapterRetryEvent{
-				NovelID:    state.NovelID,
-				ChapterID:  state.ChapterID,
-				RetryCount: state.RetryCount,
-				Critique:   state.Critique,
-				Timestamp:  time.Now(),
+				GenerationID: state.GenerationID,
+				NovelID:      state.NovelID,
+				ChapterID:    state.ChapterID,
+				RetryCount:   state.RetryCount,
+				Critique:     state.Critique,
+				Timestamp:    time.Now(),
 			})
 		}
 		return "writer", nil
@@ -139,10 +140,11 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 		publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
 		if err := e.eventBus.Publish(publishCtx, events.ChapterGeneratedEvent{
-			NovelID:   finalState.NovelID,
-			ChapterID: finalState.ChapterID,
-			Content:   finalState.Draft,
-			Timestamp: time.Now(),
+			GenerationID: finalState.GenerationID,
+			NovelID:      finalState.NovelID,
+			ChapterID:    finalState.ChapterID,
+			Content:      finalState.Draft,
+			Timestamp:    time.Now(),
 		}); err != nil {
 			log.Printf("[Workflow] 发布 chapter.generated 失败: %v", err)
 		}
