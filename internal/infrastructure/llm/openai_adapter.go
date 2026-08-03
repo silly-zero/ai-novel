@@ -2,7 +2,10 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"sync"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -31,14 +34,16 @@ func NewOpenAIAdapter(ctx context.Context, apiKey, baseURL, modelName string) (*
 	}, nil
 }
 
-// Generate 实现领域层的 agents.LLMService 接口
-func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	messages := []*schema.Message{
+func messagesFor(systemPrompt, userPrompt string) []*schema.Message {
+	return []*schema.Message{
 		schema.SystemMessage(systemPrompt),
 		schema.UserMessage(userPrompt),
 	}
+}
 
-	resp, err := a.chatModel.Generate(ctx, messages)
+// Generate 实现领域层的 agents.LLMService 接口
+func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	resp, err := a.chatModel.Generate(ctx, messagesFor(systemPrompt, userPrompt))
 	if err != nil {
 		return "", fmt.Errorf("openai generate error: %w", err)
 	}
@@ -51,31 +56,56 @@ func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt s
 }
 
 // StreamGenerate 实现领域层的 agents.LLMService 接口，支持流式输出
-func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, systemPrompt, userPrompt string) (<-chan string, error) {
-	messages := []*schema.Message{
-		schema.SystemMessage(systemPrompt),
-		schema.UserMessage(userPrompt),
+func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, systemPrompt, userPrompt string, onChunk func(string) error) error {
+	if onChunk == nil {
+		return fmt.Errorf("openai stream callback is nil")
 	}
 
-	// 调用 Eino 的 Stream 方法
-	sr, err := a.chatModel.Stream(ctx, messages)
+	sr, err := a.chatModel.Stream(ctx, messagesFor(systemPrompt, userPrompt))
 	if err != nil {
-		return nil, fmt.Errorf("openai stream error: %w", err)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return fmt.Errorf("openai stream error: %w", err)
 	}
 
-	out := make(chan string)
-	go func() {
-		defer close(out)
-		defer sr.Close()
-		for {
-			msg, err := sr.Recv()
-			if err != nil {
-				// 结束或出错
-				return
-			}
-			out <- msg.Content
+	var closeOnce sync.Once
+	closeStream := func() {
+		closeOnce.Do(sr.Close)
+	}
+	streamDone := make(chan struct{})
+	var watcher sync.WaitGroup
+	watcher.Go(func() {
+		select {
+		case <-ctx.Done():
+			closeStream()
+		case <-streamDone:
 		}
+	})
+	defer func() {
+		close(streamDone)
+		closeStream()
+		watcher.Wait()
 	}()
 
-	return out, nil
+	for {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		msg, recvErr := sr.Recv()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if msg != nil && msg.Content != "" {
+			if err := onChunk(msg.Content); err != nil {
+				return err
+			}
+		}
+		if errors.Is(recvErr, io.EOF) {
+			return nil
+		}
+		if recvErr != nil {
+			return fmt.Errorf("openai stream receive error: %w", recvErr)
+		}
+	}
 }

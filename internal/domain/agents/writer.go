@@ -52,24 +52,31 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 	}
 
 	// 3. 调用大模型进行流式文本生成
-	tokenChan, err := w.llm.StreamGenerate(ctx, systemPrompt, userPrompt)
-	if err != nil {
-		return state, fmt.Errorf("writer agent failed to start streaming: %w", err)
-	}
-
 	var fullDraft strings.Builder
-	for token := range tokenChan {
-		fullDraft.WriteString(token)
+	err := w.llm.StreamGenerate(ctx, systemPrompt, userPrompt, func(content string) error {
+		fullDraft.WriteString(content)
 
 		// 发送实时 Token 事件
 		if w.eventBus != nil {
-			_ = w.eventBus.Publish(ctx, events.TokenGeneratedEvent{
+			if err := w.eventBus.Publish(ctx, events.TokenGeneratedEvent{
 				NovelID:   state.NovelID,
 				ChapterID: state.ChapterID,
-				Token:     token,
+				Token:     content,
 				Timestamp: time.Now(),
-			})
+			}); err != nil {
+				return err
+			}
 		}
+		return nil
+	})
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return state, fmt.Errorf("writer agent stream canceled: %w", ctxErr)
+		}
+		return state, fmt.Errorf("writer agent stream failed: %w", err)
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return state, fmt.Errorf("writer agent stream canceled: %w", ctxErr)
 	}
 
 	// 4. 更新状态机中的 Draft 字段
