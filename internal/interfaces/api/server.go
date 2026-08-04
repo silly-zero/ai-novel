@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -24,32 +25,100 @@ type generationEngine interface {
 	RunChapterGeneration(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 }
 
+type activeGeneration struct {
+	generationID string
+	ctx          context.Context
+	cancel       context.CancelCauseFunc
+	finished     bool
+}
+
 type generationGuard struct {
 	mu     sync.Mutex
-	active map[int]string
+	active map[int]activeGeneration
 }
 
 func newGenerationGuard() *generationGuard {
-	return &generationGuard{active: make(map[int]string)}
+	return &generationGuard{active: make(map[int]activeGeneration)}
 }
 
-func (g *generationGuard) acquire(novelID int, generationID string) bool {
+func (g *generationGuard) acquire(
+	novelID int,
+	generationID string,
+	ctx context.Context,
+	cancel context.CancelCauseFunc,
+) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if _, exists := g.active[novelID]; exists {
 		return false
 	}
-	g.active[novelID] = generationID
+	g.active[novelID] = activeGeneration{
+		generationID: generationID,
+		ctx:          ctx,
+		cancel:       cancel,
+	}
 	return true
+}
+
+func (g *generationGuard) cancel(
+	novelID int,
+	generationID string,
+	cause error,
+) generationCancelResult {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	active, exists := g.active[novelID]
+	if !exists {
+		return generationCancelNotFound
+	}
+	if active.generationID != generationID {
+		return generationCancelConflict
+	}
+	if active.finished {
+		return generationCancelConflict
+	}
+	active.cancel(cause)
+	return generationCancelAccepted
+}
+
+func (g *generationGuard) finish(
+	novelID int,
+	generationID string,
+) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	active, exists := g.active[novelID]
+	if !exists || active.generationID != generationID {
+		return nil
+	}
+	active.finished = true
+	g.active[novelID] = active
+	return context.Cause(active.ctx)
 }
 
 func (g *generationGuard) release(novelID int, generationID string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if activeID, exists := g.active[novelID]; exists && activeID == generationID {
-		delete(g.active, novelID)
+	active, exists := g.active[novelID]
+	if !exists || active.generationID != generationID {
+		return
 	}
+	delete(g.active, novelID)
 }
+
+type generationCancelResult int
+
+const (
+	generationCancelAccepted generationCancelResult = iota
+	generationCancelNotFound
+	generationCancelConflict
+)
+
+var (
+	errGenerationCancelled = errors.New("generation cancelled by user")
+	errGenerationProtocol  = errors.New("invalid generation stream event")
+)
 
 type Server struct {
 	engine          generationEngine
@@ -91,6 +160,8 @@ func newServer(engine generationEngine, db *ent.Client) *Server {
 	s.router.Delete("/api/v1/chapters/{id}", s.HandleDeleteChapter)
 	s.router.Options("/api/v1/chapters/{id}", s.HandleOptions)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
+	s.router.Post("/api/v1/novels/{id}/generate/cancel", s.HandleCancelGeneration)
+	s.router.Options("/api/v1/novels/{id}/generate/cancel", s.HandleOptions)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
 	return s
@@ -745,6 +816,152 @@ func (s *Server) ensureChapterRecord(ctx context.Context, novelID int, chapterIn
 	return created.ID, nil
 }
 
+type CancelGenerationRequest struct {
+	GenerationID string `json:"generation_id"`
+}
+
+type generationStatus string
+
+const (
+	generationStatusSuccess   generationStatus = "success"
+	generationStatusError     generationStatus = "error"
+	generationStatusCancelled generationStatus = "cancelled"
+)
+
+type generationResult struct {
+	GenerationID string           `json:"generation_id"`
+	Status       generationStatus `json:"status"`
+	Message      string           `json:"message,omitempty"`
+}
+
+type generationSSEWriter struct {
+	writer       http.ResponseWriter
+	flusher      http.Flusher
+	terminalSent bool
+}
+
+func newGenerationSSEWriter(
+	writer http.ResponseWriter,
+	flusher http.Flusher,
+) *generationSSEWriter {
+	return &generationSSEWriter{writer: writer, flusher: flusher}
+}
+
+func (w *generationSSEWriter) send(event string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	if _, err = fmt.Fprintf(
+		w.writer,
+		"event: %s\ndata: %s\n\n",
+		event,
+		data,
+	); err != nil {
+		return err
+	}
+	w.flusher.Flush()
+	return nil
+}
+
+func (w *generationSSEWriter) terminal(result generationResult) error {
+	if w.terminalSent {
+		return errors.New("generation terminal already sent")
+	}
+	w.terminalSent = true
+	return w.send("terminal", result)
+}
+
+func classifyGenerationResult(
+	generationID string,
+	cause error,
+	runErr error,
+	finalState *agents.GenerationState,
+) generationResult {
+	switch {
+	case errors.Is(cause, errGenerationCancelled):
+		return generationResult{
+			GenerationID: generationID,
+			Status:       generationStatusCancelled,
+			Message:      "生成已取消",
+		}
+	case errors.Is(cause, errGenerationProtocol):
+		return generationResult{
+			GenerationID: generationID,
+			Status:       generationStatusError,
+			Message:      cause.Error(),
+		}
+	case cause != nil:
+		return generationResult{
+			GenerationID: generationID,
+			Status:       generationStatusError,
+			Message:      cause.Error(),
+		}
+	case runErr != nil:
+		return generationResult{
+			GenerationID: generationID,
+			Status:       generationStatusError,
+			Message:      runErr.Error(),
+		}
+	case finalState == nil:
+		return generationResult{
+			GenerationID: generationID,
+			Status:       generationStatusError,
+			Message:      "generation returned no final state",
+		}
+	default:
+		return generationResult{
+			GenerationID: generationID,
+			Status:       generationStatusSuccess,
+			Message:      "生成完成",
+		}
+	}
+}
+
+func (s *Server) HandleCancelGeneration(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	novelID, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var req CancelGenerationRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+		return
+	}
+	req.GenerationID = strings.TrimSpace(req.GenerationID)
+	if req.GenerationID == "" {
+		http.Error(w, "generation_id is required", http.StatusBadRequest)
+		return
+	}
+
+	switch s.generationGuard.cancel(
+		novelID,
+		req.GenerationID,
+		errGenerationCancelled,
+	) {
+	case generationCancelAccepted:
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"generation_id": req.GenerationID,
+			"status":        "cancelling",
+		})
+	case generationCancelNotFound:
+		http.Error(w, "no active generation for novel", http.StatusNotFound)
+	case generationCancelConflict:
+		http.Error(w, "generation_id does not match active generation", http.StatusConflict)
+	}
+}
+
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if s.engine == nil {
@@ -768,7 +985,14 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if !s.generationGuard.acquire(novelIDInt, generationID) {
+	generationCtx, cancelGeneration := context.WithCancelCause(r.Context())
+	defer cancelGeneration(context.Canceled)
+	if !s.generationGuard.acquire(
+		novelIDInt,
+		generationID,
+		generationCtx,
+		cancelGeneration,
+	) {
 		http.Error(w, "该小说正在生成，请等待当前任务完成后再试", http.StatusConflict)
 		return
 	}
@@ -788,6 +1012,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
+	sse := newGenerationSSEWriter(w, flusher)
 
 	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
 	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
@@ -804,8 +1029,29 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
 	}
 
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
+	ctx := generationCtx
+	finishSync := func(runErr error, finalState *agents.GenerationState) {
+		cause := s.generationGuard.finish(novelIDInt, generationID)
+		result := classifyGenerationResult(
+			generationID,
+			cause,
+			runErr,
+			finalState,
+		)
+		s.generationGuard.release(novelIDInt, generationID)
+		leaseOwnedByHandler = false
+		if r.Context().Err() == nil {
+			_ = sse.terminal(result)
+		}
+	}
+
+	if err := sse.send("start", map[string]string{
+		"generation_id": generationID,
+		"message":       "生成已开始",
+	}); err != nil {
+		cancelGeneration(err)
+		return
+	}
 
 	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
 		loadCtx, loadCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -825,8 +1071,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if outline == "" && idea == "" && existingOutline == "" {
-		fmt.Fprintf(w, "event: error\ndata: %s\n\n", "Missing outline and idea (no saved outline found)")
-		flusher.Flush()
+		finishSync(
+			errors.New("Missing outline and idea (no saved outline found)"),
+			nil,
+		)
 		return
 	}
 
@@ -842,8 +1090,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			chapterIDInt, err = parseIntParam(chapterIDStr)
 			if err != nil {
 				saveCancel()
-				fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
-				flusher.Flush()
+				finishSync(err, nil)
 				return
 			}
 			_, queryErr := s.db.Chapter.
@@ -856,12 +1103,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			if queryErr != nil {
 				saveCancel()
 				if ent.IsNotFound(queryErr) {
-					fmt.Fprintf(w, "event: error\ndata: %s\n\n", "chapter not found")
-					flusher.Flush()
+					finishSync(errors.New("chapter not found"), nil)
 					return
 				}
-				fmt.Fprintf(w, "event: error\ndata: %v\n\n", queryErr)
-				flusher.Flush()
+				finishSync(queryErr, nil)
 				return
 			}
 			if execErr := s.db.Chapter.
@@ -871,8 +1116,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				SetStatus("Generating").
 				Exec(saveCtx); execErr != nil {
 				saveCancel()
-				fmt.Fprintf(w, "event: error\ndata: %v\n\n", execErr)
-				flusher.Flush()
+				finishSync(execErr, nil)
 				return
 			}
 		} else {
@@ -880,8 +1124,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}
 		saveCancel()
 		if err != nil {
-			fmt.Fprintf(w, "event: error\ndata: %v\n\n", err)
-			flusher.Flush()
+			finishSync(err, nil)
 			return
 		}
 	}
@@ -898,11 +1141,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 3. 先推送 start，保证前端立即进入流式状态
-	fmt.Fprintf(w, "event: start\ndata: %s\n\n", "Generation started")
-	flusher.Flush()
-
-	// 4. 预先生成场景卡与背景资料（只改不写），并推送元信息
 	chapterID := ""
 	if chapterIDInt > 0 {
 		chapterID = fmt.Sprintf("%d", chapterIDInt)
@@ -923,8 +1161,11 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	prepared, prepErr := s.engine.PrepareContext(ctx, state)
 	if prepErr != nil {
-		fmt.Fprintf(w, "event: error\ndata: %v\n\n", prepErr)
-		flusher.Flush()
+		finishSync(prepErr, nil)
+		return
+	}
+	if prepared == nil {
+		finishSync(errors.New("context preparation returned no state"), nil)
 		return
 	}
 	prepared.GenerationID = generationID
@@ -949,22 +1190,25 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			"scene_card_lines": 1 + strings.Count(prepared.SceneCard, "\n"),
 		},
 	}
-	metaBytes, _ := json.Marshal(meta)
-	fmt.Fprintf(w, "event: context_meta\ndata: %s\n\n", string(metaBytes))
-	flusher.Flush()
+	if err := sse.send("context_meta", meta); err != nil {
+		cancelGeneration(err)
+		return
+	}
 
-	// 5. 异步启动生成任务（writer/reviewer）
-	resultChan := make(chan error, 1)
+	resultChan := make(chan generationResult, 1)
 	leaseOwnedByHandler = false
 	go func() {
-		defer s.generationGuard.release(novelIDInt, generationID)
-		finalState, err := s.engine.RunChapterGeneration(ctx, prepared)
-		if err != nil {
-			resultChan <- err
-			return
-		}
+		finalState, runErr := s.engine.RunChapterGeneration(ctx, prepared)
+		cause := s.generationGuard.finish(novelIDInt, generationID)
+		result := classifyGenerationResult(
+			generationID,
+			cause,
+			runErr,
+			finalState,
+		)
 
-		if s.db != nil && persist && finalState != nil && chapterIDInt > 0 {
+		if result.Status == generationStatusSuccess &&
+			s.db != nil && persist && finalState != nil && chapterIDInt > 0 {
 			saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 			_, _ = s.db.Chapter.
 				UpdateOneID(chapterIDInt).
@@ -975,49 +1219,50 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				Save(saveCtx)
 			saveCancel()
 		}
-		resultChan <- nil
+
+		s.generationGuard.release(novelIDInt, generationID)
+		resultChan <- result
 	}()
 
+	streamEvents := (<-chan agents.GenerationStreamEvent)(streamChan)
+	protocolFailed := false
 	for {
 		select {
-		case <-ctx.Done():
+		case <-r.Context().Done():
 			return
-		case err := <-resultChan:
-			if err != nil {
-				if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %v\n\n", err); writeErr != nil {
-					cancel()
-					return
+		case result := <-resultChan:
+			if r.Context().Err() != nil {
+				return
+			}
+			if protocolFailed {
+				result = generationResult{
+					GenerationID: generationID,
+					Status:       generationStatusError,
+					Message:      errGenerationProtocol.Error(),
 				}
-				flusher.Flush()
-				return
 			}
-			if _, writeErr := fmt.Fprintf(w, "event: end\ndata: %s\n\n", "Generation finished"); writeErr != nil {
-				cancel()
-				return
-			}
-			flusher.Flush()
+			_ = sse.terminal(result)
 			return
-		case streamEvent := <-streamChan:
+		case streamEvent := <-streamEvents:
+			var sendErr error
 			switch streamEvent.Type {
 			case agents.GenerationStreamEventRetry:
-				payload, _ := json.Marshal(map[string]interface{}{
+				sendErr = sse.send("retry", map[string]interface{}{
 					"retry_count": streamEvent.RetryCount,
 					"critique":    streamEvent.Critique,
 				})
-				if _, writeErr := fmt.Fprintf(w, "event: retry\ndata: %s\n\n", string(payload)); writeErr != nil {
-					cancel()
-					return
-				}
-				flusher.Flush()
 			case agents.GenerationStreamEventToken:
-				data, _ := json.Marshal(map[string]string{"token": streamEvent.Token})
-				if _, writeErr := fmt.Fprintf(w, "data: %s\n\n", string(data)); writeErr != nil {
-					cancel()
-					return
-				}
-				flusher.Flush()
+				sendErr = sse.send("token", map[string]string{
+					"token": streamEvent.Token,
+				})
 			default:
-				cancel()
+				protocolFailed = true
+				streamEvents = nil
+				cancelGeneration(errGenerationProtocol)
+				continue
+			}
+			if sendErr != nil {
+				cancelGeneration(sendErr)
 				return
 			}
 		}

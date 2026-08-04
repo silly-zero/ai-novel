@@ -399,17 +399,358 @@ func TestHandleGenerateChapterCancellationUnblocksStreamSink(t *testing.T) {
 	}
 }
 
+func TestHandleGenerateChapterEmitsSingleSuccessTerminal(t *testing.T) {
+	server := newServer(&generationTestEngine{}, nil)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"success"`) {
+		t.Fatalf("SSE body missing success terminal: %s", body)
+	}
+	if strings.Contains(body, "event: end") || strings.Contains(body, "event: error") {
+		t.Fatalf("SSE body contains legacy terminal: %s", body)
+	}
+}
+
+func TestHandleGenerateChapterEmitsSingleErrorTerminal(t *testing.T) {
+	engine := &generationTestEngine{run: func(
+		context.Context,
+		*agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		return nil, errors.New("provider failed\nwith details")
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, `provider failed\nwith details`) {
+		t.Fatalf("SSE body missing JSON error terminal: %s", body)
+	}
+	if strings.Contains(body, "event: end") || strings.Contains(body, "event: error") {
+		t.Fatalf("SSE body contains legacy terminal: %s", body)
+	}
+}
+
+func TestHandleGenerateChapterPrepareFailureUsesErrorTerminal(t *testing.T) {
+	engine := &generationTestEngine{prepare: func(
+		context.Context,
+		*agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		return nil, errors.New("prepare failed\nwith details")
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, `prepare failed\nwith details`) {
+		t.Fatalf("SSE body missing prepare error terminal: %s", body)
+	}
+}
+
+func TestHandleGenerateChapterTreatsNilFinalStateAsError(t *testing.T) {
+	engine := &generationTestEngine{run: func(
+		context.Context,
+		*agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		return nil, nil
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "generation returned no final state") {
+		t.Fatalf("SSE body missing nil-state error terminal: %s", body)
+	}
+}
+
+func TestHandleGenerateChapterUnknownStreamEventEndsWithError(t *testing.T) {
+	engine := &generationTestEngine{run: func(
+		ctx context.Context,
+		state *agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		if err := state.StreamSink(ctx, agents.GenerationStreamEvent{}); err != nil {
+			return nil, err
+		}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, errGenerationProtocol.Error()) {
+		t.Fatalf("SSE body missing protocol error terminal: %s", body)
+	}
+}
+
+func activeGenerationID(
+	t *testing.T,
+	server *Server,
+	novelID int,
+) string {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for {
+		server.generationGuard.mu.Lock()
+		active, exists := server.generationGuard.active[novelID]
+		server.generationGuard.mu.Unlock()
+		if exists {
+			return active.generationID
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("generation did not become active")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func cancelGenerationRequest(
+	server *Server,
+	novelID string,
+	generationID string,
+) *httptest.ResponseRecorder {
+	body := fmt.Sprintf(`{"generation_id":%q}`, generationID)
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/novels/"+novelID+"/generate/cancel",
+		strings.NewReader(body),
+	)
+	recorder := httptest.NewRecorder()
+	server.router.ServeHTTP(recorder, req)
+	return recorder
+}
+
+func TestCancelGenerationWaitsForWorkerBeforeCancelledTerminal(t *testing.T) {
+	entered := make(chan struct{})
+	workerRelease := make(chan struct{})
+	var enteredOnce sync.Once
+	engine := &generationTestEngine{run: func(
+		ctx context.Context,
+		state *agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		firstRun := false
+		enteredOnce.Do(func() {
+			firstRun = true
+			close(entered)
+		})
+		if !firstRun {
+			return state, nil
+		}
+		<-ctx.Done()
+		<-workerRelease
+		return nil, ctx.Err()
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+	handlerDone := make(chan struct{})
+	go func() {
+		server.HandleGenerateChapter(
+			recorder,
+			generateRequest(context.Background(), "7", 1),
+		)
+		close(handlerDone)
+	}()
+	waitForSignal(t, entered)
+	generationID := activeGenerationID(t, server, 7)
+
+	firstCancel := cancelGenerationRequest(server, "7", generationID)
+	if firstCancel.Code != http.StatusAccepted {
+		t.Fatalf("first cancel status = %d, want %d", firstCancel.Code, http.StatusAccepted)
+	}
+	secondCancel := cancelGenerationRequest(server, "7", generationID)
+	if secondCancel.Code != http.StatusAccepted {
+		t.Fatalf("second cancel status = %d, want %d", secondCancel.Code, http.StatusAccepted)
+	}
+	select {
+	case <-handlerDone:
+		t.Fatal("SSE ended before worker exited")
+	default:
+	}
+
+	close(workerRelease)
+	waitForSignal(t, handlerDone)
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"cancelled"`) {
+		t.Fatalf("SSE body missing cancelled terminal: %s", body)
+	}
+
+	next := httptest.NewRecorder()
+	server.HandleGenerateChapter(
+		next,
+		generateRequest(context.Background(), "7", 2),
+	)
+	if next.Code == http.StatusConflict {
+		t.Fatal("cancelled terminal arrived before generation lease release")
+	}
+}
+
+func TestCancelGenerationWinsWhenEngineReturnsSuccessAfterCancellation(t *testing.T) {
+	entered := make(chan struct{})
+	engine := &generationTestEngine{run: func(
+		ctx context.Context,
+		state *agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		close(entered)
+		<-ctx.Done()
+		return state, nil
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+	handlerDone := make(chan struct{})
+	go func() {
+		server.HandleGenerateChapter(
+			recorder,
+			generateRequest(context.Background(), "7", 1),
+		)
+		close(handlerDone)
+	}()
+	waitForSignal(t, entered)
+	generationID := activeGenerationID(t, server, 7)
+
+	cancelResponse := cancelGenerationRequest(server, "7", generationID)
+	if cancelResponse.Code != http.StatusAccepted {
+		t.Fatalf("cancel status = %d, want %d", cancelResponse.Code, http.StatusAccepted)
+	}
+	waitForSignal(t, handlerDone)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"status":"cancelled"`) {
+		t.Fatalf("SSE body missing cancelled terminal: %s", body)
+	}
+	if strings.Contains(body, `"status":"success"`) {
+		t.Fatalf("cancellation was overwritten by successful engine return: %s", body)
+	}
+}
+
+func TestCancelGenerationRejectsMissingAndMismatchedGeneration(t *testing.T) {
+	server := newServer(&generationTestEngine{}, nil)
+
+	missing := cancelGenerationRequest(server, "7", "run-missing")
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing status = %d, want %d", missing.Code, http.StatusNotFound)
+	}
+
+	ctx, cancel := testGenerationContext()
+	if !server.generationGuard.acquire(7, "run-active", ctx, cancel) {
+		t.Fatal("failed to register active generation")
+	}
+	mismatch := cancelGenerationRequest(server, "7", "run-stale")
+	if mismatch.Code != http.StatusConflict {
+		t.Fatalf("mismatch status = %d, want %d", mismatch.Code, http.StatusConflict)
+	}
+	server.generationGuard.release(7, "run-active")
+}
+
+func testGenerationContext() (context.Context, context.CancelCauseFunc) {
+	return context.WithCancelCause(context.Background())
+}
+
+func TestGenerationGuardCancellationLinearizesWithRelease(t *testing.T) {
+	guard := newGenerationGuard()
+	ctx, cancel := testGenerationContext()
+	if !guard.acquire(7, "run-a", ctx, cancel) {
+		t.Fatal("acquire failed")
+	}
+	if got := guard.cancel(7, "run-a", errGenerationCancelled); got != generationCancelAccepted {
+		t.Fatalf("cancel result = %v, want accepted", got)
+	}
+	cause := guard.finish(7, "run-a")
+	if !errors.Is(cause, errGenerationCancelled) {
+		t.Fatalf("finish cause = %v, want user cancellation", cause)
+	}
+	guard.release(7, "run-a")
+
+	ctx, cancel = testGenerationContext()
+	if !guard.acquire(7, "run-b", ctx, cancel) {
+		t.Fatal("second acquire failed")
+	}
+	if cause := guard.finish(7, "run-b"); cause != nil {
+		t.Fatalf("completed finish cause = %v, want nil", cause)
+	}
+	if got := guard.cancel(7, "run-b", errGenerationCancelled); got != generationCancelConflict {
+		t.Fatalf("late cancel result = %v, want conflict", got)
+	}
+	guard.release(7, "run-b")
+	if got := guard.cancel(7, "run-b", errGenerationCancelled); got != generationCancelNotFound {
+		t.Fatalf("released cancel result = %v, want not found", got)
+	}
+}
+
+func TestGenerationGuardFinishedGenerationRejectsLateCancellation(t *testing.T) {
+	guard := newGenerationGuard()
+	ctx, cancel := testGenerationContext()
+	if !guard.acquire(7, "run-a", ctx, cancel) {
+		t.Fatal("acquire failed")
+	}
+	if cause := guard.finish(7, "run-a"); cause != nil {
+		t.Fatalf("finish cause = %v, want nil", cause)
+	}
+	if got := guard.cancel(7, "run-a", errGenerationCancelled); got != generationCancelConflict {
+		t.Fatalf("late cancel result = %v, want conflict", got)
+	}
+	if guard.acquire(7, "run-b", ctx, cancel) {
+		t.Fatal("finished generation released lease before explicit release")
+	}
+	guard.release(7, "run-a")
+}
+
 func TestGenerationGuardReleaseRequiresMatchingGeneration(t *testing.T) {
 	guard := newGenerationGuard()
-	if !guard.acquire(7, "run-a") {
+	ctxA, cancelA := testGenerationContext()
+	if !guard.acquire(7, "run-a", ctxA, cancelA) {
 		t.Fatal("first acquire failed")
 	}
 	guard.release(7, "run-b")
-	if guard.acquire(7, "run-c") {
+	ctxC, cancelC := testGenerationContext()
+	if guard.acquire(7, "run-c", ctxC, cancelC) {
 		t.Fatal("mismatched release removed active generation")
 	}
 	guard.release(7, "run-a")
-	if !guard.acquire(7, "run-c") {
+	if !guard.acquire(7, "run-c", ctxC, cancelC) {
 		t.Fatal("matching release did not remove active generation")
 	}
 }
