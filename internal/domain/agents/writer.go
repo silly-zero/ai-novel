@@ -4,23 +4,16 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
-
-	"github.com/ai-novel/studio/internal/domain/events"
 )
 
 // WriterAgent 是负责文本撰写的主笔智能体
 type WriterAgent struct {
-	llm      LLMService
-	eventBus events.Bus
+	llm LLMService
 }
 
 // NewWriterAgent 构造函数
-func NewWriterAgent(llm LLMService, eventBus events.Bus) *WriterAgent {
-	return &WriterAgent{
-		llm:      llm,
-		eventBus: eventBus,
-	}
+func NewWriterAgent(llm LLMService) *WriterAgent {
+	return &WriterAgent{llm: llm}
 }
 
 func (w *WriterAgent) Role() AgentRole {
@@ -56,14 +49,10 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 	err := w.llm.StreamGenerate(ctx, systemPrompt, userPrompt, func(content string) error {
 		fullDraft.WriteString(content)
 
-		// 发送实时 Token 事件
-		if w.eventBus != nil {
-			if err := w.eventBus.Publish(ctx, events.TokenGeneratedEvent{
-				GenerationID: state.GenerationID,
-				NovelID:      state.NovelID,
-				ChapterID:    state.ChapterID,
-				Token:        content,
-				Timestamp:    time.Now(),
+		if state.StreamSink != nil {
+			if err := state.StreamSink(ctx, GenerationStreamEvent{
+				Type:  GenerationStreamEventToken,
+				Token: content,
 			}); err != nil {
 				return err
 			}

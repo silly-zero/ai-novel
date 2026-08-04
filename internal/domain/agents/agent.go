@@ -17,9 +17,29 @@ const (
 	RoleCharacter AgentRole = "Character" // 角色管理 (维护人物档案)
 )
 
+// GenerationStreamEventType 标识实时生成事件类型
+type GenerationStreamEventType string
+
+const (
+	GenerationStreamEventToken GenerationStreamEventType = "token"
+	GenerationStreamEventRetry GenerationStreamEventType = "retry"
+)
+
+// GenerationStreamEvent 承载一次生成请求中的有序实时输出
+type GenerationStreamEvent struct {
+	Type       GenerationStreamEventType
+	Token      string
+	RetryCount int
+	Critique   string
+}
+
+// GenerationStreamSink 同步投递一次生成请求中的实时输出
+type GenerationStreamSink func(context.Context, GenerationStreamEvent) error
+
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
 	GenerationID    string
+	StreamSink      GenerationStreamSink
 	NovelID         string
 	ChapterID       string
 	ChapterIndex    int    // 当前章节序号

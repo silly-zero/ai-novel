@@ -37,28 +37,3 @@ type ChapterGeneratedEvent struct {
 
 func (e ChapterGeneratedEvent) Topic() string         { return "chapter.generated" }
 func (e ChapterGeneratedEvent) OccurredAt() time.Time { return e.Timestamp }
-
-// TokenGeneratedEvent 实时生成中的 Token 事件 (用于流式展示)
-type TokenGeneratedEvent struct {
-	GenerationID string
-	NovelID      string
-	ChapterID    string
-	Token        string
-	Timestamp    time.Time
-}
-
-func (e TokenGeneratedEvent) Topic() string         { return "token.generated" }
-func (e TokenGeneratedEvent) OccurredAt() time.Time { return e.Timestamp }
-
-// ChapterRetryEvent 章节被审查打回后进入重写轮次
-type ChapterRetryEvent struct {
-	GenerationID string
-	NovelID      string
-	ChapterID    string
-	RetryCount   int
-	Critique     string
-	Timestamp    time.Time
-}
-
-func (e ChapterRetryEvent) Topic() string         { return "chapter.retry" }
-func (e ChapterRetryEvent) OccurredAt() time.Time { return e.Timestamp }

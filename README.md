@@ -28,10 +28,9 @@
 - **RAG 系统**: 
   - **Embedding**: 利用 OpenAI `text-embedding-3` 模型。
   - **Vector Store**: 采用 PostgreSQL + 内存余弦相似度检索，确保数据持久化且检索高效。
-- **EventBus (异步神经网络)**:
-  - 采用 **领域事件 (Domain Events)** 机制。
-  - 监听 `token.generated` 实现 API 端的流式推送 (SSE)。
-  - 监听 `chapter.generated` 触发记忆存储（Ingestion）、日志记录等异步流程。
+- **实时生成与 EventBus**:
+  - Writer 的正文 Token 与 Retry 通过请求级同步 Sink 有序推送到 SSE，支持背压和取消。
+  - `chapter.generated` 通过领域事件触发记忆存储（Ingestion）、日志记录等异步流程。
 
 ## 📂 项目结构 (Project Structure)
 

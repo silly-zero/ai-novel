@@ -15,7 +15,6 @@ import (
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
-	"github.com/ai-novel/studio/internal/domain/events"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -54,24 +53,22 @@ func (g *generationGuard) release(novelID int, generationID string) {
 
 type Server struct {
 	engine          generationEngine
-	eventBus        events.Bus
 	db              *ent.Client
 	router          *chi.Mux
 	generationGuard *generationGuard
 }
 
-func NewServer(engine *workflows.WorkflowEngine, eventBus events.Bus, db *ent.Client) *Server {
+func NewServer(engine *workflows.WorkflowEngine, db *ent.Client) *Server {
 	var engineAdapter generationEngine
 	if engine != nil {
 		engineAdapter = engine
 	}
-	return newServer(engineAdapter, eventBus, db)
+	return newServer(engineAdapter, db)
 }
 
-func newServer(engine generationEngine, eventBus events.Bus, db *ent.Client) *Server {
+func newServer(engine generationEngine, db *ent.Client) *Server {
 	s := &Server{
 		engine:          engine,
-		eventBus:        eventBus,
 		db:              db,
 		router:          chi.NewRouter(),
 		generationGuard: newGenerationGuard(),
@@ -889,33 +886,17 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 2. 订阅 Token 生成事件
-	tokenChan := make(chan string, 100)
-	retryChan := make(chan events.ChapterRetryEvent, 8)
-	subID := s.eventBus.Subscribe("token.generated", func(ctx context.Context, event events.Event) error {
-		e, ok := event.(events.TokenGeneratedEvent)
-		if ok && e.NovelID == novelID && e.GenerationID == generationID {
-			// 非阻塞发送，防止 EventBus 协程阻塞
-			select {
-			case tokenChan <- e.Token:
-			default:
-			}
+	streamChan := make(chan agents.GenerationStreamEvent)
+	streamSink := func(streamCtx context.Context, event agents.GenerationStreamEvent) error {
+		select {
+		case streamChan <- event:
+			return nil
+		case <-streamCtx.Done():
+			return streamCtx.Err()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
-		return nil
-	})
-	retrySubID := s.eventBus.Subscribe("chapter.retry", func(ctx context.Context, event events.Event) error {
-		e, ok := event.(events.ChapterRetryEvent)
-		if ok && e.NovelID == novelID && e.GenerationID == generationID {
-			select {
-			case retryChan <- e:
-			default:
-			}
-		}
-		return nil
-	})
-	// 确保在请求结束时取消订阅
-	defer s.eventBus.Unsubscribe("token.generated", subID)
-	defer s.eventBus.Unsubscribe("chapter.retry", retrySubID)
+	}
 
 	// 3. 先推送 start，保证前端立即进入流式状态
 	fmt.Fprintf(w, "event: start\ndata: %s\n\n", "Generation started")
@@ -947,6 +928,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	prepared.GenerationID = generationID
+	prepared.StreamSink = streamSink
 	prepared.NovelID = novelID
 
 	meta := map[string]interface{}{
@@ -972,14 +954,13 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	// 5. 异步启动生成任务（writer/reviewer）
-	errChan := make(chan error, 1)
+	resultChan := make(chan error, 1)
 	leaseOwnedByHandler = false
 	go func() {
 		defer s.generationGuard.release(novelIDInt, generationID)
 		finalState, err := s.engine.RunChapterGeneration(ctx, prepared)
 		if err != nil {
-			errChan <- err
-			close(tokenChan)
+			resultChan <- err
 			return
 		}
 
@@ -994,34 +975,51 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				Save(saveCtx)
 			saveCancel()
 		}
-		close(tokenChan)
+		resultChan <- nil
 	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case err := <-errChan:
-			fmt.Fprintf(w, "event: error\ndata: %v\n\n", err)
-			flusher.Flush()
-			return
-		case retryEvt := <-retryChan:
-			payload, _ := json.Marshal(map[string]interface{}{
-				"retry_count": retryEvt.RetryCount,
-				"critique":    retryEvt.Critique,
-			})
-			fmt.Fprintf(w, "event: retry\ndata: %s\n\n", string(payload))
-			flusher.Flush()
-		case token, ok := <-tokenChan:
-			if !ok {
-				fmt.Fprintf(w, "event: end\ndata: %s\n\n", "Generation finished")
+		case err := <-resultChan:
+			if err != nil {
+				if _, writeErr := fmt.Fprintf(w, "event: error\ndata: %v\n\n", err); writeErr != nil {
+					cancel()
+					return
+				}
 				flusher.Flush()
 				return
 			}
-			// 发送 SSE 格式数据
-			data, _ := json.Marshal(map[string]string{"token": token})
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			if _, writeErr := fmt.Fprintf(w, "event: end\ndata: %s\n\n", "Generation finished"); writeErr != nil {
+				cancel()
+				return
+			}
 			flusher.Flush()
+			return
+		case streamEvent := <-streamChan:
+			switch streamEvent.Type {
+			case agents.GenerationStreamEventRetry:
+				payload, _ := json.Marshal(map[string]interface{}{
+					"retry_count": streamEvent.RetryCount,
+					"critique":    streamEvent.Critique,
+				})
+				if _, writeErr := fmt.Fprintf(w, "event: retry\ndata: %s\n\n", string(payload)); writeErr != nil {
+					cancel()
+					return
+				}
+				flusher.Flush()
+			case agents.GenerationStreamEventToken:
+				data, _ := json.Marshal(map[string]string{"token": streamEvent.Token})
+				if _, writeErr := fmt.Fprintf(w, "data: %s\n\n", string(data)); writeErr != nil {
+					cancel()
+					return
+				}
+				flusher.Flush()
+			default:
+				cancel()
+				return
+			}
 		}
 	}
 }

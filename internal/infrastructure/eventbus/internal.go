@@ -89,19 +89,11 @@ func (b *InternalEventBus) Publish(ctx context.Context, event events.Event) erro
 	}
 
 	subs = append([]subscription(nil), subs...)
-	topic := event.Topic()
 	for _, sub := range subs {
 		if sub.handler == nil {
 			continue
 		}
 		job := dispatchJob{ctx: ctx, event: event, handler: sub.handler}
-		if topic == "token.generated" {
-			select {
-			case b.queue <- job:
-			default:
-			}
-			continue
-		}
 		select {
 		case b.queue <- job:
 		case <-ctx.Done():

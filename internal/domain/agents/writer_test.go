@@ -5,8 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/ai-novel/studio/internal/domain/events"
 )
 
 type writerTestLLM struct {
@@ -34,44 +32,60 @@ func (f *writerTestLLM) StreamGenerate(ctx context.Context, _, _ string, onChunk
 	return f.streamErr
 }
 
-type writerTestBus struct {
-	event events.Event
-}
-
-func (b *writerTestBus) Publish(_ context.Context, event events.Event) error {
-	b.event = event
-	return nil
-}
-
-func (b *writerTestBus) Subscribe(string, events.Handler) string { return "" }
-func (b *writerTestBus) Unsubscribe(string, string)              {}
-
-func TestWriterRunPropagatesGenerationID(t *testing.T) {
-	bus := &writerTestBus{}
-	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"正文"}}, bus)
+func TestWriterRunDeliversTokensInOrder(t *testing.T) {
+	var tokens []string
+	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"第一段", "第二段", "第三段"}})
 	state := &GenerationState{
-		GenerationID: "run-123",
-		NovelID:      "7",
-		ChapterID:    "11",
-		SceneCard:    "场景",
-		Context:      "背景",
+		SceneCard: "场景",
+		Context:   "背景",
+		StreamSink: func(_ context.Context, event GenerationStreamEvent) error {
+			if event.Type != GenerationStreamEventToken {
+				t.Fatalf("event type = %q, want %q", event.Type, GenerationStreamEventToken)
+			}
+			tokens = append(tokens, event.Token)
+			return nil
+		},
 	}
 
 	if _, err := writer.Run(context.Background(), state); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	event, ok := bus.event.(events.TokenGeneratedEvent)
-	if !ok {
-		t.Fatalf("event = %T, want TokenGeneratedEvent", bus.event)
+	if got := strings.Join(tokens, ""); got != "第一段第二段第三段" {
+		t.Fatalf("delivered tokens = %q, want complete ordered draft", got)
 	}
-	if event.GenerationID != "run-123" {
-		t.Fatalf("GenerationID = %q, want %q", event.GenerationID, "run-123")
+}
+
+func TestWriterRunReturnsSinkErrorWithoutReplacingDraft(t *testing.T) {
+	sinkErr := errors.New("stream consumer stopped")
+	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"第一段", "第二段", "第三段"}})
+	state := &GenerationState{
+		SceneCard: "场景",
+		Context:   "背景",
+		Draft:     "旧草稿",
+		Critique:  "修改意见",
+		StreamSink: func(_ context.Context, event GenerationStreamEvent) error {
+			if event.Token == "第二段" {
+				return sinkErr
+			}
+			return nil
+		},
+	}
+
+	got, err := writer.Run(context.Background(), state)
+	if !errors.Is(err, sinkErr) {
+		t.Fatalf("Run() error = %v, want wrapped %v", err, sinkErr)
+	}
+	if got.Draft != "旧草稿" {
+		t.Fatalf("Draft = %q, want original draft", got.Draft)
+	}
+	if got.Critique != "修改意见" {
+		t.Fatalf("Critique = %q, want original critique", got.Critique)
 	}
 }
 
 func TestWriterRunCompletesStream(t *testing.T) {
 	llm := &writerTestLLM{chunks: []string{"第一段", "第二段"}}
-	writer := NewWriterAgent(llm, nil)
+	writer := NewWriterAgent(llm)
 	state := &GenerationState{
 		SceneCard: "场景",
 		Context:   "背景",
@@ -97,7 +111,7 @@ func TestWriterRunReturnsStreamErrorWithoutReplacingDraft(t *testing.T) {
 		chunks:    []string{"不完整正文"},
 		streamErr: streamErr,
 	}
-	writer := NewWriterAgent(llm, nil)
+	writer := NewWriterAgent(llm)
 	state := &GenerationState{
 		SceneCard: "场景",
 		Context:   "背景",
@@ -124,7 +138,7 @@ func TestWriterRunReturnsCanceledContextWithoutReplacingDraft(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"不会生成"}}, nil)
+	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"不会生成"}})
 	state := &GenerationState{
 		SceneCard: "场景",
 		Context:   "背景",
@@ -148,7 +162,7 @@ func TestWriterRunChecksContextAfterSuccessfulStream(t *testing.T) {
 	writer := NewWriterAgent(&writerTestLLM{
 		chunks:      []string{"未提交正文"},
 		afterStream: cancel,
-	}, nil)
+	})
 	state := &GenerationState{
 		SceneCard: "场景",
 		Context:   "背景",

@@ -82,7 +82,7 @@ func main() {
 		architect := agents.NewArchitectAgent(llmAdapter)
 		plot := agents.NewPlotAgent(llmAdapter)
 		director := agents.NewDirectorAgent(llmAdapter)
-		writer := agents.NewWriterAgent(llmAdapter, eventBus)
+		writer := agents.NewWriterAgent(llmAdapter)
 		reviewer := agents.NewReviewerAgent(llmAdapter)
 		librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo)
 
@@ -108,7 +108,7 @@ func main() {
 		}
 	}
 
-	server := api.NewServer(engine, eventBus, dbClient.Client)
+	server := api.NewServer(engine, dbClient.Client)
 	if err := server.Start(":8081"); err != nil {
 		log.Fatalf("API Server 启动失败: %v", err)
 	}

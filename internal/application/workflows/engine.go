@@ -70,15 +70,14 @@ func NewWorkflowEngine(
 
 		// 没通过审查，增加重试次数，打回给 writer 重新写
 		state.RetryCount++
-		if eventBus != nil {
-			_ = eventBus.Publish(ctx, events.ChapterRetryEvent{
-				GenerationID: state.GenerationID,
-				NovelID:      state.NovelID,
-				ChapterID:    state.ChapterID,
-				RetryCount:   state.RetryCount,
-				Critique:     state.Critique,
-				Timestamp:    time.Now(),
-			})
+		if state.StreamSink != nil {
+			if err := state.StreamSink(ctx, agents.GenerationStreamEvent{
+				Type:       agents.GenerationStreamEventRetry,
+				RetryCount: state.RetryCount,
+				Critique:   state.Critique,
+			}); err != nil {
+				return "", fmt.Errorf("deliver chapter retry: %w", err)
+			}
 		}
 		return "writer", nil
 	}, map[string]bool{
