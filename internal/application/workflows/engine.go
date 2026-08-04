@@ -134,22 +134,27 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 		return finalState, fmt.Errorf("failed to generate acceptable chapter after %d retries. Last critique: %s", finalState.RetryCount, finalState.Critique)
 	}
 
-	// 重点：章节生成成功后，发布领域事件！
-	if e.eventBus != nil {
-		publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
-		if err := e.eventBus.Publish(publishCtx, events.ChapterGeneratedEvent{
-			GenerationID: finalState.GenerationID,
-			NovelID:      finalState.NovelID,
-			ChapterID:    finalState.ChapterID,
-			Content:      finalState.Draft,
-			Timestamp:    time.Now(),
-		}); err != nil {
-			log.Printf("[Workflow] 发布 chapter.generated 失败: %v", err)
-		}
-	}
-
 	return finalState, nil
+}
+
+func (e *WorkflowEngine) PublishChapterGenerated(
+	ctx context.Context,
+	state *agents.GenerationState,
+) {
+	if e.eventBus == nil || state == nil {
+		return
+	}
+	publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if err := e.eventBus.Publish(publishCtx, events.ChapterGeneratedEvent{
+		GenerationID: state.GenerationID,
+		NovelID:      state.NovelID,
+		ChapterID:    state.ChapterID,
+		Content:      state.Draft,
+		Timestamp:    time.Now(),
+	}); err != nil {
+		log.Printf("[Workflow] 发布 chapter.generated 失败: %v", err)
+	}
 }
 
 // PrepareContext 仅生成“场景卡 + 背景资料 + 共创指令”合成上下文，不进入写作与审查

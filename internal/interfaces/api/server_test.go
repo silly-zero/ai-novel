@@ -17,6 +17,58 @@ import (
 type generationTestEngine struct {
 	prepare func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	run     func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+	publish func(context.Context, *agents.GenerationState)
+}
+
+type generationChapterStoreFake struct {
+	mu           sync.Mutex
+	prepareCalls int
+	saveCalls    int
+	prepare      func(context.Context, int, int, int) (*generationChapterTarget, error)
+	save         func(context.Context, *generationChapterTarget, *agents.GenerationState) error
+}
+
+func (s *generationChapterStoreFake) Prepare(
+	ctx context.Context,
+	novelID int,
+	chapterID int,
+	chapterIndex int,
+) (*generationChapterTarget, error) {
+	s.mu.Lock()
+	s.prepareCalls++
+	s.mu.Unlock()
+	if s.prepare != nil {
+		return s.prepare(ctx, novelID, chapterID, chapterIndex)
+	}
+	return &generationChapterTarget{
+		ID:        11,
+		Title:     "旧标题",
+		Content:   "旧正文",
+		WordCount: 3,
+		Order:     chapterIndex,
+		Status:    "Draft",
+		UpdatedAt: time.Unix(1, 0),
+	}, nil
+}
+
+func (s *generationChapterStoreFake) Save(
+	ctx context.Context,
+	target *generationChapterTarget,
+	state *agents.GenerationState,
+) error {
+	s.mu.Lock()
+	s.saveCalls++
+	s.mu.Unlock()
+	if s.save != nil {
+		return s.save(ctx, target, state)
+	}
+	return nil
+}
+
+func (s *generationChapterStoreFake) calls() (int, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prepareCalls, s.saveCalls
 }
 
 func (e *generationTestEngine) PrepareContext(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
@@ -33,8 +85,35 @@ func (e *generationTestEngine) RunChapterGeneration(ctx context.Context, state *
 	return state, nil
 }
 
+func (e *generationTestEngine) PublishChapterGenerated(
+	ctx context.Context,
+	state *agents.GenerationState,
+) {
+	if e.publish != nil {
+		e.publish(ctx, state)
+	}
+}
+
 func generateRequest(ctx context.Context, novelID string, chapterIndex int) *http.Request {
-	url := fmt.Sprintf("/api/v1/novel/generate?novel_id=%s&chapter_index=%d&idea=test&persist=0", novelID, chapterIndex)
+	return generateRequestWithPersist(ctx, novelID, chapterIndex, false)
+}
+
+func generateRequestWithPersist(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+	persist bool,
+) *http.Request {
+	persistValue := 0
+	if persist {
+		persistValue = 1
+	}
+	url := fmt.Sprintf(
+		"/api/v1/novel/generate?novel_id=%s&chapter_index=%d&idea=test&persist=%d",
+		novelID,
+		chapterIndex,
+		persistValue,
+	)
 	return httptest.NewRequest(http.MethodGet, url, nil).WithContext(ctx)
 }
 
@@ -184,6 +263,293 @@ func TestHandleGenerateChapterReleasesLeaseAfterSuccess(t *testing.T) {
 	server.HandleGenerateChapter(second, generateRequest(context.Background(), "7", 2))
 	if second.Code != http.StatusOK {
 		t.Fatalf("second status = %d, want %d", second.Code, http.StatusOK)
+	}
+}
+
+func TestEntGenerationChapterStoreRejectsInvalidTarget(t *testing.T) {
+	store := &entGenerationChapterStore{}
+	if _, err := store.Prepare(context.Background(), 0, 0, 1); err == nil ||
+		err.Error() != "invalid novel id" {
+		t.Fatalf("invalid novel error = %v", err)
+	}
+	if _, err := store.Prepare(context.Background(), 7, 0, 0); err == nil ||
+		err.Error() != "invalid chapter index" {
+		t.Fatalf("invalid chapter index error = %v", err)
+	}
+}
+
+func TestHandleGenerateChapterPersistRequiresChapterStore(t *testing.T) {
+	runCalled := false
+	engine := &generationTestEngine{
+		run: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			runCalled = true
+			return nil, nil
+		},
+	}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "database not configured") {
+		t.Fatalf("SSE body missing database error terminal: %s", body)
+	}
+	if runCalled {
+		t.Fatal("generation ran without a configured chapter store")
+	}
+}
+
+func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T) {
+	store := &generationChapterStoreFake{}
+	published := false
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+		publish: func(context.Context, *agents.GenerationState) {
+			published = true
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	prepareCalls, saveCalls := store.calls()
+	if prepareCalls != 0 || saveCalls != 0 {
+		t.Fatalf("store calls = (%d, %d), want (0, 0)", prepareCalls, saveCalls)
+	}
+	if published {
+		t.Fatal("persist=0 published chapter.generated")
+	}
+	if !strings.Contains(recorder.Body.String(), `"status":"success"`) {
+		t.Fatalf("SSE body missing success terminal: %s", recorder.Body.String())
+	}
+}
+
+func TestHandleGenerateChapterCancelledPersistedRunDoesNotSave(t *testing.T) {
+	entered := make(chan struct{})
+	store := &generationChapterStoreFake{}
+	engine := &generationTestEngine{
+		run: func(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			close(entered)
+			<-ctx.Done()
+			state.Draft = "不应保存的正文"
+			return state, nil
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() {
+		server.HandleGenerateChapter(
+			recorder,
+			generateRequestWithPersist(context.Background(), "7", 1, true),
+		)
+		close(done)
+	}()
+	waitForSignal(t, entered)
+
+	generationID := activeGenerationID(t, server, 7)
+	cancelResponse := cancelGenerationRequest(server, "7", generationID)
+	if cancelResponse.Code != http.StatusAccepted {
+		t.Fatalf("cancel status = %d, want %d", cancelResponse.Code, http.StatusAccepted)
+	}
+	waitForSignal(t, done)
+
+	prepareCalls, saveCalls := store.calls()
+	if prepareCalls != 1 || saveCalls != 0 {
+		t.Fatalf("store calls = (%d, %d), want (1, 0)", prepareCalls, saveCalls)
+	}
+	if !strings.Contains(recorder.Body.String(), `"status":"cancelled"`) {
+		t.Fatalf("SSE body missing cancelled terminal: %s", recorder.Body.String())
+	}
+}
+
+func TestHandleGenerateChapterFailurePreservesPreparedChapter(t *testing.T) {
+	target := &generationChapterTarget{
+		ID:        11,
+		Title:     "原章节",
+		Content:   "不能丢失的正文",
+		WordCount: 7,
+		Order:     1,
+		Status:    "Published",
+		UpdatedAt: time.Unix(1, 0),
+	}
+	store := &generationChapterStoreFake{
+		prepare: func(context.Context, int, int, int) (*generationChapterTarget, error) {
+			return target, nil
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			return nil, errors.New("provider failed")
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+
+	_, saveCalls := store.calls()
+	if saveCalls != 0 {
+		t.Fatalf("save calls = %d, want 0", saveCalls)
+	}
+	if target.Content != "不能丢失的正文" || target.Status != "Published" {
+		t.Fatalf("prepared target was modified: %#v", target)
+	}
+	if !strings.Contains(recorder.Body.String(), `"status":"error"`) {
+		t.Fatalf("SSE body missing error terminal: %s", recorder.Body.String())
+	}
+}
+
+func TestHandleGenerateChapterSaveFailureUsesErrorTerminal(t *testing.T) {
+	published := false
+	store := &generationChapterStoreFake{
+		save: func(context.Context, *generationChapterTarget, *agents.GenerationState) error {
+			return errors.New("database unavailable")
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+		publish: func(context.Context, *agents.GenerationState) {
+			published = true
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "save generated chapter: database unavailable") {
+		t.Fatalf("SSE body missing save error terminal: %s", body)
+	}
+	if strings.Contains(body, `"status":"success"`) {
+		t.Fatalf("SSE body contains success after save failure: %s", body)
+	}
+	if published {
+		t.Fatal("save failure published chapter.generated")
+	}
+}
+
+func TestHandleGenerateChapterCASConflictPreservesConcurrentEdit(t *testing.T) {
+	store := &generationChapterStoreFake{
+		save: func(context.Context, *generationChapterTarget, *agents.GenerationState) error {
+			return errGenerationChapterChanged
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "过期生成正文"
+			return state, nil
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "章节在生成期间已被修改") {
+		t.Fatalf("SSE body missing CAS conflict terminal: %s", body)
+	}
+}
+
+func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T) {
+	saveEntered := make(chan struct{})
+	saveRelease := make(chan struct{})
+	published := make(chan *agents.GenerationState, 1)
+	store := &generationChapterStoreFake{
+		save: func(
+			_ context.Context,
+			target *generationChapterTarget,
+			state *agents.GenerationState,
+		) error {
+			if target.ID != 11 || target.Title != "旧标题" ||
+				state.ChapterID != "11" || state.Draft != "新正文" {
+				return fmt.Errorf("unexpected save payload: target=%#v state=%#v", target, state)
+			}
+			close(saveEntered)
+			<-saveRelease
+			return nil
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+		publish: func(_ context.Context, state *agents.GenerationState) {
+			published <- state
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	firstDone := make(chan struct{})
+	go func() {
+		server.HandleGenerateChapter(
+			httptest.NewRecorder(),
+			generateRequestWithPersist(context.Background(), "7", 1, true),
+		)
+		close(firstDone)
+	}()
+	waitForSignal(t, saveEntered)
+
+	select {
+	case <-published:
+		t.Fatal("chapter.generated published before save completed")
+	default:
+	}
+	second := httptest.NewRecorder()
+	server.HandleGenerateChapter(
+		second,
+		generateRequest(context.Background(), "7", 2),
+	)
+	if second.Code != http.StatusConflict {
+		t.Fatalf("status during save = %d, want %d", second.Code, http.StatusConflict)
+	}
+
+	close(saveRelease)
+	waitForSignal(t, firstDone)
+	select {
+	case state := <-published:
+		if state.ChapterID != "11" || state.Draft != "新正文" {
+			t.Fatalf("published state = %#v", state)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("chapter.generated was not published after save")
 	}
 }
 

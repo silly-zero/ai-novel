@@ -23,6 +23,116 @@ import (
 type generationEngine interface {
 	PrepareContext(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	RunChapterGeneration(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+	PublishChapterGenerated(context.Context, *agents.GenerationState)
+}
+
+type generationChapterTarget struct {
+	ID        int
+	Title     string
+	Content   string
+	WordCount int
+	Order     int
+	Status    string
+	UpdatedAt time.Time
+}
+
+type generationChapterStore interface {
+	Prepare(context.Context, int, int, int) (*generationChapterTarget, error)
+	Save(context.Context, *generationChapterTarget, *agents.GenerationState) error
+}
+
+type entGenerationChapterStore struct {
+	client *ent.Client
+}
+
+var errGenerationChapterChanged = errors.New("chapter changed during generation")
+
+func (s *entGenerationChapterStore) Prepare(
+	ctx context.Context,
+	novelID int,
+	chapterID int,
+	chapterIndex int,
+) (*generationChapterTarget, error) {
+	if novelID <= 0 {
+		return nil, errors.New("invalid novel id")
+	}
+	if chapterID <= 0 && chapterIndex <= 0 {
+		return nil, errors.New("invalid chapter index")
+	}
+	query := s.client.Chapter.Query()
+	if chapterID > 0 {
+		query = query.Where(
+			chapter.ID(chapterID),
+			chapter.HasNovelWith(novel.ID(novelID)),
+		)
+	} else {
+		query = query.Where(
+			chapter.OrderEQ(chapterIndex),
+			chapter.HasNovelWith(novel.ID(novelID)),
+		)
+	}
+
+	row, err := query.Only(ctx)
+	if err != nil && !ent.IsNotFound(err) {
+		return nil, err
+	}
+	if err == nil {
+		return generationChapterTargetFromRow(row), nil
+	}
+	if chapterID > 0 {
+		return nil, errors.New("chapter not found")
+	}
+
+	row, err = s.client.Chapter.
+		Create().
+		SetNovelID(novelID).
+		SetTitle(chapterTitle(chapterIndex)).
+		SetContent("").
+		SetWordCount(0).
+		SetOrder(chapterIndex).
+		SetStatus("Draft").
+		Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return generationChapterTargetFromRow(row), nil
+}
+
+func (s *entGenerationChapterStore) Save(
+	ctx context.Context,
+	target *generationChapterTarget,
+	state *agents.GenerationState,
+) error {
+	_, err := s.client.Chapter.
+		UpdateOneID(target.ID).
+		Where(
+			chapter.TitleEQ(target.Title),
+			chapter.ContentEQ(target.Content),
+			chapter.WordCountEQ(target.WordCount),
+			chapter.OrderEQ(target.Order),
+			chapter.StatusEQ(target.Status),
+			chapter.UpdatedAtEQ(target.UpdatedAt),
+		).
+		SetContent(state.Draft).
+		SetWordCount(wordCountOf(state.Draft)).
+		SetStatus("Draft").
+		Save(ctx)
+	if ent.IsNotFound(err) {
+		return errGenerationChapterChanged
+	}
+	return err
+}
+
+func generationChapterTargetFromRow(row *ent.Chapter) *generationChapterTarget {
+	return &generationChapterTarget{
+		ID:        row.ID,
+		Title:     row.Title,
+		Content:   row.Content,
+		WordCount: row.WordCount,
+		Order:     row.Order,
+		Status:    row.Status,
+		UpdatedAt: row.UpdatedAt,
+	}
 }
 
 type activeGeneration struct {
@@ -123,6 +233,7 @@ var (
 type Server struct {
 	engine          generationEngine
 	db              *ent.Client
+	chapterStore    generationChapterStore
 	router          *chi.Mux
 	generationGuard *generationGuard
 }
@@ -141,6 +252,9 @@ func newServer(engine generationEngine, db *ent.Client) *Server {
 		db:              db,
 		router:          chi.NewRouter(),
 		generationGuard: newGenerationGuard(),
+	}
+	if db != nil {
+		s.chapterStore = &entGenerationChapterStore{client: db}
 	}
 
 	s.router.Use(middleware.Logger)
@@ -767,55 +881,6 @@ func chapterTitle(index int) string {
 	return fmt.Sprintf("第%d章", index)
 }
 
-func (s *Server) ensureChapterRecord(ctx context.Context, novelID int, chapterIndex int) (int, error) {
-	if s.db == nil {
-		return 0, fmt.Errorf("database not configured")
-	}
-	if novelID <= 0 {
-		return 0, fmt.Errorf("invalid novel id")
-	}
-	if chapterIndex <= 0 {
-		return 0, fmt.Errorf("invalid chapter index")
-	}
-
-	row, queryErr := s.db.Chapter.
-		Query().
-		Where(
-			chapter.OrderEQ(chapterIndex),
-			chapter.HasNovelWith(novel.ID(novelID)),
-		).
-		Only(ctx)
-	if queryErr == nil && row != nil {
-		if execErr := s.db.Chapter.
-			UpdateOneID(row.ID).
-			SetTitle(chapterTitle(chapterIndex)).
-			SetContent("").
-			SetWordCount(0).
-			SetStatus("Generating").
-			Exec(ctx); execErr != nil {
-			return 0, execErr
-		}
-		return row.ID, nil
-	}
-	if queryErr != nil && !ent.IsNotFound(queryErr) {
-		return 0, queryErr
-	}
-
-	created, err := s.db.Chapter.
-		Create().
-		SetNovelID(novelID).
-		SetTitle(chapterTitle(chapterIndex)).
-		SetContent("").
-		SetWordCount(0).
-		SetOrder(chapterIndex).
-		SetStatus("Generating").
-		Save(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return created.ID, nil
-}
-
 type CancelGenerationRequest struct {
 	GenerationID string `json:"generation_id"`
 }
@@ -1054,7 +1119,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
-		loadCtx, loadCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
 		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
 		loadCancel()
 		if qErr == nil && row != nil {
@@ -1083,46 +1148,28 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		persist = false
 	}
 
-	chapterIDInt := 0
-	if s.db != nil && persist {
-		saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	var chapterTarget *generationChapterTarget
+	if persist {
+		if s.chapterStore == nil {
+			finishSync(errors.New("database not configured"), nil)
+			return
+		}
+		chapterIDInt := 0
 		if strings.TrimSpace(chapterIDStr) != "" {
 			chapterIDInt, err = parseIntParam(chapterIDStr)
 			if err != nil {
-				saveCancel()
 				finishSync(err, nil)
 				return
 			}
-			_, queryErr := s.db.Chapter.
-				Query().
-				Where(
-					chapter.ID(chapterIDInt),
-					chapter.HasNovelWith(novel.ID(novelIDInt)),
-				).
-				Only(saveCtx)
-			if queryErr != nil {
-				saveCancel()
-				if ent.IsNotFound(queryErr) {
-					finishSync(errors.New("chapter not found"), nil)
-					return
-				}
-				finishSync(queryErr, nil)
-				return
-			}
-			if execErr := s.db.Chapter.
-				UpdateOneID(chapterIDInt).
-				SetContent("").
-				SetWordCount(0).
-				SetStatus("Generating").
-				Exec(saveCtx); execErr != nil {
-				saveCancel()
-				finishSync(execErr, nil)
-				return
-			}
-		} else {
-			chapterIDInt, err = s.ensureChapterRecord(saveCtx, novelIDInt, chapterIndex)
 		}
-		saveCancel()
+		prepareCtx, prepareCancel := context.WithTimeout(ctx, 10*time.Second)
+		chapterTarget, err = s.chapterStore.Prepare(
+			prepareCtx,
+			novelIDInt,
+			chapterIDInt,
+			chapterIndex,
+		)
+		prepareCancel()
 		if err != nil {
 			finishSync(err, nil)
 			return
@@ -1131,6 +1178,11 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	streamChan := make(chan agents.GenerationStreamEvent)
 	streamSink := func(streamCtx context.Context, event agents.GenerationStreamEvent) error {
+		if event.Type != agents.GenerationStreamEventToken &&
+			event.Type != agents.GenerationStreamEventRetry {
+			cancelGeneration(errGenerationProtocol)
+			return errGenerationProtocol
+		}
 		select {
 		case streamChan <- event:
 			return nil
@@ -1142,8 +1194,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chapterID := ""
-	if chapterIDInt > 0 {
-		chapterID = fmt.Sprintf("%d", chapterIDInt)
+	if chapterTarget != nil {
+		chapterID = strconv.Itoa(chapterTarget.ID)
 	}
 	state := &agents.GenerationState{
 		GenerationID:    generationID,
@@ -1207,17 +1259,28 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			finalState,
 		)
 
-		if result.Status == generationStatusSuccess &&
-			s.db != nil && persist && finalState != nil && chapterIDInt > 0 {
-			saveCtx, saveCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-			_, _ = s.db.Chapter.
-				UpdateOneID(chapterIDInt).
-				SetTitle(chapterTitle(finalState.ChapterIndex)).
-				SetContent(finalState.Draft).
-				SetWordCount(wordCountOf(finalState.Draft)).
-				SetStatus("Draft").
-				Save(saveCtx)
+		if result.Status == generationStatusSuccess && persist {
+			finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
+			finalState.NovelID = novelID
+			saveCtx, saveCancel := context.WithTimeout(
+				context.WithoutCancel(ctx),
+				10*time.Second,
+			)
+			saveErr := s.chapterStore.Save(saveCtx, chapterTarget, finalState)
 			saveCancel()
+			if saveErr != nil {
+				message := fmt.Sprintf("save generated chapter: %v", saveErr)
+				if errors.Is(saveErr, errGenerationChapterChanged) {
+					message = "章节在生成期间已被修改，未覆盖现有内容"
+				}
+				result = generationResult{
+					GenerationID: generationID,
+					Status:       generationStatusError,
+					Message:      message,
+				}
+			} else {
+				s.engine.PublishChapterGenerated(ctx, finalState)
+			}
 		}
 
 		s.generationGuard.release(novelIDInt, generationID)
