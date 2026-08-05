@@ -35,7 +35,10 @@ type WorldSettingUpdate struct {
 
 func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
 	// 1. 获取现有设定 (用于参考)
-	existingSettings, _ := a.repo.ListAll(ctx, state.NovelID)
+	existingSettings, err := a.repo.ListAll(ctx, state.NovelID)
+	if err != nil {
+		return state, fmt.Errorf("list existing world settings: %w", err)
+	}
 	settingContext := "【现有世界观设定】\n"
 	for _, s := range existingSettings {
 		settingContext += fmt.Sprintf("- [%s] %s: %s\n", s.Category, s.Name, s.Description)
@@ -66,7 +69,7 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 	var updates []WorldSettingUpdate
 	cleanedJSON := strings.TrimPrefix(strings.TrimSpace(resp), "```json")
 	cleanedJSON = strings.TrimSuffix(cleanedJSON, "```")
-	
+
 	if err := json.Unmarshal([]byte(cleanedJSON), &updates); err != nil {
 		return state, fmt.Errorf("failed to parse world setting updates: %w", err)
 	}
@@ -79,11 +82,13 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 				Name:    up.Name,
 			}
 		}
-		
+
 		setting.Category = up.Category
 		setting.Description = up.Description
-		
-		_ = a.repo.SaveSetting(ctx, setting)
+
+		if err := a.repo.SaveSetting(ctx, setting); err != nil {
+			return state, fmt.Errorf("save world setting %q: %w", up.Name, err)
+		}
 	}
 
 	return state, nil

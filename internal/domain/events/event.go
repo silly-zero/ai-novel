@@ -16,7 +16,7 @@ type Handler func(ctx context.Context, event Event) error
 
 // Bus 领域事件总线接口 (Repository/Port)
 type Bus interface {
-	// Publish 发布一个事件
+	// Publish 并行处理事件，并在所有订阅者完成后返回聚合错误。
 	Publish(ctx context.Context, event Event) error
 
 	// Subscribe 订阅某个主题的事件，返回订阅 ID 用于取消订阅

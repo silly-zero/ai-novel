@@ -26,11 +26,18 @@ func (uc *WorldUseCase) HandleChapterGenerated(ctx context.Context, event events
 		return nil
 	}
 
-	log.Printf("[World] 开始分析章节中的世界观信息: NovelID=%s", e.NovelID)
+	log.Printf(
+		"[World] 开始分析章节世界观: generation_id=%s novel_id=%s chapter_id=%s",
+		e.GenerationID,
+		e.NovelID,
+		e.ChapterID,
+	)
 
 	state := &agents.GenerationState{
-		NovelID: e.NovelID,
-		Draft:   e.Content,
+		GenerationID: e.GenerationID,
+		NovelID:      e.NovelID,
+		ChapterID:    e.ChapterID,
+		Draft:        e.Content,
 	}
 
 	_, err := uc.agent.Run(ctx, state)
@@ -38,6 +45,11 @@ func (uc *WorldUseCase) HandleChapterGenerated(ctx context.Context, event events
 		return err
 	}
 
-	log.Printf("[World] 世界观设定更新完成")
+	log.Printf(
+		"[World] 世界观处理完成: generation_id=%s novel_id=%s chapter_id=%s",
+		e.GenerationID,
+		e.NovelID,
+		e.ChapterID,
+	)
 	return nil
 }

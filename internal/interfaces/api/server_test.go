@@ -17,7 +17,7 @@ import (
 type generationTestEngine struct {
 	prepare func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	run     func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
-	publish func(context.Context, *agents.GenerationState)
+	publish func(context.Context, *agents.GenerationState) error
 }
 
 type generationChapterStoreFake struct {
@@ -88,10 +88,11 @@ func (e *generationTestEngine) RunChapterGeneration(ctx context.Context, state *
 func (e *generationTestEngine) PublishChapterGenerated(
 	ctx context.Context,
 	state *agents.GenerationState,
-) {
+) error {
 	if e.publish != nil {
-		e.publish(ctx, state)
+		return e.publish(ctx, state)
 	}
+	return nil
 }
 
 func generateRequest(ctx context.Context, novelID string, chapterIndex int) *http.Request {
@@ -312,8 +313,9 @@ func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T)
 			state.Draft = "新正文"
 			return state, nil
 		},
-		publish: func(context.Context, *agents.GenerationState) {
+		publish: func(context.Context, *agents.GenerationState) error {
 			published = true
+			return nil
 		},
 	}
 	server := newServer(engine, nil)
@@ -430,8 +432,9 @@ func TestHandleGenerateChapterSaveFailureUsesErrorTerminal(t *testing.T) {
 			state.Draft = "新正文"
 			return state, nil
 		},
-		publish: func(context.Context, *agents.GenerationState) {
+		publish: func(context.Context, *agents.GenerationState) error {
 			published = true
+			return nil
 		},
 	}
 	server := newServer(engine, nil)
@@ -490,6 +493,8 @@ func TestHandleGenerateChapterCASConflictPreservesConcurrentEdit(t *testing.T) {
 func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T) {
 	saveEntered := make(chan struct{})
 	saveRelease := make(chan struct{})
+	publishEntered := make(chan struct{})
+	publishRelease := make(chan struct{})
 	published := make(chan *agents.GenerationState, 1)
 	store := &generationChapterStoreFake{
 		save: func(
@@ -511,8 +516,11 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 			state.Draft = "新正文"
 			return state, nil
 		},
-		publish: func(_ context.Context, state *agents.GenerationState) {
+		publish: func(_ context.Context, state *agents.GenerationState) error {
+			close(publishEntered)
+			<-publishRelease
 			published <- state
+			return nil
 		},
 	}
 	server := newServer(engine, nil)
@@ -542,6 +550,17 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 	}
 
 	close(saveRelease)
+	waitForSignal(t, publishEntered)
+	second = httptest.NewRecorder()
+	server.HandleGenerateChapter(
+		second,
+		generateRequest(context.Background(), "7", 2),
+	)
+	if second.Code != http.StatusConflict {
+		t.Fatalf("status during publication = %d, want %d", second.Code, http.StatusConflict)
+	}
+
+	close(publishRelease)
 	waitForSignal(t, firstDone)
 	select {
 	case state := <-published:
@@ -550,6 +569,42 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 		}
 	case <-time.After(time.Second):
 		t.Fatal("chapter.generated was not published after save")
+	}
+}
+
+func TestHandleGenerateChapterMemoryFailureKeepsSuccessAndReleasesLease(t *testing.T) {
+	store := &generationChapterStoreFake{}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+		publish: func(context.Context, *agents.GenerationState) error {
+			return errors.New("memory update failed")
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	first := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		first,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+
+	body := first.Body.String()
+	if !strings.Contains(body, `"status":"success"`) ||
+		strings.Contains(body, `"status":"error"`) {
+		t.Fatalf("memory failure changed chapter terminal: %s", body)
+	}
+
+	second := httptest.NewRecorder()
+	server.HandleGenerateChapter(
+		second,
+		generateRequest(context.Background(), "7", 2),
+	)
+	if second.Code == http.StatusConflict {
+		t.Fatal("memory failure did not release novel lease")
 	}
 }
 

@@ -3,7 +3,6 @@ package workflows
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/ai-novel/studio/internal/domain/agents"
@@ -137,24 +136,28 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	return finalState, nil
 }
 
+const chapterGeneratedTimeout = 5 * time.Minute
+
 func (e *WorkflowEngine) PublishChapterGenerated(
 	ctx context.Context,
 	state *agents.GenerationState,
-) {
+) error {
 	if e.eventBus == nil || state == nil {
-		return
+		return nil
 	}
-	publishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	publishCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		chapterGeneratedTimeout,
+	)
 	defer cancel()
-	if err := e.eventBus.Publish(publishCtx, events.ChapterGeneratedEvent{
+
+	return e.eventBus.Publish(publishCtx, events.ChapterGeneratedEvent{
 		GenerationID: state.GenerationID,
 		NovelID:      state.NovelID,
 		ChapterID:    state.ChapterID,
 		Content:      state.Draft,
 		Timestamp:    time.Now(),
-	}); err != nil {
-		log.Printf("[Workflow] 发布 chapter.generated 失败: %v", err)
-	}
+	})
 }
 
 // PrepareContext 仅生成“场景卡 + 背景资料 + 共创指令”合成上下文，不进入写作与审查

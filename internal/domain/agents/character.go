@@ -51,7 +51,10 @@ type CharacterExtraction struct {
 
 func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
 	// 1. 获取当前章节的所有角色档案 (用于提供给 LLM 参考)
-	existingChars, _ := a.repo.ListCharacters(ctx, state.NovelID)
+	existingChars, err := a.repo.ListCharacters(ctx, state.NovelID)
+	if err != nil {
+		return state, fmt.Errorf("list existing characters: %w", err)
+	}
 	charContext := "【现有角色档案】\n"
 	for _, c := range existingChars {
 		charContext += fmt.Sprintf("- %s: %s\n", c.Name, c.Personality)
@@ -126,9 +129,10 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		char.Background = up.Background
 		char.CurrentStatus = up.CurrentStatus
 
-		if err := a.repo.SaveCharacter(ctx, char); err == nil {
-			nameToChar[char.Name] = char
+		if err := a.repo.SaveCharacter(ctx, char); err != nil {
+			return state, fmt.Errorf("save character %q: %w", up.Name, err)
 		}
+		nameToChar[char.Name] = char
 	}
 
 	for _, rel := range extracted.Relationships {
@@ -156,13 +160,21 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 			continue
 		}
 
-		_ = a.repo.SaveRelationship(ctx, &domain.Relationship{
+		if err := a.repo.SaveRelationship(ctx, &domain.Relationship{
 			NovelID:         state.NovelID,
 			SourceCharacter: sourceChar,
 			TargetCharacter: targetChar,
 			RelationType:    rel.RelationType,
 			Description:     rel.Description,
-		})
+		}); err != nil {
+			return state, fmt.Errorf(
+				"save relationship %q -> %q (%s): %w",
+				rel.Source,
+				rel.Target,
+				rel.RelationType,
+				err,
+			)
+		}
 	}
 
 	return state, nil

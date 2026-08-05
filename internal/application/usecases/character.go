@@ -26,11 +26,18 @@ func (uc *CharacterUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		return nil
 	}
 
-	log.Printf("[Character] 开始分析章节中的角色信息: NovelID=%s", e.NovelID)
+	log.Printf(
+		"[Character] 开始分析章节角色: generation_id=%s novel_id=%s chapter_id=%s",
+		e.GenerationID,
+		e.NovelID,
+		e.ChapterID,
+	)
 
 	state := &agents.GenerationState{
-		NovelID: e.NovelID,
-		Draft:   e.Content,
+		GenerationID: e.GenerationID,
+		NovelID:      e.NovelID,
+		ChapterID:    e.ChapterID,
+		Draft:        e.Content,
 	}
 
 	_, err := uc.agent.Run(ctx, state)
@@ -38,6 +45,11 @@ func (uc *CharacterUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		return err
 	}
 
-	log.Printf("[Character] 角色档案更新完成")
+	log.Printf(
+		"[Character] 角色档案处理完成: generation_id=%s novel_id=%s chapter_id=%s",
+		e.GenerationID,
+		e.NovelID,
+		e.ChapterID,
+	)
 	return nil
 }

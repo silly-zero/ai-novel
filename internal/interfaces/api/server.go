@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,7 +24,7 @@ import (
 type generationEngine interface {
 	PrepareContext(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	RunChapterGeneration(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
-	PublishChapterGenerated(context.Context, *agents.GenerationState)
+	PublishChapterGenerated(context.Context, *agents.GenerationState) error
 }
 
 type generationChapterTarget struct {
@@ -1279,7 +1280,18 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 					Message:      message,
 				}
 			} else {
-				s.engine.PublishChapterGenerated(ctx, finalState)
+				if publishErr := s.engine.PublishChapterGenerated(
+					ctx,
+					finalState,
+				); publishErr != nil {
+					log.Printf(
+						"[Generation] 记忆处理失败: generation_id=%s novel_id=%s chapter_id=%s error=%v",
+						generationID,
+						novelID,
+						finalState.ChapterID,
+						publishErr,
+					)
+				}
 			}
 		}
 

@@ -33,7 +33,12 @@ func (uc *IngestionUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		return nil
 	}
 
-	log.Printf("[Ingestion] 开始处理章节记忆注入: NovelID=%s, ChapterID=%s", e.NovelID, e.ChapterID)
+	log.Printf(
+		"[Ingestion] 开始处理章节记忆: generation_id=%s novel_id=%s chapter_id=%s",
+		e.GenerationID,
+		e.NovelID,
+		e.ChapterID,
+	)
 
 	// 1. 提取剧情摘要与关键设定 (利用 LLM 压缩信息，避免向量库冗余)
 	summary, err := uc.extractSummary(ctx, e.Content)
@@ -54,8 +59,9 @@ func (uc *IngestionUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		Content:   summary,
 		Embedding: vector,
 		Metadata: map[string]interface{}{
-			"chapter_id": e.ChapterID,
-			"type":       "plot_summary",
+			"generation_id": e.GenerationID,
+			"chapter_id":    e.ChapterID,
+			"type":          "plot_summary",
 		},
 	}
 
@@ -63,7 +69,12 @@ func (uc *IngestionUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		return fmt.Errorf("failed to add memory entry: %w", err)
 	}
 
-	log.Printf("[Ingestion] 章节记忆注入成功: %s", summary)
+	log.Printf(
+		"[Ingestion] 章节记忆处理完成: generation_id=%s novel_id=%s chapter_id=%s",
+		e.GenerationID,
+		e.NovelID,
+		e.ChapterID,
+	)
 	return nil
 }
 

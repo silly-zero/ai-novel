@@ -2,8 +2,8 @@ package eventbus
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -15,35 +15,17 @@ type subscription struct {
 	handler events.Handler
 }
 
-type dispatchJob struct {
-	ctx     context.Context
-	event   events.Event
-	handler events.Handler
-}
-
-// InternalEventBus 基于内存 Channel 的轻量级异步事件总线实现
 type InternalEventBus struct {
 	mu          sync.RWMutex
 	subscribers map[string][]subscription
 	counter     uint64
-	queue       chan dispatchJob
 }
-
-const (
-	defaultQueueSize  = 4096
-	defaultWorkerSize = 8
-)
 
 // NewInternalEventBus 构造函数
 func NewInternalEventBus() *InternalEventBus {
-	b := &InternalEventBus{
+	return &InternalEventBus{
 		subscribers: make(map[string][]subscription),
-		queue:       make(chan dispatchJob, defaultQueueSize),
 	}
-	for i := 0; i < defaultWorkerSize; i++ {
-		go b.worker()
-	}
-	return b
 }
 
 // Subscribe 订阅某个主题的事件，返回订阅 ID
@@ -78,7 +60,7 @@ func (b *InternalEventBus) Unsubscribe(topic string, id string) {
 	b.subscribers[topic] = newSubs
 }
 
-// Publish 异步发布一个事件
+// Publish 并行调用订阅者，并在全部处理完成后返回聚合错误。
 func (b *InternalEventBus) Publish(ctx context.Context, event events.Event) error {
 	b.mu.RLock()
 	subs, ok := b.subscribers[event.Topic()]
@@ -89,32 +71,38 @@ func (b *InternalEventBus) Publish(ctx context.Context, event events.Event) erro
 	}
 
 	subs = append([]subscription(nil), subs...)
-	for _, sub := range subs {
+	errorsBySubscriber := make([]error, len(subs))
+	var wg sync.WaitGroup
+	for i, sub := range subs {
 		if sub.handler == nil {
 			continue
 		}
-		job := dispatchJob{ctx: ctx, event: event, handler: sub.handler}
-		select {
-		case b.queue <- job:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
 
-	return nil
-}
-
-func (b *InternalEventBus) worker() {
-	for job := range b.queue {
-		func() {
+		wg.Add(1)
+		go func(index int, subscription subscription) {
+			defer wg.Done()
 			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("[EventBus] handler panic: %v", r)
+				if recovered := recover(); recovered != nil {
+					errorsBySubscriber[index] = fmt.Errorf(
+						"subscriber %s handling %s panicked: %v",
+						subscription.id,
+						event.Topic(),
+						recovered,
+					)
 				}
 			}()
-			if err := job.handler(job.ctx, job.event); err != nil {
-				log.Printf("[EventBus] 处理事件主题 %s 失败: %v", job.event.Topic(), err)
+
+			if err := subscription.handler(ctx, event); err != nil {
+				errorsBySubscriber[index] = fmt.Errorf(
+					"subscriber %s handling %s: %w",
+					subscription.id,
+					event.Topic(),
+					err,
+				)
 			}
-		}()
+		}(i, sub)
 	}
+	wg.Wait()
+
+	return errors.Join(errorsBySubscriber...)
 }
