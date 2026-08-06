@@ -44,68 +44,76 @@ func main() {
 
 	eventBus := eventbus.NewInternalEventBus()
 
-	var engine *workflows.WorkflowEngine
-	if cfg.LLM.OpenAI.APIKey == "你的Key" || cfg.LLM.OpenAI.APIKey == "" {
-		log.Println("警告: LLM API Key 未配置，将禁用生成相关接口")
-	} else {
-		llmAdapter, err := llm.NewOpenAIAdapter(ctx, cfg.LLM.OpenAI.APIKey, cfg.LLM.OpenAI.BaseURL, cfg.LLM.OpenAI.Model)
-		if err != nil {
-			log.Fatalf("初始化 LLM 失败: %v", err)
-		}
+	chatConfig := cfg.LLM.Chat
+	llmAdapter, err := llm.NewOpenAIAdapter(ctx, llm.ChatConfig{
+		APIKey:    chatConfig.APIKey,
+		BaseURL:   chatConfig.BaseURL,
+		Model:     chatConfig.Model,
+		MaxTokens: chatConfig.MaxTokens,
+		Timeout:   chatConfig.Timeout,
+	})
+	if err != nil {
+		log.Fatalf("初始化 LLM 失败: %v", err)
+	}
 
-		embedder, err := llm.NewOpenAIEmbedder(ctx, cfg.LLM.OpenAI.APIKey, cfg.LLM.OpenAI.BaseURL, cfg.LLM.OpenAI.EmbeddingModel)
-		if err != nil {
-			log.Fatalf("初始化 Embedder 失败: %v", err)
-		}
+	embeddingConfig := cfg.LLM.Embedding
+	embedder, err := llm.NewOpenAIEmbedder(ctx, llm.EmbeddingConfig{
+		APIKey:  embeddingConfig.APIKey,
+		BaseURL: embeddingConfig.BaseURL,
+		Model:   embeddingConfig.Model,
+		Timeout: embeddingConfig.Timeout,
+	})
+	if err != nil {
+		log.Fatalf("初始化 Embedder 失败: %v", err)
+	}
 
-		vStore := vectorstore.NewEntVectorStore(dbClient.Client)
+	vStore := vectorstore.NewEntVectorStore(dbClient.Client)
 
-		ingestionUC := usecases.NewIngestionUseCase(llmAdapter, embedder, vStore)
-		eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-			return ingestionUC.HandleChapterGenerated(ctx, event)
-		})
+	ingestionUC := usecases.NewIngestionUseCase(llmAdapter, embedder, vStore)
+	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
+		return ingestionUC.HandleChapterGenerated(ctx, event)
+	})
 
-		charRepo := database.NewCharacterRepository(dbClient.Client)
-		charAgent := agents.NewCharacterAgent(llmAdapter, charRepo)
-		charUC := usecases.NewCharacterUseCase(charAgent)
-		eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-			return charUC.HandleChapterGenerated(ctx, event)
-		})
+	charRepo := database.NewCharacterRepository(dbClient.Client)
+	charAgent := agents.NewCharacterAgent(llmAdapter, charRepo)
+	charUC := usecases.NewCharacterUseCase(charAgent)
+	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
+		return charUC.HandleChapterGenerated(ctx, event)
+	})
 
-		worldRepo := database.NewWorldRepository(dbClient.Client)
-		worldAgent := agents.NewWorldAgent(llmAdapter, worldRepo)
-		worldUC := usecases.NewWorldUseCase(worldAgent)
-		eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-			return worldUC.HandleChapterGenerated(ctx, event)
-		})
+	worldRepo := database.NewWorldRepository(dbClient.Client)
+	worldAgent := agents.NewWorldAgent(llmAdapter, worldRepo)
+	worldUC := usecases.NewWorldUseCase(worldAgent)
+	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
+		return worldUC.HandleChapterGenerated(ctx, event)
+	})
 
-		architect := agents.NewArchitectAgent(llmAdapter)
-		plot := agents.NewPlotAgent(llmAdapter)
-		director := agents.NewDirectorAgent(llmAdapter)
-		writer := agents.NewWriterAgent(llmAdapter)
-		reviewer := agents.NewReviewerAgent(llmAdapter)
-		librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo)
+	architect := agents.NewArchitectAgent(llmAdapter)
+	plot := agents.NewPlotAgent(llmAdapter)
+	director := agents.NewDirectorAgent(llmAdapter)
+	writer := agents.NewWriterAgent(llmAdapter)
+	reviewer := agents.NewReviewerAgent(llmAdapter)
+	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo)
 
-		engine, err = workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
-		if err != nil {
-			log.Fatalf("初始化工作流引擎失败: %v", err)
-		}
+	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
+	if err != nil {
+		log.Fatalf("初始化工作流引擎失败: %v", err)
+	}
 
-		if os.Getenv("AI_NOVEL_RUN_LOCAL_TEST") == "1" {
-			go func() {
-				generationID, genErr := agents.NewGenerationID()
-				if genErr != nil {
-					log.Printf("生成本地测试运行 ID 失败: %v", genErr)
-					return
-				}
-				_, _ = engine.RunChapterGeneration(ctx, &agents.GenerationState{
-					GenerationID: generationID,
-					NovelID:      "test-novel-001",
-					ChapterIndex: 1,
-					Idea:         "一个普通的少年在山洞中捡到了一枚神秘的戒指，从此踏上了修仙之路。",
-				})
-			}()
-		}
+	if os.Getenv("AI_NOVEL_RUN_LOCAL_TEST") == "1" {
+		go func() {
+			generationID, genErr := agents.NewGenerationID()
+			if genErr != nil {
+				log.Printf("生成本地测试运行 ID 失败: %v", genErr)
+				return
+			}
+			_, _ = engine.RunChapterGeneration(ctx, &agents.GenerationState{
+				GenerationID: generationID,
+				NovelID:      "test-novel-001",
+				ChapterIndex: 1,
+				Idea:         "一个普通的少年在山洞中捡到了一枚神秘的戒指，从此踏上了修仙之路。",
+			})
+		}()
 	}
 
 	server := api.NewServer(engine, dbClient.Client)

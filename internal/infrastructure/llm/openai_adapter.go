@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -17,13 +18,22 @@ type OpenAIAdapter struct {
 	chatModel model.ChatModel
 }
 
-// NewOpenAIAdapter 构造函数，支持自定义 APIKey, BaseURL 和 Model
-func NewOpenAIAdapter(ctx context.Context, apiKey, baseURL, modelName string) (*OpenAIAdapter, error) {
-	// 1. 初始化 Eino OpenAI 组件
+type ChatConfig struct {
+	APIKey    string
+	BaseURL   string
+	Model     string
+	MaxTokens int
+	Timeout   time.Duration
+}
+
+func NewOpenAIAdapter(ctx context.Context, config ChatConfig) (*OpenAIAdapter, error) {
+	maxTokens := config.MaxTokens
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:  apiKey,
-		BaseURL: baseURL,
-		Model:   modelName,
+		APIKey:    config.APIKey,
+		BaseURL:   config.BaseURL,
+		Model:     config.Model,
+		MaxTokens: &maxTokens,
+		Timeout:   config.Timeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init eino openai component: %w", err)

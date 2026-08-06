@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/embedding/openai"
 	"github.com/cloudwego/eino/components/embedding"
@@ -13,13 +14,22 @@ type OpenAIEmbedder struct {
 	embedder embedding.Embedder
 }
 
-// NewOpenAIEmbedder 构造函数
-func NewOpenAIEmbedder(ctx context.Context, apiKey, baseURL, modelName string) (*OpenAIEmbedder, error) {
-	// 1. 初始化 Eino OpenAI Embedding 组件
+type EmbeddingConfig struct {
+	APIKey  string
+	BaseURL string
+	Model   string
+	Timeout time.Duration
+}
+
+func NewOpenAIEmbedder(
+	ctx context.Context,
+	config EmbeddingConfig,
+) (*OpenAIEmbedder, error) {
 	emb, err := openai.NewEmbedder(ctx, &openai.EmbeddingConfig{
-		APIKey:  apiKey,
-		BaseURL: baseURL,
-		Model:   modelName,
+		APIKey:  config.APIKey,
+		BaseURL: config.BaseURL,
+		Model:   config.Model,
+		Timeout: config.Timeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init eino openai embedding component: %w", err)

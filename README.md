@@ -26,7 +26,7 @@
 ### 🧠 记忆系统与异步解耦
 
 - **RAG 系统**: 
-  - **Embedding**: 利用 OpenAI `text-embedding-3` 模型。
+  - **Embedding**: 使用智谱 OpenAI-compatible 接口的 `embedding-3` 模型。
   - **Vector Store**: 采用 PostgreSQL + 内存余弦相似度检索，确保数据持久化且检索高效。
 - **实时生成与 EventBus**:
   - Writer 的正文 Token 与 Retry 通过请求级同步 Sink 有序推送到 SSE，支持背压和取消。
@@ -83,11 +83,19 @@ ai-novel/
        password: "your-password"
        dbname: "ai_novel"
    llm:
-     openai:
+     chat:
        api_key: "your-api-key"
-       base_url: "https://api.deepseek.com"
-       model: "deepseek-chat"
+       base_url: "https://open.bigmodel.cn/api/paas/v4/"
+       model: "glm-4.5-air"
+       max_tokens: 2048
+       timeout: "5m"
+     embedding:
+       api_key: "your-api-key"
+       base_url: "https://open.bigmodel.cn/api/paas/v4/"
+       model: "embedding-3"
+       timeout: "1m"
    ```
+   上述字段也可通过 `LLM_CHAT_*` 与 `LLM_EMBEDDING_*` 环境变量覆盖。
 
 2. **运行**:
    ```bash

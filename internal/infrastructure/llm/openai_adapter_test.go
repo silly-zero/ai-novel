@@ -2,8 +2,13 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -24,6 +29,67 @@ func (f *adapterTestChatModel) Stream(context.Context, []*schema.Message, ...mod
 
 func (f *adapterTestChatModel) BindTools([]*schema.ToolInfo) error {
 	return nil
+}
+
+func TestNewOpenAIAdapterAppliesModelAndMaxTokens(t *testing.T) {
+	requests := make(chan map[string]any, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("request path = %q", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer chat-test-key" {
+			t.Error("request did not use chat API key")
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		requests <- body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewOpenAIAdapter(context.Background(), ChatConfig{
+		APIKey:    "chat-test-key",
+		BaseURL:   server.URL,
+		Model:     "chat-test-model",
+		MaxTokens: 1234,
+		Timeout:   time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAIAdapter returned error: %v", err)
+	}
+	if _, err := adapter.Generate(context.Background(), "system", "user"); err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	body := <-requests
+	if body["model"] != "chat-test-model" || body["max_tokens"] != float64(1234) {
+		t.Fatalf("request body = %#v", body)
+	}
+}
+
+func TestNewOpenAIAdapterAppliesTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		_, _ = w.Write([]byte(`{"choices":[]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewOpenAIAdapter(context.Background(), ChatConfig{
+		APIKey:    "chat-test-key",
+		BaseURL:   server.URL,
+		Model:     "chat-test-model",
+		MaxTokens: 100,
+		Timeout:   10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewOpenAIAdapter returned error: %v", err)
+	}
+	_, err = adapter.Generate(context.Background(), "system", "user")
+	if err == nil || !strings.Contains(err.Error(), "Client.Timeout") {
+		t.Fatalf("Generate error = %v, want HTTP timeout", err)
+	}
 }
 
 func TestOpenAIAdapterStreamGenerateCompletesOnEOF(t *testing.T) {
