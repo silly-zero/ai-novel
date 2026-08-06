@@ -295,7 +295,7 @@ func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
 		`{"character_names":[],"world_settings":[],"search_queries":[]}`,
 		`结果：{"character_names":[" 林云 "],"world_settings":[],"search_queries":[" 青云山历史 "]}`,
 	}}
-	agent := NewLibrarianAgent(llm, nil, nil, nil, nil)
+	agent := NewLibrarianAgent(llm, nil, nil, nil, nil, LibrarianConfig{})
 
 	plan, err := agent.makeRetrievalPlan(context.Background(), &GenerationState{Outline: "大纲"})
 	if err != nil {

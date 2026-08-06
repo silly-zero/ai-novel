@@ -3,11 +3,19 @@ package agents
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 
 	"github.com/ai-novel/studio/internal/domain/memory"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
+
+type LibrarianConfig struct {
+	SearchOptions      memory.SearchOptions
+	MaxQueries         int
+	MaxContextMemories int
+}
 
 // LibrarianAgent 是资料管理员，负责根据当前场景，从长期/短期记忆中检索资料
 type LibrarianAgent struct {
@@ -16,6 +24,7 @@ type LibrarianAgent struct {
 	vectorStore memory.VectorStore
 	charRepo    domain.CharacterRepository
 	worldRepo   domain.WorldRepository
+	config      LibrarianConfig
 }
 
 func NewLibrarianAgent(
@@ -24,6 +33,7 @@ func NewLibrarianAgent(
 	vs memory.VectorStore,
 	charRepo domain.CharacterRepository,
 	worldRepo domain.WorldRepository,
+	config LibrarianConfig,
 ) *LibrarianAgent {
 	return &LibrarianAgent{
 		llm:         llm,
@@ -31,6 +41,7 @@ func NewLibrarianAgent(
 		vectorStore: vs,
 		charRepo:    charRepo,
 		worldRepo:   worldRepo,
+		config:      config,
 	}
 }
 
@@ -151,26 +162,102 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	}
 
 	// 5. 检索历史记忆 (向量检索)
-	contextBuilder.WriteString("【前情提要与伏笔】\n")
-	allMemories := make(map[string]bool) // 去重
-	for _, query := range plan.SearchQueries {
-		queryVector, err := l.embedder.EmbedText(ctx, query)
-		if err != nil {
-			continue
+	queries := uniqueLimitedStrings(plan.SearchQueries, l.config.MaxQueries)
+	queryVectors, err := l.embedder.EmbedBatch(ctx, queries)
+	if err != nil {
+		return state, fmt.Errorf("librarian embed queries: %w", err)
+	}
+	if len(queryVectors) != len(queries) {
+		return state, fmt.Errorf("librarian embed queries: got %d vectors for %d queries", len(queryVectors), len(queries))
+	}
+
+	bestByContent := make(map[string]rankedMemory)
+	memoryOrder := 0
+	for index, queryVector := range queryVectors {
+		results, searchErr := l.vectorStore.Search(ctx, state.NovelID, queryVector, l.config.SearchOptions)
+		if searchErr != nil {
+			return state, fmt.Errorf("librarian search query %d: %w", index, searchErr)
 		}
-		entries, err := l.vectorStore.Search(ctx, state.NovelID, queryVector, 2)
-		if err == nil {
-			for _, entry := range entries {
-				if !allMemories[entry.Content] {
-					contextBuilder.WriteString(fmt.Sprintf("- %s\n", entry.Content))
-					allMemories[entry.Content] = true
-				}
+		for _, result := range results {
+			if result.Entry == nil || math.IsNaN(float64(result.Score)) ||
+				math.IsInf(float64(result.Score), 0) || result.Score < l.config.SearchOptions.MinSimilarity {
+				continue
 			}
+			content := strings.TrimSpace(result.Entry.Content)
+			if content == "" {
+				continue
+			}
+			current, exists := bestByContent[content]
+			if !exists {
+				bestByContent[content] = rankedMemory{result: result, order: memoryOrder}
+				memoryOrder++
+			} else if memoryResultLess(result, current.result) {
+				current.result = result
+				bestByContent[content] = current
+			}
+		}
+	}
+
+	memories := make([]rankedMemory, 0, len(bestByContent))
+	for _, result := range bestByContent {
+		memories = append(memories, result)
+	}
+	sort.SliceStable(memories, func(i, j int) bool {
+		if memoryResultLess(memories[i].result, memories[j].result) {
+			return true
+		}
+		if memoryResultLess(memories[j].result, memories[i].result) {
+			return false
+		}
+		return memories[i].order < memories[j].order
+	})
+	if len(memories) > l.config.MaxContextMemories {
+		memories = memories[:l.config.MaxContextMemories]
+	}
+	if len(memories) > 0 {
+		contextBuilder.WriteString("【前情提要与伏笔】\n")
+		for _, ranked := range memories {
+			fmt.Fprintf(&contextBuilder, "- %s\n", strings.TrimSpace(ranked.result.Entry.Content))
 		}
 	}
 
 	state.Context = contextBuilder.String()
 	return state, nil
+}
+
+type rankedMemory struct {
+	result memory.SearchResult
+	order  int
+}
+
+func uniqueLimitedStrings(values []string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	result := make([]string, 0, min(len(values), limit))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+		if len(result) == limit {
+			break
+		}
+	}
+	return result
+}
+
+func memoryResultLess(left, right memory.SearchResult) bool {
+	if left.Score != right.Score {
+		return left.Score > right.Score
+	}
+	return left.Entry.ID < right.Entry.ID
 }
 
 func (l *LibrarianAgent) makeRetrievalPlan(ctx context.Context, state *GenerationState) (*RetrievalPlan, error) {

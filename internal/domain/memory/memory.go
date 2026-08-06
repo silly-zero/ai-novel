@@ -6,7 +6,7 @@ import "context"
 type Embedder interface {
 	// EmbedText 将一段文本转换为高维向量 ([]float32)
 	EmbedText(ctx context.Context, text string) ([]float32, error)
-	
+
 	// EmbedBatch 批量转换，提高效率
 	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
 }
@@ -15,16 +15,27 @@ type Embedder interface {
 type MemoryEntry struct {
 	ID        string
 	NovelID   string
-	Content   string    // 原始文本内容 (如：林动在青阳镇发现石符)
-	Metadata  map[string]interface{} // 扩展信息 (如：出场人物、章节号)
-	Embedding []float32 // 对应的向量
+	Content   string
+	Metadata  map[string]any
+	Embedding []float32
+}
+
+type SearchOptions struct {
+	CandidateLimit int
+	ResultLimit    int
+	MinSimilarity  float32
+}
+
+type SearchResult struct {
+	Entry *MemoryEntry
+	Score float32
 }
 
 // VectorStore 定义了向量数据库的存取接口 (Repository 模式)
 type VectorStore interface {
 	// Add 将记忆存入库中
 	Add(ctx context.Context, entries []*MemoryEntry) error
-	
-	// Search 根据查询向量，找到最相关的 N 条记录
-	Search(ctx context.Context, novelID string, queryVector []float32, limit int) ([]*MemoryEntry, error)
+
+	// Search 根据查询向量返回达到最低相关度的有序记忆
+	Search(ctx context.Context, novelID string, queryVector []float32, options SearchOptions) ([]SearchResult, error)
 }

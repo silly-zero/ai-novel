@@ -3,8 +3,8 @@ package vectorstore
 import (
 	"context"
 	"fmt"
-	"sort"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/internal/domain/memory"
@@ -20,6 +20,12 @@ func NewEntVectorStore(client *ent.Client) *EntVectorStore {
 }
 
 func (s *EntVectorStore) Add(ctx context.Context, entries []*memory.MemoryEntry) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validateEntries(entries); err != nil {
+		return err
+	}
 	bulk := make([]*ent.MemoryEntryCreate, len(entries))
 	for i, entry := range entries {
 		bulk[i] = s.client.MemoryEntry.Create().
@@ -35,40 +41,36 @@ func (s *EntVectorStore) Add(ctx context.Context, entries []*memory.MemoryEntry)
 	return nil
 }
 
-type entScoreResult struct {
-	entry *memory.MemoryEntry
-	score float32
-}
-
-func (s *EntVectorStore) Search(ctx context.Context, novelID string, queryVector []float32, limit int) ([]*memory.MemoryEntry, error) {
+func (s *EntVectorStore) Search(
+	ctx context.Context,
+	novelID string,
+	queryVector []float32,
+	options memory.SearchOptions,
+) ([]memory.SearchResult, error) {
+	if err := validateSearch(queryVector, options); err != nil {
+		return nil, err
+	}
 	rows, err := s.client.MemoryEntry.Query().
 		Where(memoryentry.NovelID(novelID)).
+		Order(
+			memoryentry.ByCreatedAt(sql.OrderDesc()),
+			memoryentry.ByID(sql.OrderDesc()),
+		).
+		Limit(options.CandidateLimit).
 		All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query memory entries: %w", err)
 	}
 
-	results := make([]entScoreResult, 0)
+	candidates := make([]*memory.MemoryEntry, 0, len(rows))
 	for _, row := range rows {
-		entry := &memory.MemoryEntry{
+		candidates = append(candidates, &memory.MemoryEntry{
 			ID:        fmt.Sprintf("%d", row.ID),
 			NovelID:   row.NovelID,
 			Content:   row.Content,
 			Metadata:  row.Metadata,
 			Embedding: row.Embedding,
-		}
-		score := CosineSimilarity(queryVector, entry.Embedding)
-		results = append(results, entScoreResult{entry: entry, score: score})
+		})
 	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].score > results[j].score
-	})
-
-	final := make([]*memory.MemoryEntry, 0)
-	for i := 0; i < len(results) && i < limit; i++ {
-		final = append(final, results[i].entry)
-	}
-
-	return final, nil
+	return rankCandidates(ctx, queryVector, candidates, options)
 }

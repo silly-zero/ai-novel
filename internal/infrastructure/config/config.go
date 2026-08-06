@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/url"
 	"strconv"
@@ -16,6 +17,7 @@ type Config struct {
 	App      AppConfig      `mapstructure:"app"`
 	Database DatabaseConfig `mapstructure:"database"`
 	LLM      LLMConfig      `mapstructure:"llm"`
+	RAG      RAGConfig      `mapstructure:"-"`
 }
 
 type AppConfig struct {
@@ -66,6 +68,14 @@ type EmbeddingConfig struct {
 	Timeout time.Duration `mapstructure:"-"`
 }
 
+type RAGConfig struct {
+	MinSimilarity      float32
+	CandidateLimit     int
+	ResultLimit        int
+	MaxQueries         int
+	MaxContextMemories int
+}
+
 func LoadConfig(configPath string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigName("config")
@@ -73,6 +83,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.AddConfigPath(configPath)
 	v.AddConfigPath(".")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AllowEmptyEnv(true)
 	v.AutomaticEnv()
 	for key, value := range map[string]any{
 		"app.listen_addr":                "127.0.0.1:8081",
@@ -85,6 +96,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		"app.generation_timeout":         "30m",
 		"app.startup_timeout":            "15s",
 		"app.shutdown_timeout":           "15s",
+		"rag.min_similarity":             "0.55",
+		"rag.candidate_limit":            100,
+		"rag.result_limit":               4,
+		"rag.max_queries":                4,
+		"rag.max_context_memories":       8,
 	} {
 		v.SetDefault(key, value)
 	}
@@ -100,6 +116,11 @@ func LoadConfig(configPath string) (*Config, error) {
 		"app.generation_timeout":         "APP_GENERATION_TIMEOUT",
 		"app.startup_timeout":            "APP_STARTUP_TIMEOUT",
 		"app.shutdown_timeout":           "APP_SHUTDOWN_TIMEOUT",
+		"rag.min_similarity":             "RAG_MIN_SIMILARITY",
+		"rag.candidate_limit":            "RAG_CANDIDATE_LIMIT",
+		"rag.result_limit":               "RAG_RESULT_LIMIT",
+		"rag.max_queries":                "RAG_MAX_QUERIES",
+		"rag.max_context_memories":       "RAG_MAX_CONTEXT_MEMORIES",
 	} {
 		if err := v.BindEnv(key, env); err != nil {
 			return nil, fmt.Errorf("bind %s: %w", key, err)
@@ -170,6 +191,23 @@ func LoadConfig(configPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	ragMinSimilarity, err := parseUnitFloat(v, "rag.min_similarity")
+	if err != nil {
+		return nil, err
+	}
+	ragLimits := make(map[string]int)
+	for _, key := range []string{
+		"rag.candidate_limit",
+		"rag.result_limit",
+		"rag.max_queries",
+		"rag.max_context_memories",
+	} {
+		limit, limitErr := parsePositiveInt(v, key)
+		if limitErr != nil {
+			return nil, limitErr
+		}
+		ragLimits[key] = limit
+	}
 
 	cfg.App.ListenAddr = strings.TrimSpace(v.GetString("app.listen_addr"))
 	cfg.App.CorsOrigins = origins
@@ -184,11 +222,66 @@ func LoadConfig(configPath string) (*Config, error) {
 	cfg.LLM.Chat.MaxTokens = maxTokens
 	cfg.LLM.Chat.Timeout = chatTimeout
 	cfg.LLM.Embedding.Timeout = embeddingTimeout
+	cfg.RAG.MinSimilarity = ragMinSimilarity
+	cfg.RAG.CandidateLimit = ragLimits["rag.candidate_limit"]
+	cfg.RAG.ResultLimit = ragLimits["rag.result_limit"]
+	cfg.RAG.MaxQueries = ragLimits["rag.max_queries"]
+	cfg.RAG.MaxContextMemories = ragLimits["rag.max_context_memories"]
 
 	if err := validate(&cfg); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func parseUnitFloat(v *viper.Viper, key string) (float32, error) {
+	value := v.Get(key)
+	var parsed float64
+	var err error
+
+	switch value := value.(type) {
+	case string:
+		raw := strings.TrimSpace(value)
+		if raw == "" {
+			return 0, fmt.Errorf("%s is required", key)
+		}
+		parsed, err = strconv.ParseFloat(raw, 32)
+	case float32:
+		parsed = float64(value)
+	case float64:
+		parsed = value
+	case int:
+		parsed = float64(value)
+	case int8:
+		parsed = float64(value)
+	case int16:
+		parsed = float64(value)
+	case int32:
+		parsed = float64(value)
+	case int64:
+		parsed = float64(value)
+	case uint:
+		parsed = float64(value)
+	case uint8:
+		parsed = float64(value)
+	case uint16:
+		parsed = float64(value)
+	case uint32:
+		parsed = float64(value)
+	case uint64:
+		parsed = float64(value)
+	case nil:
+		return 0, fmt.Errorf("%s is required", key)
+	default:
+		return 0, fmt.Errorf("%s must be a number", key)
+	}
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return 0, fmt.Errorf("%s must be a finite number", key)
+	}
+	if parsed < 0 || parsed > 1 {
+		return 0, fmt.Errorf("%s must be between zero and one", key)
+	}
+	return float32(parsed), nil
 }
 
 func parsePositiveInt(v *viper.Viper, key string) (int, error) {
@@ -346,6 +439,9 @@ func validate(cfg *Config) error {
 	}
 	if cfg.LLM.Chat.MaxTokens <= 0 {
 		return fmt.Errorf("llm.chat.max_tokens must be greater than zero")
+	}
+	if cfg.RAG.CandidateLimit < cfg.RAG.ResultLimit {
+		return fmt.Errorf("rag.candidate_limit must be greater than or equal to rag.result_limit")
 	}
 	return nil
 }

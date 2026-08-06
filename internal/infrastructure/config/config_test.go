@@ -51,13 +51,33 @@ var environmentKeys = []string{
 	"LLM_EMBEDDING_BASE_URL",
 	"LLM_EMBEDDING_MODEL",
 	"LLM_EMBEDDING_TIMEOUT",
+	"RAG_MIN_SIMILARITY",
+	"RAG_CANDIDATE_LIMIT",
+	"RAG_RESULT_LIMIT",
+	"RAG_MAX_QUERIES",
+	"RAG_MAX_CONTEXT_MEMORIES",
+}
+
+func unsetTestEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range environmentKeys {
+		value, exists := os.LookupEnv(key)
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if exists {
+				_ = os.Setenv(key, value)
+			} else {
+				_ = os.Unsetenv(key)
+			}
+		})
+	}
 }
 
 func loadTestConfig(t *testing.T, content string) (*Config, error) {
 	t.Helper()
-	for _, key := range environmentKeys {
-		t.Setenv(key, "")
-	}
+	unsetTestEnvironment(t)
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -88,12 +108,15 @@ func TestLoadConfigReadsSplitModelConfiguration(t *testing.T) {
 		cfg.LLM.Embedding.Timeout != 30*time.Second {
 		t.Fatalf("embedding config = %#v", cfg.LLM.Embedding)
 	}
+	if cfg.RAG.MinSimilarity != 0.55 || cfg.RAG.CandidateLimit != 100 ||
+		cfg.RAG.ResultLimit != 4 || cfg.RAG.MaxQueries != 4 ||
+		cfg.RAG.MaxContextMemories != 8 {
+		t.Fatalf("rag defaults = %#v", cfg.RAG)
+	}
 }
 
 func TestLoadConfigReadsEnvironmentWithoutConfigFile(t *testing.T) {
-	for _, key := range environmentKeys {
-		t.Setenv(key, "")
-	}
+	unsetTestEnvironment(t)
 	values := map[string]string{
 		"LLM_CHAT_API_KEY":       "env-chat-key",
 		"LLM_CHAT_BASE_URL":      "https://env-chat.example/v1",
@@ -125,9 +148,7 @@ func TestLoadConfigReadsEnvironmentWithoutConfigFile(t *testing.T) {
 }
 
 func TestLoadConfigEnvironmentOverridesYAML(t *testing.T) {
-	for _, key := range environmentKeys {
-		t.Setenv(key, "")
-	}
+	unsetTestEnvironment(t)
 	t.Setenv("LLM_CHAT_MODEL", "env-chat-model")
 	t.Setenv("LLM_CHAT_MAX_TOKENS", "4096")
 	t.Setenv("LLM_EMBEDDING_BASE_URL", "https://env-embedding.example/v1")
@@ -210,9 +231,7 @@ func TestLoadConfigRejectsInvalidAppConfiguration(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.key+"="+test.value, func(t *testing.T) {
-			for _, key := range environmentKeys {
-				t.Setenv(key, "")
-			}
+			unsetTestEnvironment(t)
 			t.Setenv(test.key, test.value)
 			dir := t.TempDir()
 			if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(validConfig), 0o600); err != nil {
@@ -225,6 +244,89 @@ func TestLoadConfigRejectsInvalidAppConfiguration(t *testing.T) {
 		})
 	}
 }
+func TestLoadConfigReadsRAGConfiguration(t *testing.T) {
+	cfg, err := loadTestConfig(t, validConfig+`
+rag:
+  min_similarity: 0.6
+  candidate_limit: 20
+  result_limit: 2
+  max_queries: 3
+  max_context_memories: 4
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RAG.MinSimilarity != 0.6 || cfg.RAG.CandidateLimit != 20 ||
+		cfg.RAG.ResultLimit != 2 || cfg.RAG.MaxQueries != 3 ||
+		cfg.RAG.MaxContextMemories != 4 {
+		t.Fatalf("rag yaml config = %#v", cfg.RAG)
+	}
+}
+
+func TestLoadConfigRAGEnvironmentOverridesYAML(t *testing.T) {
+	unsetTestEnvironment(t)
+	t.Setenv("RAG_MIN_SIMILARITY", "0.7")
+	t.Setenv("RAG_CANDIDATE_LIMIT", "25")
+	t.Setenv("RAG_RESULT_LIMIT", "3")
+	t.Setenv("RAG_MAX_QUERIES", "2")
+	t.Setenv("RAG_MAX_CONTEXT_MEMORIES", "5")
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(validConfig+`
+rag:
+  min_similarity: 0.6
+  candidate_limit: 20
+  result_limit: 2
+  max_queries: 3
+  max_context_memories: 4
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RAG.MinSimilarity != 0.7 || cfg.RAG.CandidateLimit != 25 ||
+		cfg.RAG.ResultLimit != 3 || cfg.RAG.MaxQueries != 2 ||
+		cfg.RAG.MaxContextMemories != 5 {
+		t.Fatalf("rag config = %#v", cfg.RAG)
+	}
+}
+
+func TestLoadConfigRejectsInvalidRAGConfiguration(t *testing.T) {
+	tests := []struct {
+		key     string
+		value   string
+		wantErr string
+	}{
+		{key: "RAG_MIN_SIMILARITY", value: " ", wantErr: "rag.min_similarity"},
+		{key: "RAG_MIN_SIMILARITY", value: "true", wantErr: "rag.min_similarity"},
+		{key: "RAG_MIN_SIMILARITY", value: "NaN", wantErr: "rag.min_similarity"},
+		{key: "RAG_MIN_SIMILARITY", value: "+Inf", wantErr: "rag.min_similarity"},
+		{key: "RAG_MIN_SIMILARITY", value: "-0.1", wantErr: "rag.min_similarity"},
+		{key: "RAG_MIN_SIMILARITY", value: "1.1", wantErr: "rag.min_similarity"},
+		{key: "RAG_CANDIDATE_LIMIT", value: "0", wantErr: "rag.candidate_limit"},
+		{key: "RAG_RESULT_LIMIT", value: "-1", wantErr: "rag.result_limit"},
+		{key: "RAG_MAX_QUERIES", value: "1.5", wantErr: "rag.max_queries"},
+		{key: "RAG_MAX_CONTEXT_MEMORIES", value: "true", wantErr: "rag.max_context_memories"},
+		{key: "RAG_CANDIDATE_LIMIT", value: "2", wantErr: "rag.candidate_limit"},
+	}
+	for _, test := range tests {
+		t.Run(test.key+"="+test.value, func(t *testing.T) {
+			unsetTestEnvironment(t)
+			t.Setenv(test.key, test.value)
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(validConfig), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(dir)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want field %s", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadConfigRejectsOldOpenAIShape(t *testing.T) {
 	_, err := loadTestConfig(t, `
 llm:

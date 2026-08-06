@@ -52,8 +52,8 @@ func (s *ingestionVectorStoreFake) Search(
 	context.Context,
 	string,
 	[]float32,
-	int,
-) ([]*memory.MemoryEntry, error) {
+	memory.SearchOptions,
+) ([]memory.SearchResult, error) {
 	return nil, nil
 }
 

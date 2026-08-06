@@ -15,6 +15,7 @@ import (
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/ai-novel/studio/internal/domain/events"
+	"github.com/ai-novel/studio/internal/domain/memory"
 	"github.com/ai-novel/studio/internal/infrastructure/config"
 	"github.com/ai-novel/studio/internal/infrastructure/database"
 	"github.com/ai-novel/studio/internal/infrastructure/eventbus"
@@ -111,7 +112,15 @@ func run() error {
 	director := agents.NewDirectorAgent(llmAdapter)
 	writer := agents.NewWriterAgent(llmAdapter)
 	reviewer := agents.NewReviewerAgent(llmAdapter)
-	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo)
+	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo, agents.LibrarianConfig{
+		SearchOptions: memory.SearchOptions{
+			CandidateLimit: cfg.RAG.CandidateLimit,
+			ResultLimit:    cfg.RAG.ResultLimit,
+			MinSimilarity:  cfg.RAG.MinSimilarity,
+		},
+		MaxQueries:         cfg.RAG.MaxQueries,
+		MaxContextMemories: cfg.RAG.MaxContextMemories,
+	})
 
 	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
 	if err != nil {

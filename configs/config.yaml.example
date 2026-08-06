@@ -31,3 +31,10 @@ llm:
     base_url: "https://open.bigmodel.cn/api/paas/v4/"
     model: "embedding-3"
     timeout: "1m"
+
+rag:
+  min_similarity: 0.55
+  candidate_limit: 100
+  result_limit: 4
+  max_queries: 4
+  max_context_memories: 8
