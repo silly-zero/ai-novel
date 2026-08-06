@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -20,15 +21,12 @@ func (b *workflowEventBusFake) Publish(ctx context.Context, event events.Event) 
 func (b *workflowEventBusFake) Subscribe(string, events.Handler) string { return "" }
 func (b *workflowEventBusFake) Unsubscribe(string, string)              {}
 
-func TestPublishChapterGeneratedUsesIndependentContext(t *testing.T) {
-	requestCtx, cancelRequest := context.WithCancel(context.Background())
-	cancelRequest()
+func TestPublishChapterGeneratedUsesCallerContext(t *testing.T) {
+	publishCtx, cancelPublish := context.WithTimeout(context.Background(), time.Second)
+	defer cancelPublish()
 
 	bus := &workflowEventBusFake{
 		publish: func(ctx context.Context, event events.Event) error {
-			if ctx.Err() != nil {
-				t.Fatalf("publish context inherited request cancellation: %v", ctx.Err())
-			}
 			deadline, ok := ctx.Deadline()
 			if !ok || time.Until(deadline) <= 0 {
 				t.Fatal("publish context has no active deadline")
@@ -47,12 +45,28 @@ func TestPublishChapterGeneratedUsesIndependentContext(t *testing.T) {
 	}
 	engine := &WorkflowEngine{eventBus: bus}
 
-	if err := engine.PublishChapterGenerated(requestCtx, &agents.GenerationState{
+	if err := engine.PublishChapterGenerated(publishCtx, &agents.GenerationState{
 		GenerationID: "generation-1",
 		NovelID:      "7",
 		ChapterID:    "11",
 		Draft:        "正文",
 	}); err != nil {
 		t.Fatalf("PublishChapterGenerated returned error: %v", err)
+	}
+}
+
+func TestPublishChapterGeneratedPropagatesCallerCancellation(t *testing.T) {
+	publishCtx, cancelPublish := context.WithCancel(context.Background())
+	cancelPublish()
+
+	bus := &workflowEventBusFake{
+		publish: func(ctx context.Context, _ events.Event) error {
+			return ctx.Err()
+		},
+	}
+	engine := &WorkflowEngine{eventBus: bus}
+
+	if err := engine.PublishChapterGenerated(publishCtx, &agents.GenerationState{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("PublishChapterGenerated error = %v, want context canceled", err)
 	}
 }

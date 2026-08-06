@@ -3,6 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +19,17 @@ type Config struct {
 }
 
 type AppConfig struct {
-	Env string `mapstructure:"env"`
+	Env                      string        `mapstructure:"env"`
+	ListenAddr               string        `mapstructure:"listen_addr"`
+	CorsOrigins              []string      `mapstructure:"-"`
+	MaxConcurrentGenerations int           `mapstructure:"-"`
+	ReadHeaderTimeout        time.Duration `mapstructure:"-"`
+	ReadTimeout              time.Duration `mapstructure:"-"`
+	WriteTimeout             time.Duration `mapstructure:"-"`
+	IdleTimeout              time.Duration `mapstructure:"-"`
+	GenerationTimeout        time.Duration `mapstructure:"-"`
+	StartupTimeout           time.Duration `mapstructure:"-"`
+	ShutdownTimeout          time.Duration `mapstructure:"-"`
 }
 
 type DatabaseConfig struct {
@@ -62,6 +74,37 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.AddConfigPath(".")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	for key, value := range map[string]any{
+		"app.listen_addr":                "127.0.0.1:8081",
+		"app.cors_origins":               "http://localhost:5173,http://127.0.0.1:5173",
+		"app.max_concurrent_generations": 2,
+		"app.read_header_timeout":        "5s",
+		"app.read_timeout":               "15s",
+		"app.write_timeout":              "30s",
+		"app.idle_timeout":               "60s",
+		"app.generation_timeout":         "30m",
+		"app.startup_timeout":            "15s",
+		"app.shutdown_timeout":           "15s",
+	} {
+		v.SetDefault(key, value)
+	}
+
+	for key, env := range map[string]string{
+		"app.listen_addr":                "APP_LISTEN_ADDR",
+		"app.cors_origins":               "APP_CORS_ORIGINS",
+		"app.max_concurrent_generations": "APP_MAX_CONCURRENT_GENERATIONS",
+		"app.read_header_timeout":        "APP_READ_HEADER_TIMEOUT",
+		"app.read_timeout":               "APP_READ_TIMEOUT",
+		"app.write_timeout":              "APP_WRITE_TIMEOUT",
+		"app.idle_timeout":               "APP_IDLE_TIMEOUT",
+		"app.generation_timeout":         "APP_GENERATION_TIMEOUT",
+		"app.startup_timeout":            "APP_STARTUP_TIMEOUT",
+		"app.shutdown_timeout":           "APP_SHUTDOWN_TIMEOUT",
+	} {
+		if err := v.BindEnv(key, env); err != nil {
+			return nil, fmt.Errorf("bind %s: %w", key, err)
+		}
+	}
 
 	for key, env := range map[string]string{
 		"llm.chat.api_key":       "LLM_CHAT_API_KEY",
@@ -103,6 +146,41 @@ func LoadConfig(configPath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	maxConcurrent, err := parsePositiveInt(v, "app.max_concurrent_generations")
+	if err != nil {
+		return nil, err
+	}
+	appDurations := make(map[string]time.Duration)
+	for _, key := range []string{
+		"app.read_header_timeout",
+		"app.read_timeout",
+		"app.write_timeout",
+		"app.idle_timeout",
+		"app.generation_timeout",
+		"app.startup_timeout",
+		"app.shutdown_timeout",
+	} {
+		duration, durationErr := parseDuration(v, key)
+		if durationErr != nil {
+			return nil, durationErr
+		}
+		appDurations[key] = duration
+	}
+	origins, err := parseCorsOrigins(v.GetString("app.cors_origins"))
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.App.ListenAddr = strings.TrimSpace(v.GetString("app.listen_addr"))
+	cfg.App.CorsOrigins = origins
+	cfg.App.MaxConcurrentGenerations = maxConcurrent
+	cfg.App.ReadHeaderTimeout = appDurations["app.read_header_timeout"]
+	cfg.App.ReadTimeout = appDurations["app.read_timeout"]
+	cfg.App.WriteTimeout = appDurations["app.write_timeout"]
+	cfg.App.IdleTimeout = appDurations["app.idle_timeout"]
+	cfg.App.GenerationTimeout = appDurations["app.generation_timeout"]
+	cfg.App.StartupTimeout = appDurations["app.startup_timeout"]
+	cfg.App.ShutdownTimeout = appDurations["app.shutdown_timeout"]
 	cfg.LLM.Chat.MaxTokens = maxTokens
 	cfg.LLM.Chat.Timeout = chatTimeout
 	cfg.LLM.Embedding.Timeout = embeddingTimeout
@@ -166,6 +244,58 @@ func parsePositiveInt(v *viper.Viper, key string) (int, error) {
 	return int(parsed), nil
 }
 
+func parseCorsOrigins(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+	origins := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		origin := strings.TrimSpace(part)
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" ||
+			parsed.Host == "" || parsed.User != nil || parsed.Path != "" ||
+			parsed.RawQuery != "" || parsed.Fragment != "" ||
+			!isLoopbackHost(parsed.Hostname()) {
+			return nil, errors.New("app.cors_origins must contain local HTTP origins without paths")
+		}
+		if port := parsed.Port(); port != "" {
+			parsedPort, portErr := strconv.Atoi(port)
+			if portErr != nil || parsedPort < 1 || parsedPort > 65535 {
+				return nil, errors.New("app.cors_origins must contain local HTTP origins with valid ports")
+			}
+		}
+		if _, ok := seen[origin]; ok {
+			continue
+		}
+		seen[origin] = struct{}{}
+		origins = append(origins, origin)
+	}
+	if len(origins) == 0 {
+		return nil, errors.New("app.cors_origins is required")
+	}
+	return origins, nil
+}
+
+func validateListenAddr(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil || !isLoopbackHost(host) {
+		return errors.New("app.listen_addr must use a loopback host and explicit port")
+	}
+	parsedPort, err := strconv.Atoi(port)
+	if err != nil || parsedPort < 1 || parsedPort > 65535 {
+		return errors.New("app.listen_addr must use a loopback host and valid port")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.TrimSuffix(host, "."))
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 func parseDuration(v *viper.Viper, key string) (time.Duration, error) {
 	raw := strings.TrimSpace(v.GetString(key))
 	if raw == "" {
@@ -182,6 +312,10 @@ func parseDuration(v *viper.Viper, key string) (time.Duration, error) {
 }
 
 func validate(cfg *Config) error {
+	cfg.App.ListenAddr = strings.TrimSpace(cfg.App.ListenAddr)
+	if err := validateListenAddr(cfg.App.ListenAddr); err != nil {
+		return err
+	}
 	cfg.LLM.Chat.APIKey = strings.TrimSpace(cfg.LLM.Chat.APIKey)
 	cfg.LLM.Chat.BaseURL = strings.TrimSpace(cfg.LLM.Chat.BaseURL)
 	cfg.LLM.Chat.Model = strings.TrimSpace(cfg.LLM.Chat.Model)

@@ -127,6 +127,343 @@ func waitForSignal(t *testing.T, signal <-chan struct{}) {
 	}
 }
 
+func TestHTTPServerUsesConfiguredLocalBoundaries(t *testing.T) {
+	cfg := defaultServerConfig()
+	cfg.ListenAddr = "127.0.0.1:9091"
+	cfg.ReadHeaderTimeout = 2 * time.Second
+	cfg.ReadTimeout = 3 * time.Second
+	cfg.WriteTimeout = 4 * time.Second
+	cfg.IdleTimeout = 5 * time.Second
+	server := newServerWithConfig(nil, nil, cfg).HTTPServer()
+
+	if server.Addr != cfg.ListenAddr ||
+		server.ReadHeaderTimeout != cfg.ReadHeaderTimeout ||
+		server.ReadTimeout != cfg.ReadTimeout ||
+		server.WriteTimeout != cfg.WriteTimeout ||
+		server.IdleTimeout != cfg.IdleTimeout ||
+		server.MaxHeaderBytes != 1<<20 {
+		t.Fatalf("http server = %#v", server)
+	}
+}
+
+func TestCORSMiddlewareAllowsConfiguredOriginAndRejectsUnknownPreflight(t *testing.T) {
+	server := newServer(nil, nil)
+
+	allowed := httptest.NewRequest(http.MethodOptions, "/api/v1/novels", nil)
+	allowed.Header.Set("Origin", "http://127.0.0.1:5173")
+	allowedRecorder := httptest.NewRecorder()
+	server.router.ServeHTTP(allowedRecorder, allowed)
+	if allowedRecorder.Code != http.StatusNoContent {
+		t.Fatalf("allowed preflight status = %d", allowedRecorder.Code)
+	}
+	if origin := allowedRecorder.Header().Get("Access-Control-Allow-Origin"); origin != "http://127.0.0.1:5173" {
+		t.Fatalf("allowed origin = %q", origin)
+	}
+	if vary := allowedRecorder.Header().Values("Vary"); len(vary) == 0 || !strings.Contains(strings.Join(vary, ","), "Origin") {
+		t.Fatalf("Vary = %#v", vary)
+	}
+
+	unknown := httptest.NewRequest(http.MethodOptions, "/api/v1/novel/preview-context", nil)
+	unknown.Header.Set("Origin", "https://example.com")
+	unknownRecorder := httptest.NewRecorder()
+	server.router.ServeHTTP(unknownRecorder, unknown)
+	if unknownRecorder.Code != http.StatusForbidden {
+		t.Fatalf("unknown preflight status = %d", unknownRecorder.Code)
+	}
+	if origin := unknownRecorder.Header().Get("Access-Control-Allow-Origin"); origin != "" {
+		t.Fatalf("unknown origin was allowed: %q", origin)
+	}
+}
+
+func TestCORSMiddlewareRejectsUnknownOriginBeforeGeneration(t *testing.T) {
+	runCalled := false
+	server := newServer(&generationTestEngine{
+		run: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			runCalled = true
+			return nil, nil
+		},
+	}, nil)
+
+	for _, setupHeaders := range []func(http.Header){
+		func(header http.Header) { header.Set("Origin", "https://example.com") },
+		func(header http.Header) { header.Set("Sec-Fetch-Site", "cross-site") },
+	} {
+		request := generateRequest(context.Background(), "7", 1)
+		setupHeaders(request.Header)
+		recorder := httptest.NewRecorder()
+		server.router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("cross-site generation status = %d, body=%s", recorder.Code, recorder.Body.String())
+		}
+	}
+	if runCalled {
+		t.Fatal("cross-site request invoked generation engine")
+	}
+}
+
+func TestCORSMiddlewareAllowsGenerationWithoutBrowserOrigin(t *testing.T) {
+	server := newServer(&generationTestEngine{}, nil)
+	recorder := httptest.NewRecorder()
+	server.router.ServeHTTP(recorder, generateRequest(context.Background(), "7", 1))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"status":"success"`) {
+		t.Fatalf("local generation response = %d, body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestGlobalModelCapacityRejectsExcessGenerationAndReleasesSlot(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	engine := &generationTestEngine{run: func(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+		once.Do(func() { close(entered) })
+		select {
+		case <-release:
+			return state, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	cfg := defaultServerConfig()
+	cfg.MaxConcurrentGenerations = 1
+	server := newServerWithConfig(engine, nil, cfg)
+
+	firstDone := make(chan struct{})
+	go func() {
+		server.HandleGenerateChapter(httptest.NewRecorder(), generateRequest(context.Background(), "7", 1))
+		close(firstDone)
+	}()
+	waitForSignal(t, entered)
+
+	excess := httptest.NewRecorder()
+	server.HandleGenerateChapter(excess, generateRequest(context.Background(), "8", 1))
+	if excess.Code != http.StatusTooManyRequests || excess.Header().Get("Retry-After") != "1" {
+		t.Fatalf("excess response = %d, headers=%v, body=%s", excess.Code, excess.Header(), excess.Body.String())
+	}
+
+	close(release)
+	waitForSignal(t, firstDone)
+	afterRelease := httptest.NewRecorder()
+	server.HandleGenerateChapter(afterRelease, generateRequest(context.Background(), "8", 1))
+	if afterRelease.Code != http.StatusOK || !strings.Contains(afterRelease.Body.String(), `"status":"success"`) {
+		t.Fatalf("after release response = %d, body=%s", afterRelease.Code, afterRelease.Body.String())
+	}
+}
+
+func TestPreviewUsesGlobalModelCapacity(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	engine := &generationTestEngine{prepare: func(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+		close(entered)
+		select {
+		case <-release:
+			return state, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}}
+	cfg := defaultServerConfig()
+	cfg.MaxConcurrentGenerations = 1
+	server := newServerWithConfig(engine, nil, cfg)
+	previewDone := make(chan struct{})
+	go func() {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/novel/preview-context?novel_id=7&idea=test", nil)
+		server.HandlePreviewContext(recorder, request)
+		close(previewDone)
+	}()
+	waitForSignal(t, entered)
+
+	excess := httptest.NewRecorder()
+	server.HandleGenerateChapter(excess, generateRequest(context.Background(), "8", 1))
+	if excess.Code != http.StatusTooManyRequests {
+		t.Fatalf("generation while preview active status = %d, body=%s", excess.Code, excess.Body.String())
+	}
+	close(release)
+	waitForSignal(t, previewDone)
+}
+
+func TestGenerationOverallDeadlineProducesErrorTerminal(t *testing.T) {
+	engine := &generationTestEngine{run: func(ctx context.Context, _ *agents.GenerationState) (*agents.GenerationState, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}}
+	cfg := defaultServerConfig()
+	cfg.GenerationTimeout = 10 * time.Millisecond
+	server := newServerWithConfig(engine, nil, cfg)
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(recorder, generateRequest(context.Background(), "7", 1))
+	if !strings.Contains(recorder.Body.String(), `"status":"error"`) ||
+		!strings.Contains(recorder.Body.String(), "context deadline exceeded") {
+		t.Fatalf("deadline SSE body = %s", recorder.Body.String())
+	}
+}
+
+func TestClassifyGenerationResultPreservesCompletedStateAfterTransportCancellation(t *testing.T) {
+	result := classifyGenerationResult(
+		"generation-1",
+		context.Canceled,
+		nil,
+		&agents.GenerationState{Draft: "完整正文"},
+	)
+	if result.Status != generationStatusSuccess {
+		t.Fatalf("status = %s, want success", result.Status)
+	}
+}
+
+func TestClassifyGenerationResultDoesNotOverrideDefinitiveCancellation(t *testing.T) {
+	for _, cause := range []error{
+		errGenerationCancelled,
+		errGenerationProtocol,
+		context.DeadlineExceeded,
+	} {
+		result := classifyGenerationResult(
+			"generation-1",
+			cause,
+			nil,
+			&agents.GenerationState{Draft: "不应保存"},
+		)
+		if result.Status == generationStatusSuccess {
+			t.Fatalf("cause %v produced success", cause)
+		}
+	}
+}
+
+func TestGenerationOverallDeadlineCoversChapterSave(t *testing.T) {
+	store := &generationChapterStoreFake{
+		save: func(ctx context.Context, _ *generationChapterTarget, _ *agents.GenerationState) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+	}
+	cfg := defaultServerConfig()
+	cfg.GenerationTimeout = 20 * time.Millisecond
+	cfg.MaxConcurrentGenerations = 1
+	server := newServerWithConfig(engine, nil, cfg)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+	if !strings.Contains(recorder.Body.String(), `"status":"error"`) ||
+		!strings.Contains(recorder.Body.String(), "context deadline exceeded") {
+		t.Fatalf("save deadline SSE body = %s", recorder.Body.String())
+	}
+
+	afterDeadline := httptest.NewRecorder()
+	server.HandleGenerateChapter(afterDeadline, generateRequest(context.Background(), "8", 1))
+	if afterDeadline.Code != http.StatusOK {
+		t.Fatalf("capacity was not released after save deadline: status=%d body=%s", afterDeadline.Code, afterDeadline.Body.String())
+	}
+}
+
+func TestClientDisconnectDoesNotCancelBoundedPostprocessing(t *testing.T) {
+	saveContext := make(chan context.Context, 1)
+	releaseSave := make(chan struct{})
+	published := make(chan struct{})
+	store := &generationChapterStoreFake{
+		save: func(ctx context.Context, _ *generationChapterTarget, _ *agents.GenerationState) error {
+			saveContext <- ctx
+			<-releaseSave
+			return ctx.Err()
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+		publish: func(ctx context.Context, _ *agents.GenerationState) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			close(published)
+			return nil
+		},
+	}
+	cfg := defaultServerConfig()
+	cfg.GenerationTimeout = time.Second
+	cfg.MaxConcurrentGenerations = 1
+	server := newServerWithConfig(engine, nil, cfg)
+	server.chapterStore = store
+	requestCtx, disconnect := context.WithCancel(context.Background())
+	handlerDone := make(chan struct{})
+	go func() {
+		server.HandleGenerateChapter(
+			httptest.NewRecorder(),
+			generateRequestWithPersist(requestCtx, "7", 1, true),
+		)
+		close(handlerDone)
+	}()
+
+	postprocessCtx := <-saveContext
+	disconnect()
+	waitForSignal(t, handlerDone)
+	if err := postprocessCtx.Err(); err != nil {
+		t.Fatalf("client disconnect cancelled postprocessing: %v", err)
+	}
+
+	sameNovel := httptest.NewRecorder()
+	server.HandleGenerateChapter(sameNovel, generateRequest(context.Background(), "7", 2))
+	if sameNovel.Code != http.StatusConflict {
+		t.Fatalf("novel lease released during postprocessing: status=%d", sameNovel.Code)
+	}
+	differentNovel := httptest.NewRecorder()
+	server.HandleGenerateChapter(differentNovel, generateRequest(context.Background(), "8", 1))
+	if differentNovel.Code != http.StatusTooManyRequests {
+		t.Fatalf("model slot released during postprocessing: status=%d", differentNovel.Code)
+	}
+
+	close(releaseSave)
+	waitForSignal(t, published)
+	deadline := time.Now().Add(time.Second)
+	for {
+		server.generationGuard.mu.Lock()
+		_, active := server.generationGuard.active[7]
+		server.generationGuard.mu.Unlock()
+		if !active {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("postprocessing completion did not release novel lease")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestShutdownCancelsActiveGenerationAndWaitsForCapacity(t *testing.T) {
+	entered := make(chan struct{})
+	exited := make(chan struct{})
+	engine := &generationTestEngine{run: func(ctx context.Context, _ *agents.GenerationState) (*agents.GenerationState, error) {
+		close(entered)
+		<-ctx.Done()
+		close(exited)
+		return nil, ctx.Err()
+	}}
+	server := newServer(engine, nil)
+	handlerDone := make(chan struct{})
+	go func() {
+		server.router.ServeHTTP(httptest.NewRecorder(), generateRequest(context.Background(), "7", 1))
+		close(handlerDone)
+	}()
+	waitForSignal(t, entered)
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx, server.HTTPServer()); err != nil {
+		t.Fatalf("Shutdown returned error: %v", err)
+	}
+	waitForSignal(t, exited)
+	waitForSignal(t, handlerDone)
+}
 func TestHandleGenerateChapterRejectsConcurrentRequestForSameNovel(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})

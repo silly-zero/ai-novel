@@ -136,8 +136,6 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	return finalState, nil
 }
 
-const chapterGeneratedTimeout = 5 * time.Minute
-
 func (e *WorkflowEngine) PublishChapterGenerated(
 	ctx context.Context,
 	state *agents.GenerationState,
@@ -145,13 +143,7 @@ func (e *WorkflowEngine) PublishChapterGenerated(
 	if e.eventBus == nil || state == nil {
 		return nil
 	}
-	publishCtx, cancel := context.WithTimeout(
-		context.WithoutCancel(ctx),
-		chapterGeneratedTimeout,
-	)
-	defer cancel()
-
-	return e.eventBus.Publish(publishCtx, events.ChapterGeneratedEvent{
+	return e.eventBus.Publish(ctx, events.ChapterGeneratedEvent{
 		GenerationID: state.GenerationID,
 		NovelID:      state.NovelID,
 		ChapterID:    state.ChapterID,

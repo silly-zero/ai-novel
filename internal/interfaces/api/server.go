@@ -231,28 +231,126 @@ var (
 	errGenerationProtocol  = errors.New("invalid generation stream event")
 )
 
+type ServerConfig struct {
+	ListenAddr               string
+	CorsOrigins              []string
+	MaxConcurrentGenerations int
+	ReadHeaderTimeout        time.Duration
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
+	IdleTimeout              time.Duration
+	GenerationTimeout        time.Duration
+}
+
+func defaultServerConfig() ServerConfig {
+	return ServerConfig{
+		ListenAddr:               "127.0.0.1:8081",
+		CorsOrigins:              []string{"http://localhost:5173", "http://127.0.0.1:5173"},
+		MaxConcurrentGenerations: 2,
+		ReadHeaderTimeout:        5 * time.Second,
+		ReadTimeout:              15 * time.Second,
+		WriteTimeout:             30 * time.Second,
+		IdleTimeout:              60 * time.Second,
+		GenerationTimeout:        30 * time.Minute,
+	}
+}
+
+type modelCapacity struct {
+	mu      sync.Mutex
+	closing bool
+	slots   chan struct{}
+	active  sync.WaitGroup
+}
+
+func newModelCapacity(limit int) *modelCapacity {
+	return &modelCapacity{slots: make(chan struct{}, limit)}
+}
+
+func (c *modelCapacity) tryAcquire() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closing {
+		return false
+	}
+	select {
+	case c.slots <- struct{}{}:
+		c.active.Add(1)
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *modelCapacity) release() {
+	<-c.slots
+	c.active.Done()
+}
+
+func (c *modelCapacity) closeAndWait(ctx context.Context) error {
+	c.mu.Lock()
+	c.closing = true
+	c.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		c.active.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 type Server struct {
 	engine          generationEngine
 	db              *ent.Client
 	chapterStore    generationChapterStore
 	router          *chi.Mux
 	generationGuard *generationGuard
+	config          ServerConfig
+	corsOrigins     map[string]struct{}
+	modelCapacity   *modelCapacity
+	lifecycleCtx    context.Context
+	cancelLifecycle context.CancelFunc
 }
 
-func NewServer(engine *workflows.WorkflowEngine, db *ent.Client) *Server {
+func NewServer(engine *workflows.WorkflowEngine, db *ent.Client, configs ...ServerConfig) *Server {
 	var engineAdapter generationEngine
 	if engine != nil {
 		engineAdapter = engine
 	}
-	return newServer(engineAdapter, db)
+	return newServerWithConfig(engineAdapter, db, firstServerConfig(configs))
+}
+
+func firstServerConfig(configs []ServerConfig) ServerConfig {
+	if len(configs) == 0 {
+		return defaultServerConfig()
+	}
+	return configs[0]
 }
 
 func newServer(engine generationEngine, db *ent.Client) *Server {
+	return newServerWithConfig(engine, db, defaultServerConfig())
+}
+
+func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConfig) *Server {
+	lifecycleCtx, cancelLifecycle := context.WithCancel(context.Background())
+	origins := make(map[string]struct{}, len(cfg.CorsOrigins))
+	for _, origin := range cfg.CorsOrigins {
+		origins[origin] = struct{}{}
+	}
 	s := &Server{
 		engine:          engine,
 		db:              db,
 		router:          chi.NewRouter(),
 		generationGuard: newGenerationGuard(),
+		config:          cfg,
+		corsOrigins:     origins,
+		modelCapacity:   newModelCapacity(cfg.MaxConcurrentGenerations),
+		lifecycleCtx:    lifecycleCtx,
+		cancelLifecycle: cancelLifecycle,
 	}
 	if db != nil {
 		s.chapterStore = &entGenerationChapterStore{client: db}
@@ -260,23 +358,21 @@ func newServer(engine generationEngine, db *ent.Client) *Server {
 
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(s.corsMiddleware)
+	s.router.Use(s.lifecycleMiddleware)
+	s.router.Options("/*", s.HandleOptions)
 
 	s.router.Get("/api/v1/novels", s.HandleListNovels)
 	s.router.Post("/api/v1/novels", s.HandleCreateNovel)
-	s.router.Options("/api/v1/novels", s.HandleOptions)
 	s.router.Get("/api/v1/novels/{id}", s.HandleGetNovel)
 	s.router.Put("/api/v1/novels/{id}", s.HandleUpdateNovel)
-	s.router.Options("/api/v1/novels/{id}", s.HandleOptions)
 	s.router.Get("/api/v1/novels/{id}/chapters", s.HandleListChapters)
 	s.router.Post("/api/v1/novels/{id}/chapters", s.HandleCreateChapter)
-	s.router.Options("/api/v1/novels/{id}/chapters", s.HandleOptions)
 	s.router.Get("/api/v1/chapters/{id}", s.HandleGetChapter)
 	s.router.Put("/api/v1/chapters/{id}", s.HandleUpdateChapter)
 	s.router.Delete("/api/v1/chapters/{id}", s.HandleDeleteChapter)
-	s.router.Options("/api/v1/chapters/{id}", s.HandleOptions)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Post("/api/v1/novels/{id}/generate/cancel", s.HandleCancelGeneration)
-	s.router.Options("/api/v1/novels/{id}/generate/cancel", s.HandleOptions)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
 	return s
@@ -342,9 +438,43 @@ type UpdateChapterRequest struct {
 	Status  *string `json:"status,omitempty"`
 }
 
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" {
+			w.Header().Add("Vary", "Origin")
+			if _, allowed := s.corsOrigins[origin]; allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+			} else {
+				http.Error(w, "origin not allowed", http.StatusForbidden)
+				return
+			}
+		} else if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site") {
+			http.Error(w, "cross-site request not allowed", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) lifecycleMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancelCause(r.Context())
+		stop := context.AfterFunc(s.lifecycleCtx, func() {
+			cancel(context.Cause(s.lifecycleCtx))
+		})
+		defer func() {
+			stop()
+			cancel(context.Canceled)
+		}()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 func (s *Server) HandleListNovels(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -376,16 +506,12 @@ func (s *Server) HandleListNovels(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
 }
 
-func (s *Server) HandleOptions(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
+func (s *Server) HandleOptions(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) HandleCreateNovel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -453,7 +579,6 @@ func (s *Server) HandleCreateNovel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -517,7 +642,6 @@ func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleUpdateNovel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -573,7 +697,6 @@ func (s *Server) HandleUpdateNovel(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleListChapters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -631,7 +754,6 @@ func (s *Server) HandleListChapters(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleGetChapter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -680,7 +802,6 @@ func (s *Server) HandleGetChapter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -757,7 +878,6 @@ func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -829,7 +949,6 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	if s.db == nil {
 		http.Error(w, "database not configured", http.StatusInternalServerError)
@@ -854,9 +973,26 @@ func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) Start(addr string) error {
-	fmt.Printf("🚀 API Server started at %s\n", addr)
-	return http.ListenAndServe(addr, s.router)
+func (s *Server) HTTPServer() *http.Server {
+	return &http.Server{
+		Addr:              s.config.ListenAddr,
+		Handler:           s.router,
+		ReadHeaderTimeout: s.config.ReadHeaderTimeout,
+		ReadTimeout:       s.config.ReadTimeout,
+		WriteTimeout:      s.config.WriteTimeout,
+		IdleTimeout:       s.config.IdleTimeout,
+		MaxHeaderBytes:    1 << 20,
+	}
+}
+
+func (s *Server) Shutdown(ctx context.Context, httpServer *http.Server) error {
+	s.cancelLifecycle()
+	shutdownErr := httpServer.Shutdown(ctx)
+	capacityErr := s.modelCapacity.closeAndWait(ctx)
+	if shutdownErr != nil {
+		return shutdownErr
+	}
+	return capacityErr
 }
 
 func parseIntParam(v string) (int, error) {
@@ -900,20 +1036,26 @@ type generationResult struct {
 	Message      string           `json:"message,omitempty"`
 }
 
+const generationSSEWriteTimeout = 15 * time.Second
+
 type generationSSEWriter struct {
 	writer       http.ResponseWriter
-	flusher      http.Flusher
+	controller   *http.ResponseController
 	terminalSent bool
 }
 
 func newGenerationSSEWriter(
 	writer http.ResponseWriter,
-	flusher http.Flusher,
+	controller *http.ResponseController,
 ) *generationSSEWriter {
-	return &generationSSEWriter{writer: writer, flusher: flusher}
+	return &generationSSEWriter{writer: writer, controller: controller}
 }
 
 func (w *generationSSEWriter) send(event string, payload any) error {
+	if err := w.controller.SetWriteDeadline(time.Now().Add(generationSSEWriteTimeout)); err != nil &&
+		!errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -926,7 +1068,9 @@ func (w *generationSSEWriter) send(event string, payload any) error {
 	); err != nil {
 		return err
 	}
-	w.flusher.Flush()
+	if err := w.controller.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
 	return nil
 }
 
@@ -944,6 +1088,12 @@ func classifyGenerationResult(
 	runErr error,
 	finalState *agents.GenerationState,
 ) generationResult {
+	if runErr == nil && finalState != nil &&
+		!errors.Is(cause, errGenerationCancelled) &&
+		!errors.Is(cause, errGenerationProtocol) &&
+		!errors.Is(cause, context.DeadlineExceeded) {
+		cause = nil
+	}
 	switch {
 	case errors.Is(cause, errGenerationCancelled):
 		return generationResult{
@@ -989,7 +1139,6 @@ func (s *Server) HandleCancelGeneration(
 	r *http.Request,
 ) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	novelID, err := parseIntParam(chi.URLParam(r, "id"))
 	if err != nil {
@@ -1029,7 +1178,6 @@ func (s *Server) HandleCancelGeneration(
 }
 
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 	if s.engine == nil {
 		http.Error(w, "engine not configured", http.StatusInternalServerError)
 		return
@@ -1051,7 +1199,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	generationCtx, cancelGeneration := context.WithCancelCause(r.Context())
+	deadlineCtx, deadlineCancel := context.WithTimeout(r.Context(), s.config.GenerationTimeout)
+	defer deadlineCancel()
+	generationDeadline, _ := deadlineCtx.Deadline()
+	generationCtx, cancelGeneration := context.WithCancelCause(deadlineCtx)
 	defer cancelGeneration(context.Canceled)
 	if !s.generationGuard.acquire(
 		novelIDInt,
@@ -1068,17 +1219,30 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			s.generationGuard.release(novelIDInt, generationID)
 		}
 	}()
+	if !s.modelCapacity.tryAcquire() {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "模型正在处理其他任务，请稍后再试", http.StatusTooManyRequests)
+		return
+	}
+	capacityOwnedByHandler := true
+	defer func() {
+		if capacityOwnedByHandler {
+			s.modelCapacity.release()
+		}
+	}()
 
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		log.Printf("[Generation] clear write deadline failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, err)
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := w.(http.Flusher)
-	if !ok {
+	if _, ok := w.(http.Flusher); !ok {
 		http.Error(w, "Streaming unsupported!", http.StatusInternalServerError)
 		return
 	}
-	sse := newGenerationSSEWriter(w, flusher)
+	sse := newGenerationSSEWriter(w, http.NewResponseController(w))
 
 	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
 	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
@@ -1106,8 +1270,12 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		)
 		s.generationGuard.release(novelIDInt, generationID)
 		leaseOwnedByHandler = false
+		s.modelCapacity.release()
+		capacityOwnedByHandler = false
 		if r.Context().Err() == nil {
-			_ = sse.terminal(result)
+			if terminalErr := sse.terminal(result); terminalErr != nil {
+				log.Printf("[Generation] terminal write failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, terminalErr)
+			}
 		}
 	}
 
@@ -1250,6 +1418,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 
 	resultChan := make(chan generationResult, 1)
 	leaseOwnedByHandler = false
+	capacityOwnedByHandler = false
 	go func() {
 		finalState, runErr := s.engine.RunChapterGeneration(ctx, prepared)
 		cause := s.generationGuard.finish(novelIDInt, generationID)
@@ -1263,10 +1432,12 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		if result.Status == generationStatusSuccess && persist {
 			finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
 			finalState.NovelID = novelID
-			saveCtx, saveCancel := context.WithTimeout(
-				context.WithoutCancel(ctx),
-				10*time.Second,
+			postprocessCtx, cancelPostprocess := context.WithDeadline(
+				s.lifecycleCtx,
+				generationDeadline,
 			)
+			defer cancelPostprocess()
+			saveCtx, saveCancel := context.WithTimeout(postprocessCtx, 10*time.Second)
 			saveErr := s.chapterStore.Save(saveCtx, chapterTarget, finalState)
 			saveCancel()
 			if saveErr != nil {
@@ -1281,7 +1452,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				if publishErr := s.engine.PublishChapterGenerated(
-					ctx,
+					postprocessCtx,
 					finalState,
 				); publishErr != nil {
 					log.Printf(
@@ -1296,6 +1467,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.generationGuard.release(novelIDInt, generationID)
+		s.modelCapacity.release()
 		resultChan <- result
 	}()
 
@@ -1316,7 +1488,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 					Message:      errGenerationProtocol.Error(),
 				}
 			}
-			_ = sse.terminal(result)
+			if terminalErr := sse.terminal(result); terminalErr != nil {
+				log.Printf("[Generation] terminal write failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, terminalErr)
+				cancelGeneration(terminalErr)
+			}
 			return
 		case streamEvent := <-streamEvents:
 			var sendErr error
@@ -1385,7 +1560,17 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	ctx, cancel := context.WithTimeout(r.Context(), s.config.GenerationTimeout)
+	defer cancel()
+	if !s.modelCapacity.tryAcquire() {
+		w.Header().Set("Retry-After", "1")
+		http.Error(w, "模型正在处理其他任务，请稍后再试", http.StatusTooManyRequests)
+		return
+	}
+	defer s.modelCapacity.release()
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		log.Printf("[Preview] clear write deadline failed: novel_id=%s error=%v", novelID, err)
+	}
 	novelIDInt, err := parseIntParam(novelID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1393,7 +1578,7 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
-		loadCtx, loadCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
 		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
 		loadCancel()
 		if qErr == nil && row != nil {

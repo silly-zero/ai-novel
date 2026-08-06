@@ -31,7 +31,17 @@ llm:
     timeout: 30s
 `
 
-var llmEnvironmentKeys = []string{
+var environmentKeys = []string{
+	"APP_LISTEN_ADDR",
+	"APP_CORS_ORIGINS",
+	"APP_MAX_CONCURRENT_GENERATIONS",
+	"APP_READ_HEADER_TIMEOUT",
+	"APP_READ_TIMEOUT",
+	"APP_WRITE_TIMEOUT",
+	"APP_IDLE_TIMEOUT",
+	"APP_GENERATION_TIMEOUT",
+	"APP_STARTUP_TIMEOUT",
+	"APP_SHUTDOWN_TIMEOUT",
 	"LLM_CHAT_API_KEY",
 	"LLM_CHAT_BASE_URL",
 	"LLM_CHAT_MODEL",
@@ -45,7 +55,7 @@ var llmEnvironmentKeys = []string{
 
 func loadTestConfig(t *testing.T, content string) (*Config, error) {
 	t.Helper()
-	for _, key := range llmEnvironmentKeys {
+	for _, key := range environmentKeys {
 		t.Setenv(key, "")
 	}
 	dir := t.TempDir()
@@ -59,6 +69,12 @@ func TestLoadConfigReadsSplitModelConfiguration(t *testing.T) {
 	cfg, err := loadTestConfig(t, validConfig)
 	if err != nil {
 		t.Fatalf("LoadConfig returned error: %v", err)
+	}
+	if cfg.App.ListenAddr != "127.0.0.1:8081" ||
+		cfg.App.MaxConcurrentGenerations != 2 ||
+		cfg.App.GenerationTimeout != 30*time.Minute ||
+		len(cfg.App.CorsOrigins) != 2 {
+		t.Fatalf("app defaults = %#v", cfg.App)
 	}
 	if cfg.LLM.Chat.APIKey != "chat-test-key" ||
 		cfg.LLM.Chat.BaseURL != "https://chat.example/v1" ||
@@ -75,7 +91,7 @@ func TestLoadConfigReadsSplitModelConfiguration(t *testing.T) {
 }
 
 func TestLoadConfigReadsEnvironmentWithoutConfigFile(t *testing.T) {
-	for _, key := range llmEnvironmentKeys {
+	for _, key := range environmentKeys {
 		t.Setenv(key, "")
 	}
 	values := map[string]string{
@@ -109,7 +125,7 @@ func TestLoadConfigReadsEnvironmentWithoutConfigFile(t *testing.T) {
 }
 
 func TestLoadConfigEnvironmentOverridesYAML(t *testing.T) {
-	for _, key := range llmEnvironmentKeys {
+	for _, key := range environmentKeys {
 		t.Setenv(key, "")
 	}
 	t.Setenv("LLM_CHAT_MODEL", "env-chat-model")
@@ -170,6 +186,45 @@ func TestLoadConfigRejectsInvalidModelConfiguration(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsInvalidAppConfiguration(t *testing.T) {
+	tests := []struct {
+		key     string
+		value   string
+		wantErr string
+	}{
+		{key: "APP_LISTEN_ADDR", value: " ", wantErr: "app.listen_addr"},
+		{key: "APP_LISTEN_ADDR", value: ":8081", wantErr: "app.listen_addr"},
+		{key: "APP_LISTEN_ADDR", value: "0.0.0.0:8081", wantErr: "app.listen_addr"},
+		{key: "APP_LISTEN_ADDR", value: "192.168.1.10:8081", wantErr: "app.listen_addr"},
+		{key: "APP_LISTEN_ADDR", value: "127.0.0.1:0", wantErr: "app.listen_addr"},
+		{key: "APP_CORS_ORIGINS", value: "*", wantErr: "app.cors_origins"},
+		{key: "APP_CORS_ORIGINS", value: "localhost:5173", wantErr: "app.cors_origins"},
+		{key: "APP_CORS_ORIGINS", value: "http://", wantErr: "app.cors_origins"},
+		{key: "APP_CORS_ORIGINS", value: "http://192.168.1.10:5173", wantErr: "app.cors_origins"},
+		{key: "APP_CORS_ORIGINS", value: "http://localhost:5173/path", wantErr: "app.cors_origins"},
+		{key: "APP_CORS_ORIGINS", value: "http://localhost:5173?x=1", wantErr: "app.cors_origins"},
+		{key: "APP_CORS_ORIGINS", value: "http://user@localhost:5173", wantErr: "app.cors_origins"},
+		{key: "APP_MAX_CONCURRENT_GENERATIONS", value: "0", wantErr: "app.max_concurrent_generations"},
+		{key: "APP_READ_TIMEOUT", value: "15", wantErr: "app.read_timeout"},
+		{key: "APP_GENERATION_TIMEOUT", value: "-1s", wantErr: "app.generation_timeout"},
+	}
+	for _, test := range tests {
+		t.Run(test.key+"="+test.value, func(t *testing.T) {
+			for _, key := range environmentKeys {
+				t.Setenv(key, "")
+			}
+			t.Setenv(test.key, test.value)
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(validConfig), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(dir)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("error = %v, want field %s", err, test.wantErr)
+			}
+		})
+	}
+}
 func TestLoadConfigRejectsOldOpenAIShape(t *testing.T) {
 	_, err := loadTestConfig(t, `
 llm:
