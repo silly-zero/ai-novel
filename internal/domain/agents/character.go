@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,7 +10,80 @@ import (
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
 
-// CharacterAgent 负责从剧情中提取和维护人物档案
+func decodeCharacterExtraction(candidate []byte) (CharacterExtraction, error) {
+	trimmed := bytes.TrimSpace(candidate)
+	if len(trimmed) == 0 {
+		return CharacterExtraction{}, fmt.Errorf("response is empty")
+	}
+	if bytes.Equal(trimmed, []byte("null")) {
+		return CharacterExtraction{}, fmt.Errorf("character extraction must not be null")
+	}
+	if trimmed[0] == '[' {
+		var updates []CharacterUpdate
+		if err := json.Unmarshal(trimmed, &updates); err != nil {
+			return CharacterExtraction{}, err
+		}
+		if updates == nil {
+			return CharacterExtraction{}, fmt.Errorf("character array must not be null")
+		}
+		return CharacterExtraction{Characters: updates}, nil
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &raw); err != nil {
+		return CharacterExtraction{}, err
+	}
+	charactersJSON, hasCharacters := raw["characters"]
+	relationshipsJSON, hasRelationships := raw["relationships"]
+	if !hasCharacters && !hasRelationships {
+		return CharacterExtraction{}, fmt.Errorf("characters or relationships is required")
+	}
+
+	var extracted CharacterExtraction
+	if hasCharacters {
+		if bytes.Equal(bytes.TrimSpace(charactersJSON), []byte("null")) {
+			return CharacterExtraction{}, fmt.Errorf("characters must be an array")
+		}
+		if err := json.Unmarshal(charactersJSON, &extracted.Characters); err != nil {
+			return CharacterExtraction{}, fmt.Errorf("characters must be an array: %w", err)
+		}
+	}
+	if hasRelationships {
+		if bytes.Equal(bytes.TrimSpace(relationshipsJSON), []byte("null")) {
+			return CharacterExtraction{}, fmt.Errorf("relationships must be an array")
+		}
+		if err := json.Unmarshal(relationshipsJSON, &extracted.Relationships); err != nil {
+			return CharacterExtraction{}, fmt.Errorf("relationships must be an array: %w", err)
+		}
+	}
+	return extracted, nil
+}
+
+func validateCharacterExtraction(extracted *CharacterExtraction) error {
+	for index := range extracted.Characters {
+		extracted.Characters[index].Name = strings.TrimSpace(extracted.Characters[index].Name)
+		if extracted.Characters[index].Name == "" {
+			return fmt.Errorf("characters[%d].name must not be blank", index)
+		}
+	}
+	for index := range extracted.Relationships {
+		relation := &extracted.Relationships[index]
+		relation.Source = strings.TrimSpace(relation.Source)
+		relation.Target = strings.TrimSpace(relation.Target)
+		relation.RelationType = strings.TrimSpace(relation.RelationType)
+		if relation.Source == "" {
+			return fmt.Errorf("relationships[%d].source must not be blank", index)
+		}
+		if relation.Target == "" {
+			return fmt.Errorf("relationships[%d].target must not be blank", index)
+		}
+		if relation.RelationType == "" {
+			return fmt.Errorf("relationships[%d].relation_type must not be blank", index)
+		}
+	}
+	return nil
+}
+
 type CharacterAgent struct {
 	llm  LLMService
 	repo domain.CharacterRepository
@@ -91,22 +165,17 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 
 	userPrompt := fmt.Sprintf("%s\n\n【本章正文】\n%s\n\n请分析并输出角色更新结果：", charContext, state.Draft)
 
-	resp, err := a.llm.Generate(ctx, systemPrompt, userPrompt)
+	extracted, err := generateStructuredResponse(
+		ctx,
+		a.llm,
+		"character",
+		systemPrompt,
+		userPrompt,
+		decodeCharacterExtraction,
+		validateCharacterExtraction,
+	)
 	if err != nil {
 		return state, err
-	}
-
-	// 2. 解析并更新数据库
-	cleanedJSON := strings.TrimPrefix(strings.TrimSpace(resp), "```json")
-	cleanedJSON = strings.TrimSuffix(cleanedJSON, "```")
-
-	var extracted CharacterExtraction
-	if err := json.Unmarshal([]byte(cleanedJSON), &extracted); err != nil {
-		var updates []CharacterUpdate
-		if err2 := json.Unmarshal([]byte(cleanedJSON), &updates); err2 != nil {
-			return state, fmt.Errorf("failed to parse character updates: %w", err)
-		}
-		extracted.Characters = updates
 	}
 
 	nameToChar := make(map[string]*domain.Character)

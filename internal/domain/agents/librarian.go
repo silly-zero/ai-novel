@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -60,7 +59,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	// 2. 制定检索计划 (Query Rewriting)
 	plan, err := l.makeRetrievalPlan(ctx, state)
 	if err != nil {
-		plan = &RetrievalPlan{SearchQueries: []string{state.Outline}}
+		return state, fmt.Errorf("librarian retrieval plan: %w", err)
 	}
 
 	contextBuilder := strings.Builder{}
@@ -190,16 +189,39 @@ func (l *LibrarianAgent) makeRetrievalPlan(ctx context.Context, state *Generatio
 	}
 	userPrompt += "\n请输出检索计划："
 
-	resp, err := l.llm.Generate(ctx, systemPrompt, userPrompt)
+	plan, err := generateStructuredResponse(
+		ctx,
+		l.llm,
+		"librarian",
+		systemPrompt,
+		userPrompt,
+		decodeJSON[RetrievalPlan],
+		validateRetrievalPlan,
+	)
 	if err != nil {
 		return nil, err
 	}
-
-	var plan RetrievalPlan
-	cleanedJSON := strings.TrimPrefix(strings.TrimSpace(resp), "```json")
-	cleanedJSON = strings.TrimSuffix(cleanedJSON, "```")
-	if err := json.Unmarshal([]byte(cleanedJSON), &plan); err != nil {
-		return nil, err
-	}
 	return &plan, nil
+}
+
+func validateRetrievalPlan(plan *RetrievalPlan) error {
+	for _, field := range []struct {
+		name   string
+		values *[]string
+	}{
+		{name: "character_names", values: &plan.CharacterNames},
+		{name: "world_settings", values: &plan.WorldSettings},
+		{name: "search_queries", values: &plan.SearchQueries},
+	} {
+		for index := range *field.values {
+			(*field.values)[index] = strings.TrimSpace((*field.values)[index])
+			if (*field.values)[index] == "" {
+				return fmt.Errorf("%s[%d] must not be blank", field.name, index)
+			}
+		}
+	}
+	if len(plan.SearchQueries) == 0 {
+		return fmt.Errorf("search_queries must contain at least one query")
+	}
+	return nil
 }

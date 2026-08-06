@@ -26,12 +26,16 @@ func (f memoryAgentTestLLM) StreamGenerate(
 }
 
 type characterRepositoryFake struct {
-	listErr          error
-	saveCharacterErr error
-	saveRelationErr  error
+	listErr            error
+	saveCharacterErr   error
+	saveRelationErr    error
+	saveCharacterCalls int
+	lastCharacterName  string
 }
 
 func (r *characterRepositoryFake) SaveCharacter(_ context.Context, c *domain.Character) error {
+	r.saveCharacterCalls++
+	r.lastCharacterName = c.Name
 	if r.saveCharacterErr == nil {
 		c.ID = "1"
 	}
@@ -59,11 +63,13 @@ func (*characterRepositoryFake) ListRelationships(context.Context, string) ([]*d
 }
 
 type worldRepositoryFake struct {
-	listErr error
-	saveErr error
+	listErr   error
+	saveErr   error
+	saveCalls int
 }
 
 func (r *worldRepositoryFake) SaveSetting(context.Context, *domain.WorldSetting) error {
+	r.saveCalls++
 	return r.saveErr
 }
 

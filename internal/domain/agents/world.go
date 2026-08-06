@@ -2,14 +2,30 @@ package agents
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
 
-// WorldAgent 负责从剧情中提取和维护世界观设定
+func validateWorldSettingUpdates(updates *[]WorldSettingUpdate) error {
+	if *updates == nil {
+		return fmt.Errorf("world setting array must not be null")
+	}
+	for index := range *updates {
+		update := &(*updates)[index]
+		update.Category = strings.TrimSpace(update.Category)
+		update.Name = strings.TrimSpace(update.Name)
+		if update.Category == "" {
+			return fmt.Errorf("world_settings[%d].category must not be blank", index)
+		}
+		if update.Name == "" {
+			return fmt.Errorf("world_settings[%d].name must not be blank", index)
+		}
+	}
+	return nil
+}
+
 type WorldAgent struct {
 	llm  LLMService
 	repo domain.WorldRepository
@@ -60,18 +76,17 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 
 	userPrompt := fmt.Sprintf("%s\n\n【本章正文】\n%s\n\n请分析并输出世界观更新结果：", settingContext, state.Draft)
 
-	resp, err := a.llm.Generate(ctx, systemPrompt, userPrompt)
+	updates, err := generateStructuredResponse(
+		ctx,
+		a.llm,
+		"world",
+		systemPrompt,
+		userPrompt,
+		decodeJSON[[]WorldSettingUpdate],
+		validateWorldSettingUpdates,
+	)
 	if err != nil {
 		return state, err
-	}
-
-	// 2. 解析并更新数据库
-	var updates []WorldSettingUpdate
-	cleanedJSON := strings.TrimPrefix(strings.TrimSpace(resp), "```json")
-	cleanedJSON = strings.TrimSuffix(cleanedJSON, "```")
-
-	if err := json.Unmarshal([]byte(cleanedJSON), &updates); err != nil {
-		return state, fmt.Errorf("failed to parse world setting updates: %w", err)
 	}
 
 	for _, up := range updates {

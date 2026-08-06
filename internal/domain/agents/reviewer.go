@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -60,33 +61,57 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 }
 务必确保输出是合法的 JSON 字符串。`
 
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：", 
+	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
 		state.SceneCard, state.Context, state.Draft)
 
-	// 调用大模型进行审查
-	response, err := r.llm.Generate(ctx, systemPrompt, userPrompt)
+	result, err := generateStructuredResponse(
+		ctx,
+		r.llm,
+		"reviewer",
+		systemPrompt,
+		userPrompt,
+		decodeReviewResult,
+		validateReviewResult,
+	)
 	if err != nil {
 		return state, fmt.Errorf("reviewer agent failed to analyze draft: %w", err)
 	}
 
-	// 解析结构化输出
-	var result ReviewResult
-	// 简单的清理，防止大模型返回带有 markdown 标记的 JSON (如 ```json ... ```)
-	cleanedJSON := strings.TrimPrefix(strings.TrimSpace(response), "```json")
-	cleanedJSON = strings.TrimSuffix(cleanedJSON, "```")
-	
-	if err := json.Unmarshal([]byte(cleanedJSON), &result); err != nil {
-		// 如果解析失败，保守起见认为审查不通过，并把原始响应作为 critique
-		state.IsApproved = false
-		state.Critique = fmt.Sprintf("审查员格式化输出失败，原始意见：%s", response)
-		return state, nil
-	}
-
-	// 更新状态机
 	state.IsApproved = result.Passed
-	if !result.Passed {
-		state.Critique = result.Critique
-	}
+	state.Critique = strings.TrimSpace(result.Critique)
 
 	return state, nil
+}
+
+func decodeReviewResult(candidate []byte) (ReviewResult, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(candidate, &raw); err != nil {
+		return ReviewResult{}, err
+	}
+	passedJSON, ok := raw["passed"]
+	if !ok || string(bytes.TrimSpace(passedJSON)) == "null" {
+		return ReviewResult{}, fmt.Errorf("passed is required and must be a boolean")
+	}
+	var passed bool
+	if err := json.Unmarshal(passedJSON, &passed); err != nil {
+		return ReviewResult{}, fmt.Errorf("passed is required and must be a boolean")
+	}
+	var critique string
+	if critiqueJSON, ok := raw["critique"]; ok {
+		if string(bytes.TrimSpace(critiqueJSON)) == "null" {
+			return ReviewResult{}, fmt.Errorf("critique must be a string")
+		}
+		if err := json.Unmarshal(critiqueJSON, &critique); err != nil {
+			return ReviewResult{}, fmt.Errorf("critique must be a string")
+		}
+	}
+	return ReviewResult{Passed: passed, Critique: critique}, nil
+}
+
+func validateReviewResult(result *ReviewResult) error {
+	result.Critique = strings.TrimSpace(result.Critique)
+	if !result.Passed && result.Critique == "" {
+		return fmt.Errorf("critique is required when passed is false")
+	}
+	return nil
 }
