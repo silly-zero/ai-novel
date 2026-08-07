@@ -16,6 +16,9 @@ var (
 		{Name: "word_count", Type: field.TypeInt},
 		{Name: "order", Type: field.TypeInt},
 		{Name: "status", Type: field.TypeString, Default: "Draft"},
+		{Name: "last_beat", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "open_loops", Type: field.TypeJSON, Nullable: true},
+		{Name: "next_action", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "novel_chapters", Type: field.TypeInt},
@@ -28,7 +31,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "chapters_novels_chapters",
-				Columns:    []*schema.Column{ChaptersColumns[8]},
+				Columns:    []*schema.Column{ChaptersColumns[11]},
 				RefColumns: []*schema.Column{NovelsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},

@@ -24,12 +24,20 @@ func init() {
 	chapterDescStatus := chapterFields[4].Descriptor()
 	// chapter.DefaultStatus holds the default value on creation for the status field.
 	chapter.DefaultStatus = chapterDescStatus.Default.(string)
+	// chapterDescLastBeat is the schema descriptor for last_beat field.
+	chapterDescLastBeat := chapterFields[5].Descriptor()
+	// chapter.DefaultLastBeat holds the default value on creation for the last_beat field.
+	chapter.DefaultLastBeat = chapterDescLastBeat.Default.(string)
+	// chapterDescNextAction is the schema descriptor for next_action field.
+	chapterDescNextAction := chapterFields[7].Descriptor()
+	// chapter.DefaultNextAction holds the default value on creation for the next_action field.
+	chapter.DefaultNextAction = chapterDescNextAction.Default.(string)
 	// chapterDescCreatedAt is the schema descriptor for created_at field.
-	chapterDescCreatedAt := chapterFields[5].Descriptor()
+	chapterDescCreatedAt := chapterFields[8].Descriptor()
 	// chapter.DefaultCreatedAt holds the default value on creation for the created_at field.
 	chapter.DefaultCreatedAt = chapterDescCreatedAt.Default.(func() time.Time)
 	// chapterDescUpdatedAt is the schema descriptor for updated_at field.
-	chapterDescUpdatedAt := chapterFields[6].Descriptor()
+	chapterDescUpdatedAt := chapterFields[9].Descriptor()
 	// chapter.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	chapter.DefaultUpdatedAt = chapterDescUpdatedAt.Default.(func() time.Time)
 	// chapter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

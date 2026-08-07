@@ -80,6 +80,16 @@ func Status(v string) predicate.Chapter {
 	return predicate.Chapter(sql.FieldEQ(FieldStatus, v))
 }
 
+// LastBeat applies equality check predicate on the "last_beat" field. It's identical to LastBeatEQ.
+func LastBeat(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldLastBeat, v))
+}
+
+// NextAction applies equality check predicate on the "next_action" field. It's identical to NextActionEQ.
+func NextAction(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldNextAction, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Chapter {
 	return predicate.Chapter(sql.FieldEQ(FieldCreatedAt, v))
@@ -363,6 +373,146 @@ func StatusEqualFold(v string) predicate.Chapter {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.Chapter {
 	return predicate.Chapter(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// LastBeatEQ applies the EQ predicate on the "last_beat" field.
+func LastBeatEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldLastBeat, v))
+}
+
+// LastBeatNEQ applies the NEQ predicate on the "last_beat" field.
+func LastBeatNEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNEQ(FieldLastBeat, v))
+}
+
+// LastBeatIn applies the In predicate on the "last_beat" field.
+func LastBeatIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldIn(FieldLastBeat, vs...))
+}
+
+// LastBeatNotIn applies the NotIn predicate on the "last_beat" field.
+func LastBeatNotIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNotIn(FieldLastBeat, vs...))
+}
+
+// LastBeatGT applies the GT predicate on the "last_beat" field.
+func LastBeatGT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGT(FieldLastBeat, v))
+}
+
+// LastBeatGTE applies the GTE predicate on the "last_beat" field.
+func LastBeatGTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGTE(FieldLastBeat, v))
+}
+
+// LastBeatLT applies the LT predicate on the "last_beat" field.
+func LastBeatLT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLT(FieldLastBeat, v))
+}
+
+// LastBeatLTE applies the LTE predicate on the "last_beat" field.
+func LastBeatLTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLTE(FieldLastBeat, v))
+}
+
+// LastBeatContains applies the Contains predicate on the "last_beat" field.
+func LastBeatContains(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContains(FieldLastBeat, v))
+}
+
+// LastBeatHasPrefix applies the HasPrefix predicate on the "last_beat" field.
+func LastBeatHasPrefix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasPrefix(FieldLastBeat, v))
+}
+
+// LastBeatHasSuffix applies the HasSuffix predicate on the "last_beat" field.
+func LastBeatHasSuffix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasSuffix(FieldLastBeat, v))
+}
+
+// LastBeatEqualFold applies the EqualFold predicate on the "last_beat" field.
+func LastBeatEqualFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEqualFold(FieldLastBeat, v))
+}
+
+// LastBeatContainsFold applies the ContainsFold predicate on the "last_beat" field.
+func LastBeatContainsFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContainsFold(FieldLastBeat, v))
+}
+
+// OpenLoopsIsNil applies the IsNil predicate on the "open_loops" field.
+func OpenLoopsIsNil() predicate.Chapter {
+	return predicate.Chapter(sql.FieldIsNull(FieldOpenLoops))
+}
+
+// OpenLoopsNotNil applies the NotNil predicate on the "open_loops" field.
+func OpenLoopsNotNil() predicate.Chapter {
+	return predicate.Chapter(sql.FieldNotNull(FieldOpenLoops))
+}
+
+// NextActionEQ applies the EQ predicate on the "next_action" field.
+func NextActionEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldNextAction, v))
+}
+
+// NextActionNEQ applies the NEQ predicate on the "next_action" field.
+func NextActionNEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNEQ(FieldNextAction, v))
+}
+
+// NextActionIn applies the In predicate on the "next_action" field.
+func NextActionIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldIn(FieldNextAction, vs...))
+}
+
+// NextActionNotIn applies the NotIn predicate on the "next_action" field.
+func NextActionNotIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNotIn(FieldNextAction, vs...))
+}
+
+// NextActionGT applies the GT predicate on the "next_action" field.
+func NextActionGT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGT(FieldNextAction, v))
+}
+
+// NextActionGTE applies the GTE predicate on the "next_action" field.
+func NextActionGTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGTE(FieldNextAction, v))
+}
+
+// NextActionLT applies the LT predicate on the "next_action" field.
+func NextActionLT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLT(FieldNextAction, v))
+}
+
+// NextActionLTE applies the LTE predicate on the "next_action" field.
+func NextActionLTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLTE(FieldNextAction, v))
+}
+
+// NextActionContains applies the Contains predicate on the "next_action" field.
+func NextActionContains(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContains(FieldNextAction, v))
+}
+
+// NextActionHasPrefix applies the HasPrefix predicate on the "next_action" field.
+func NextActionHasPrefix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasPrefix(FieldNextAction, v))
+}
+
+// NextActionHasSuffix applies the HasSuffix predicate on the "next_action" field.
+func NextActionHasSuffix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasSuffix(FieldNextAction, v))
+}
+
+// NextActionEqualFold applies the EqualFold predicate on the "next_action" field.
+func NextActionEqualFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEqualFold(FieldNextAction, v))
+}
+
+// NextActionContainsFold applies the ContainsFold predicate on the "next_action" field.
+func NextActionContainsFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContainsFold(FieldNextAction, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

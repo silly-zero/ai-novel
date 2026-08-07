@@ -15,6 +15,7 @@ type WorkflowEngine struct {
 	graph        compose.Runnable[*agents.GenerationState, *agents.GenerationState]
 	contextGraph compose.Runnable[*agents.GenerationState, *agents.GenerationState]
 	eventBus     events.Bus
+	continuity   *agents.ContinuityExtractor
 }
 
 // NewWorkflowEngine 初始化一个新引擎，编排多个 Agent
@@ -26,6 +27,7 @@ func NewWorkflowEngine(
 	writer *agents.WriterAgent,
 	reviewer *agents.ReviewerAgent,
 	eventBus events.Bus,
+	continuity ...*agents.ContinuityExtractor,
 ) (*WorkflowEngine, error) {
 
 	// 1. 初始化 Eino Graph，输入和输出都是 GenerationState 的指针
@@ -114,10 +116,15 @@ func NewWorkflowEngine(
 		return nil, fmt.Errorf("failed to compile context graph: %w", err)
 	}
 
+	continuityExtractor := (*agents.ContinuityExtractor)(nil)
+	if len(continuity) > 0 {
+		continuityExtractor = continuity[0]
+	}
 	return &WorkflowEngine{
 		graph:        runnable,
 		contextGraph: ctxRunnable,
 		eventBus:     eventBus,
+		continuity:   continuityExtractor,
 	}, nil
 }
 
@@ -152,7 +159,13 @@ func (e *WorkflowEngine) PublishChapterGenerated(
 	})
 }
 
-// PrepareContext 仅生成“场景卡 + 背景资料 + 共创指令”合成上下文，不进入写作与审查
+func (e *WorkflowEngine) ExtractContinuity(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+	if e.continuity == nil {
+		return nil, fmt.Errorf("continuity extractor is not initialized")
+	}
+	return e.continuity.Extract(ctx, state)
+}
+
 func (e *WorkflowEngine) PrepareContext(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 	if e.contextGraph == nil {
 		return nil, fmt.Errorf("context graph is not initialized")

@@ -3,6 +3,7 @@
 package ent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -28,6 +29,12 @@ type Chapter struct {
 	Order int `json:"order,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// LastBeat holds the value of the "last_beat" field.
+	LastBeat string `json:"last_beat,omitempty"`
+	// OpenLoops holds the value of the "open_loops" field.
+	OpenLoops []string `json:"open_loops,omitempty"`
+	// NextAction holds the value of the "next_action" field.
+	NextAction string `json:"next_action,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -64,9 +71,11 @@ func (*Chapter) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case chapter.FieldOpenLoops:
+			values[i] = new([]byte)
 		case chapter.FieldID, chapter.FieldWordCount, chapter.FieldOrder:
 			values[i] = new(sql.NullInt64)
-		case chapter.FieldTitle, chapter.FieldContent, chapter.FieldStatus:
+		case chapter.FieldTitle, chapter.FieldContent, chapter.FieldStatus, chapter.FieldLastBeat, chapter.FieldNextAction:
 			values[i] = new(sql.NullString)
 		case chapter.FieldCreatedAt, chapter.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -122,6 +131,26 @@ func (_m *Chapter) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case chapter.FieldLastBeat:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field last_beat", values[i])
+			} else if value.Valid {
+				_m.LastBeat = value.String
+			}
+		case chapter.FieldOpenLoops:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field open_loops", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.OpenLoops); err != nil {
+					return fmt.Errorf("unmarshal field open_loops: %w", err)
+				}
+			}
+		case chapter.FieldNextAction:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field next_action", values[i])
+			} else if value.Valid {
+				_m.NextAction = value.String
 			}
 		case chapter.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -197,6 +226,15 @@ func (_m *Chapter) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("last_beat=")
+	builder.WriteString(_m.LastBeat)
+	builder.WriteString(", ")
+	builder.WriteString("open_loops=")
+	builder.WriteString(fmt.Sprintf("%v", _m.OpenLoops))
+	builder.WriteString(", ")
+	builder.WriteString("next_action=")
+	builder.WriteString(_m.NextAction)
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

@@ -33,9 +33,9 @@ func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (s
 		f.reviewCalls++
 		passed := f.passOn > 0 && f.reviewCalls >= f.passOn
 		if passed {
-			return `{"passed":true,"critique":""}`, nil
+			return `{"passed":true,"continuity_passed":true,"critique":""}`, nil
 		}
-		return `{"passed":false,"critique":"继续修改"}`, nil
+		return `{"passed":false,"continuity_passed":false,"critique":"继续修改"}`, nil
 	}
 	return "unused", nil
 }

@@ -40,24 +40,28 @@ const (
 // ChapterMutation represents an operation that mutates the Chapter nodes in the graph.
 type ChapterMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *int
-	title         *string
-	content       *string
-	word_count    *int
-	addword_count *int
-	_order        *int
-	add_order     *int
-	status        *string
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	novel         *int
-	clearednovel  bool
-	done          bool
-	oldValue      func(context.Context) (*Chapter, error)
-	predicates    []predicate.Chapter
+	op               Op
+	typ              string
+	id               *int
+	title            *string
+	content          *string
+	word_count       *int
+	addword_count    *int
+	_order           *int
+	add_order        *int
+	status           *string
+	last_beat        *string
+	open_loops       *[]string
+	appendopen_loops []string
+	next_action      *string
+	created_at       *time.Time
+	updated_at       *time.Time
+	clearedFields    map[string]struct{}
+	novel            *int
+	clearednovel     bool
+	done             bool
+	oldValue         func(context.Context) (*Chapter, error)
+	predicates       []predicate.Chapter
 }
 
 var _ ent.Mutation = (*ChapterMutation)(nil)
@@ -378,6 +382,143 @@ func (m *ChapterMutation) ResetStatus() {
 	m.status = nil
 }
 
+// SetLastBeat sets the "last_beat" field.
+func (m *ChapterMutation) SetLastBeat(s string) {
+	m.last_beat = &s
+}
+
+// LastBeat returns the value of the "last_beat" field in the mutation.
+func (m *ChapterMutation) LastBeat() (r string, exists bool) {
+	v := m.last_beat
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastBeat returns the old "last_beat" field's value of the Chapter entity.
+// If the Chapter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterMutation) OldLastBeat(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastBeat is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastBeat requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastBeat: %w", err)
+	}
+	return oldValue.LastBeat, nil
+}
+
+// ResetLastBeat resets all changes to the "last_beat" field.
+func (m *ChapterMutation) ResetLastBeat() {
+	m.last_beat = nil
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (m *ChapterMutation) SetOpenLoops(s []string) {
+	m.open_loops = &s
+	m.appendopen_loops = nil
+}
+
+// OpenLoops returns the value of the "open_loops" field in the mutation.
+func (m *ChapterMutation) OpenLoops() (r []string, exists bool) {
+	v := m.open_loops
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOpenLoops returns the old "open_loops" field's value of the Chapter entity.
+// If the Chapter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterMutation) OldOpenLoops(ctx context.Context) (v []string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOpenLoops is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOpenLoops requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOpenLoops: %w", err)
+	}
+	return oldValue.OpenLoops, nil
+}
+
+// AppendOpenLoops adds s to the "open_loops" field.
+func (m *ChapterMutation) AppendOpenLoops(s []string) {
+	m.appendopen_loops = append(m.appendopen_loops, s...)
+}
+
+// AppendedOpenLoops returns the list of values that were appended to the "open_loops" field in this mutation.
+func (m *ChapterMutation) AppendedOpenLoops() ([]string, bool) {
+	if len(m.appendopen_loops) == 0 {
+		return nil, false
+	}
+	return m.appendopen_loops, true
+}
+
+// ClearOpenLoops clears the value of the "open_loops" field.
+func (m *ChapterMutation) ClearOpenLoops() {
+	m.open_loops = nil
+	m.appendopen_loops = nil
+	m.clearedFields[chapter.FieldOpenLoops] = struct{}{}
+}
+
+// OpenLoopsCleared returns if the "open_loops" field was cleared in this mutation.
+func (m *ChapterMutation) OpenLoopsCleared() bool {
+	_, ok := m.clearedFields[chapter.FieldOpenLoops]
+	return ok
+}
+
+// ResetOpenLoops resets all changes to the "open_loops" field.
+func (m *ChapterMutation) ResetOpenLoops() {
+	m.open_loops = nil
+	m.appendopen_loops = nil
+	delete(m.clearedFields, chapter.FieldOpenLoops)
+}
+
+// SetNextAction sets the "next_action" field.
+func (m *ChapterMutation) SetNextAction(s string) {
+	m.next_action = &s
+}
+
+// NextAction returns the value of the "next_action" field in the mutation.
+func (m *ChapterMutation) NextAction() (r string, exists bool) {
+	v := m.next_action
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldNextAction returns the old "next_action" field's value of the Chapter entity.
+// If the Chapter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterMutation) OldNextAction(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldNextAction is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldNextAction requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldNextAction: %w", err)
+	}
+	return oldValue.NextAction, nil
+}
+
+// ResetNextAction resets all changes to the "next_action" field.
+func (m *ChapterMutation) ResetNextAction() {
+	m.next_action = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *ChapterMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -523,7 +664,7 @@ func (m *ChapterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChapterMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 10)
 	if m.title != nil {
 		fields = append(fields, chapter.FieldTitle)
 	}
@@ -538,6 +679,15 @@ func (m *ChapterMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, chapter.FieldStatus)
+	}
+	if m.last_beat != nil {
+		fields = append(fields, chapter.FieldLastBeat)
+	}
+	if m.open_loops != nil {
+		fields = append(fields, chapter.FieldOpenLoops)
+	}
+	if m.next_action != nil {
+		fields = append(fields, chapter.FieldNextAction)
 	}
 	if m.created_at != nil {
 		fields = append(fields, chapter.FieldCreatedAt)
@@ -563,6 +713,12 @@ func (m *ChapterMutation) Field(name string) (ent.Value, bool) {
 		return m.Order()
 	case chapter.FieldStatus:
 		return m.Status()
+	case chapter.FieldLastBeat:
+		return m.LastBeat()
+	case chapter.FieldOpenLoops:
+		return m.OpenLoops()
+	case chapter.FieldNextAction:
+		return m.NextAction()
 	case chapter.FieldCreatedAt:
 		return m.CreatedAt()
 	case chapter.FieldUpdatedAt:
@@ -586,6 +742,12 @@ func (m *ChapterMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldOrder(ctx)
 	case chapter.FieldStatus:
 		return m.OldStatus(ctx)
+	case chapter.FieldLastBeat:
+		return m.OldLastBeat(ctx)
+	case chapter.FieldOpenLoops:
+		return m.OldOpenLoops(ctx)
+	case chapter.FieldNextAction:
+		return m.OldNextAction(ctx)
 	case chapter.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case chapter.FieldUpdatedAt:
@@ -633,6 +795,27 @@ func (m *ChapterMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case chapter.FieldLastBeat:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastBeat(v)
+		return nil
+	case chapter.FieldOpenLoops:
+		v, ok := value.([]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOpenLoops(v)
+		return nil
+	case chapter.FieldNextAction:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetNextAction(v)
 		return nil
 	case chapter.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -704,7 +887,11 @@ func (m *ChapterMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *ChapterMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(chapter.FieldOpenLoops) {
+		fields = append(fields, chapter.FieldOpenLoops)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -717,6 +904,11 @@ func (m *ChapterMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *ChapterMutation) ClearField(name string) error {
+	switch name {
+	case chapter.FieldOpenLoops:
+		m.ClearOpenLoops()
+		return nil
+	}
 	return fmt.Errorf("unknown Chapter nullable field %s", name)
 }
 
@@ -738,6 +930,15 @@ func (m *ChapterMutation) ResetField(name string) error {
 		return nil
 	case chapter.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case chapter.FieldLastBeat:
+		m.ResetLastBeat()
+		return nil
+	case chapter.FieldOpenLoops:
+		m.ResetOpenLoops()
+		return nil
+	case chapter.FieldNextAction:
+		m.ResetNextAction()
 		return nil
 	case chapter.FieldCreatedAt:
 		m.ResetCreatedAt()

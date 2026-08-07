@@ -24,6 +24,12 @@ const (
 	FieldOrder = "order"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldLastBeat holds the string denoting the last_beat field in the database.
+	FieldLastBeat = "last_beat"
+	// FieldOpenLoops holds the string denoting the open_loops field in the database.
+	FieldOpenLoops = "open_loops"
+	// FieldNextAction holds the string denoting the next_action field in the database.
+	FieldNextAction = "next_action"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -49,6 +55,9 @@ var Columns = []string{
 	FieldWordCount,
 	FieldOrder,
 	FieldStatus,
+	FieldLastBeat,
+	FieldOpenLoops,
+	FieldNextAction,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -77,6 +86,10 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
+	// DefaultLastBeat holds the default value on creation for the "last_beat" field.
+	DefaultLastBeat string
+	// DefaultNextAction holds the default value on creation for the "next_action" field.
+	DefaultNextAction string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -116,6 +129,16 @@ func ByOrder(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByLastBeat orders the results by the last_beat field.
+func ByLastBeat(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastBeat, opts...).ToFunc()
+}
+
+// ByNextAction orders the results by the next_action field.
+func ByNextAction(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldNextAction, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

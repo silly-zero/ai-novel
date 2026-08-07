@@ -21,6 +21,9 @@ func (Chapter) Fields() []ent.Field {
 		field.Int("word_count"),
 		field.Int("order"),
 		field.String("status").Default("Draft"),
+		field.Text("last_beat").Default(""),
+		field.JSON("open_loops", []string{}).Optional(),
+		field.Text("next_action").Default(""),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

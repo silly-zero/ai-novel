@@ -46,8 +46,8 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 		fullOutline = "（未提供）"
 	}
 
-	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n请输出本章详细大纲：",
-		idea, fullOutline, state.ChapterIndex)
+	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n请输出本章详细大纲：",
+		idea, fullOutline, state.ChapterIndex, continuityPrompt(state.PreviousContinuity))
 
 	outline, err := p.llm.Generate(ctx, systemPrompt, userPrompt)
 	if err != nil {

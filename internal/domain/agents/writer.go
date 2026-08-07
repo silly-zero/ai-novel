@@ -23,14 +23,16 @@ func (w *WriterAgent) Role() AgentRole {
 func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
 	// 1. 构建 System Prompt：赋予 Writer 角色设定和文风要求
 	systemPrompt := `你是一位顶尖的网络小说作家。你的任务是根据主编提供的【场景卡】和【背景资料】，撰写生动、有感染力的小说正文。
-要求：
+系统要求：
 - 细节描写丰富，动作与神态刻画生动。
 - 严格遵循背景资料中的世界观和角色设定，避免 OOC。
 - 正文总字数（按中文字符计）控制在 2500-4000 字之间。
-- 如果有【修改意见(Critique)】，请务必针对意见对原稿进行重写修正。`
+- 如果有【修改意见(Critique)】，请务必针对意见对原稿进行重写修正。
+- 如果存在上一章接力状态，开头必须承接 NextAction 或合理处理 OpenLoops；不得无因重启冲突。
+- 本章只推进一个阶段，结尾必须留下具体、可行动的未完成目标供下一章继续。`
 
 	// 2. 构建 User Prompt：拼装当前状态中的各类上下文
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n", state.SceneCard, state.Context)
+	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n", state.SceneCard, state.Context, continuityPrompt(state.PreviousContinuity))
 	if state.ManualContext != "" {
 		userPrompt += fmt.Sprintf("\n【人工补充资料】\n%s\n", state.ManualContext)
 	}

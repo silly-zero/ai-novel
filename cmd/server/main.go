@@ -122,7 +122,7 @@ func run() error {
 		MaxContextMemories: cfg.RAG.MaxContextMemories,
 	})
 
-	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus)
+	engine, err := workflows.NewWorkflowEngine(architect, plot, director, librarian, writer, reviewer, eventBus, agents.NewContinuityExtractor(llmAdapter))
 	if err != nil {
 		return fmt.Errorf("初始化工作流引擎失败: %w", err)
 	}

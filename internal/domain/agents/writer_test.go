@@ -8,16 +8,20 @@ import (
 )
 
 type writerTestLLM struct {
-	chunks      []string
-	streamErr   error
-	afterStream func()
+	chunks       []string
+	streamErr    error
+	afterStream  func()
+	systemPrompt string
+	userPrompt   string
 }
 
 func (f *writerTestLLM) Generate(context.Context, string, string) (string, error) {
 	return "", nil
 }
 
-func (f *writerTestLLM) StreamGenerate(ctx context.Context, _, _ string, onChunk func(string) error) error {
+func (f *writerTestLLM) StreamGenerate(ctx context.Context, systemPrompt, userPrompt string, onChunk func(string) error) error {
+	f.systemPrompt = systemPrompt
+	f.userPrompt = userPrompt
 	for _, chunk := range f.chunks {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -55,6 +59,33 @@ func TestWriterRunDeliversTokensInOrder(t *testing.T) {
 	}
 }
 
+func TestWriterRunInjectsPreviousContinuityOnRewrite(t *testing.T) {
+	llm := &writerTestLLM{chunks: []string{"新正文"}}
+	writer := NewWriterAgent(llm)
+	state := &GenerationState{
+		SceneCard: "场景",
+		Context:   "背景",
+		Draft:     "旧草稿",
+		Critique:  "承接上一章",
+		PreviousContinuity: ContinuityPacket{
+			LastBeat:   "主角推开密门。",
+			OpenLoops:  []string{"密门后是谁", "警报是否触发"},
+			NextAction: "主角立即进入密门。",
+		},
+	}
+
+	if _, err := writer.Run(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"主角推开密门。", "密门后是谁", "警报是否触发", "主角立即进入密门。", "承接上一章"} {
+		if !strings.Contains(llm.userPrompt, value) {
+			t.Fatalf("writer prompt missing %q: %s", value, llm.userPrompt)
+		}
+	}
+	if !strings.Contains(llm.systemPrompt, "开头必须承接") {
+		t.Fatalf("writer system prompt missing continuity rule: %s", llm.systemPrompt)
+	}
+}
 func TestWriterRunReturnsSinkErrorWithoutReplacingDraft(t *testing.T) {
 	sinkErr := errors.New("stream consumer stopped")
 	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"第一段", "第二段", "第三段"}})

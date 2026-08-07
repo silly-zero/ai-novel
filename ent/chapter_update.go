@@ -10,6 +10,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/novel"
@@ -109,6 +110,52 @@ func (_u *ChapterUpdate) SetStatus(v string) *ChapterUpdate {
 func (_u *ChapterUpdate) SetNillableStatus(v *string) *ChapterUpdate {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetLastBeat sets the "last_beat" field.
+func (_u *ChapterUpdate) SetLastBeat(v string) *ChapterUpdate {
+	_u.mutation.SetLastBeat(v)
+	return _u
+}
+
+// SetNillableLastBeat sets the "last_beat" field if the given value is not nil.
+func (_u *ChapterUpdate) SetNillableLastBeat(v *string) *ChapterUpdate {
+	if v != nil {
+		_u.SetLastBeat(*v)
+	}
+	return _u
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (_u *ChapterUpdate) SetOpenLoops(v []string) *ChapterUpdate {
+	_u.mutation.SetOpenLoops(v)
+	return _u
+}
+
+// AppendOpenLoops appends value to the "open_loops" field.
+func (_u *ChapterUpdate) AppendOpenLoops(v []string) *ChapterUpdate {
+	_u.mutation.AppendOpenLoops(v)
+	return _u
+}
+
+// ClearOpenLoops clears the value of the "open_loops" field.
+func (_u *ChapterUpdate) ClearOpenLoops() *ChapterUpdate {
+	_u.mutation.ClearOpenLoops()
+	return _u
+}
+
+// SetNextAction sets the "next_action" field.
+func (_u *ChapterUpdate) SetNextAction(v string) *ChapterUpdate {
+	_u.mutation.SetNextAction(v)
+	return _u
+}
+
+// SetNillableNextAction sets the "next_action" field if the given value is not nil.
+func (_u *ChapterUpdate) SetNillableNextAction(v *string) *ChapterUpdate {
+	if v != nil {
+		_u.SetNextAction(*v)
 	}
 	return _u
 }
@@ -231,6 +278,23 @@ func (_u *ChapterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(chapter.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LastBeat(); ok {
+		_spec.SetField(chapter.FieldLastBeat, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OpenLoops(); ok {
+		_spec.SetField(chapter.FieldOpenLoops, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedOpenLoops(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, chapter.FieldOpenLoops, value)
+		})
+	}
+	if _u.mutation.OpenLoopsCleared() {
+		_spec.ClearField(chapter.FieldOpenLoops, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.NextAction(); ok {
+		_spec.SetField(chapter.FieldNextAction, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(chapter.FieldCreatedAt, field.TypeTime, value)
@@ -367,6 +431,52 @@ func (_u *ChapterUpdateOne) SetStatus(v string) *ChapterUpdateOne {
 func (_u *ChapterUpdateOne) SetNillableStatus(v *string) *ChapterUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetLastBeat sets the "last_beat" field.
+func (_u *ChapterUpdateOne) SetLastBeat(v string) *ChapterUpdateOne {
+	_u.mutation.SetLastBeat(v)
+	return _u
+}
+
+// SetNillableLastBeat sets the "last_beat" field if the given value is not nil.
+func (_u *ChapterUpdateOne) SetNillableLastBeat(v *string) *ChapterUpdateOne {
+	if v != nil {
+		_u.SetLastBeat(*v)
+	}
+	return _u
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (_u *ChapterUpdateOne) SetOpenLoops(v []string) *ChapterUpdateOne {
+	_u.mutation.SetOpenLoops(v)
+	return _u
+}
+
+// AppendOpenLoops appends value to the "open_loops" field.
+func (_u *ChapterUpdateOne) AppendOpenLoops(v []string) *ChapterUpdateOne {
+	_u.mutation.AppendOpenLoops(v)
+	return _u
+}
+
+// ClearOpenLoops clears the value of the "open_loops" field.
+func (_u *ChapterUpdateOne) ClearOpenLoops() *ChapterUpdateOne {
+	_u.mutation.ClearOpenLoops()
+	return _u
+}
+
+// SetNextAction sets the "next_action" field.
+func (_u *ChapterUpdateOne) SetNextAction(v string) *ChapterUpdateOne {
+	_u.mutation.SetNextAction(v)
+	return _u
+}
+
+// SetNillableNextAction sets the "next_action" field if the given value is not nil.
+func (_u *ChapterUpdateOne) SetNillableNextAction(v *string) *ChapterUpdateOne {
+	if v != nil {
+		_u.SetNextAction(*v)
 	}
 	return _u
 }
@@ -519,6 +629,23 @@ func (_u *ChapterUpdateOne) sqlSave(ctx context.Context) (_node *Chapter, err er
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(chapter.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.LastBeat(); ok {
+		_spec.SetField(chapter.FieldLastBeat, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.OpenLoops(); ok {
+		_spec.SetField(chapter.FieldOpenLoops, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedOpenLoops(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, chapter.FieldOpenLoops, value)
+		})
+	}
+	if _u.mutation.OpenLoopsCleared() {
+		_spec.ClearField(chapter.FieldOpenLoops, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.NextAction(); ok {
+		_spec.SetField(chapter.FieldNextAction, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(chapter.FieldCreatedAt, field.TypeTime, value)

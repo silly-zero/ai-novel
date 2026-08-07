@@ -33,7 +33,7 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 
 请直接输出场景卡的文本内容，不要有多余的寒暄。`
 
-	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n", state.Outline)
+	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n\n%s\n", state.Outline, continuityPrompt(state.PreviousContinuity))
 	if state.EditorNotes != "" {
 		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
 	}

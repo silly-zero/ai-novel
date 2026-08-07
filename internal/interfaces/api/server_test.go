@@ -18,6 +18,7 @@ type generationTestEngine struct {
 	prepare func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	run     func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	publish func(context.Context, *agents.GenerationState) error
+	extract func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 }
 
 type generationChapterStoreFake struct {
@@ -81,6 +82,13 @@ func (e *generationTestEngine) PrepareContext(ctx context.Context, state *agents
 func (e *generationTestEngine) RunChapterGeneration(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 	if e.run != nil {
 		return e.run(ctx, state)
+	}
+	return state, nil
+}
+
+func (e *generationTestEngine) ExtractContinuity(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+	if e.extract != nil {
+		return e.extract(ctx, state)
 	}
 	return state, nil
 }
@@ -673,6 +681,48 @@ func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T)
 	}
 	if !strings.Contains(recorder.Body.String(), `"status":"success"`) {
 		t.Fatalf("SSE body missing success terminal: %s", recorder.Body.String())
+	}
+}
+
+func TestHandleGenerateChapterUsesPersistedOrderForChapterIDRegeneration(t *testing.T) {
+	var generatedIndex int
+	store := &generationChapterStoreFake{
+		prepare: func(context.Context, int, int, int) (*generationChapterTarget, error) {
+			return &generationChapterTarget{
+				ID:        11,
+				Title:     "第四章",
+				Order:     4,
+				Status:    "Draft",
+				UpdatedAt: time.Unix(1, 0),
+			}, nil
+		},
+	}
+	engine := &generationTestEngine{
+		prepare: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			generatedIndex = state.ChapterIndex
+			return state, nil
+		},
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = "新正文"
+			return state, nil
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/novel/generate?novel_id=7&chapter_id=11&idea=test&persist=1",
+		nil,
+	)
+
+	server.HandleGenerateChapter(recorder, request)
+
+	if generatedIndex != 4 {
+		t.Fatalf("chapter index = %d, want persisted order 4", generatedIndex)
+	}
+	if !strings.Contains(recorder.Body.String(), `"status":"success"`) {
+		t.Fatalf("generation failed: %s", recorder.Body.String())
 	}
 }
 

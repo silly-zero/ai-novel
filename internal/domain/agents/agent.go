@@ -36,27 +36,40 @@ type GenerationStreamEvent struct {
 // GenerationStreamSink 同步投递一次生成请求中的实时输出
 type GenerationStreamSink func(context.Context, GenerationStreamEvent) error
 
+// ContinuityPacket carries the structured handoff between adjacent chapters.
+type ContinuityPacket struct {
+	LastBeat   string   `json:"last_beat"`
+	OpenLoops  []string `json:"open_loops"`
+	NextAction string   `json:"next_action"`
+}
+
+func (p ContinuityPacket) IsEmpty() bool {
+	return p.LastBeat == "" && len(p.OpenLoops) == 0 && p.NextAction == ""
+}
+
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
-	GenerationID    string
-	StreamSink      GenerationStreamSink
-	NovelID         string
-	ChapterID       string
-	ChapterIndex    int    // 当前章节序号
-	Idea            string // 初始想法 (一句话 Idea)
-	FullOutline     string // 全书大纲 (由 Architect Agent 生成)
-	ExistingOutline string // 已有全书大纲（续写时参考）
-	OutlineStart    int    // 生成大纲的起始章
-	OutlineEnd      int    // 生成大纲的结束章
-	Outline         string // 当前章节剧情大纲 (由 Plot Agent 生成)
-	SceneCard       string // 导演拆解出的场景卡
-	EditorNotes     string // 人工干预：作者/编辑给出的指令或限制
-	ManualContext   string // 人工补充的资料片段（优先注入到 Context）
-	Context         string // 图书管理员检索出的背景资料 (角色设定、前情提要)
-	Draft           string // 主笔生成的草稿
-	Critique        string // 审查员的修改意见
-	RetryCount      int    // 重试次数
-	IsApproved      bool   // 是否通过审查
+	GenerationID       string
+	StreamSink         GenerationStreamSink
+	NovelID            string
+	ChapterID          string
+	ChapterIndex       int              // 当前章节序号
+	Idea               string           // 初始想法 (一句话 Idea)
+	FullOutline        string           // 全书大纲 (由 Architect Agent 生成)
+	ExistingOutline    string           // 已有全书大纲（续写时参考）
+	OutlineStart       int              // 生成大纲的起始章
+	OutlineEnd         int              // 生成大纲的结束章
+	Outline            string           // 当前章节剧情大纲 (由 Plot Agent 生成)
+	SceneCard          string           // 导演拆解出的场景卡
+	EditorNotes        string           // 人工干预：作者/编辑给出的指令或限制
+	ManualContext      string           // 人工补充的资料片段（优先注入到 Context）
+	Context            string           // 图书管理员检索出的背景资料 (角色设定、前情提要)
+	PreviousContinuity ContinuityPacket // 上一章的结构化接力状态
+	Draft              string           // 主笔生成的草稿
+	Critique           string           // 审查员的修改意见
+	Continuity         ContinuityPacket // 当前草稿对应的结构化接力状态
+	RetryCount         int              // 重试次数
+	IsApproved         bool             // 是否通过审查
 }
 
 // Agent 是所有智能体的顶级抽象接口

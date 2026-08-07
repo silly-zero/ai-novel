@@ -26,8 +26,9 @@ func (r *ReviewerAgent) Role() AgentRole {
 
 // ReviewResult 审查结果的结构化定义
 type ReviewResult struct {
-	Passed   bool   `json:"passed"`   // 是否通过
-	Critique string `json:"critique"` // 如果不通过，具体的修改意见
+	Passed           bool   `json:"passed"`
+	ContinuityPassed bool   `json:"continuity_passed"`
+	Critique         string `json:"critique"`
 }
 
 func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
@@ -53,16 +54,19 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 3. 行文质量：是否存在逻辑硬伤、水字数、或者描写过于干瘪？
 4. 字数要求：正文总字数（按中文字符计）是否在 2500-4000 字之间？
 5. 分章节奏：是否把一个应跨多章的大事件在本章“一次性写完”？如果是，必须判定不通过，并要求改成“本章只推进一个阶段，结尾保留悬念/未完成目标”。
+6. 连贯性硬门槛：如果存在上一章接力状态，章首是否承接 NextAction 或合理处理 OpenLoops？OpenLoops 可以被解决、升级或转化，不要求原样复述；若无因断裂或凭空重启，必须判定 continuity_passed=false。
+7. 本章结尾是否留下具体、可行动的未完成目标供下一章继续？第一章跳过上一章承接检查，但仍检查本章结尾。
 
 请你严格审查，并输出 JSON 格式的审查结果：
 {
 	"passed": true或false,
-	"critique": "如果不通过，在这里写明具体的、可执行的修改意见（包括如何拆分为多章推进）。如果通过，请留空。"
+	"continuity_passed": true或false,
+		"critique": "如果不通过，在这里写明具体的、可执行的修改意见。如果通过，请留空。"
 }
 务必确保输出是合法的 JSON 字符串。`
 
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
-		state.SceneCard, state.Context, state.Draft)
+	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
+		state.SceneCard, state.Context, continuityPrompt(state.PreviousContinuity), state.Draft)
 
 	result, err := generateStructuredResponse(
 		ctx,
@@ -77,7 +81,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		return state, fmt.Errorf("reviewer agent failed to analyze draft: %w", err)
 	}
 
-	state.IsApproved = result.Passed
+	state.IsApproved = result.Passed && result.ContinuityPassed
 	state.Critique = strings.TrimSpace(result.Critique)
 
 	return state, nil
@@ -96,6 +100,14 @@ func decodeReviewResult(candidate []byte) (ReviewResult, error) {
 	if err := json.Unmarshal(passedJSON, &passed); err != nil {
 		return ReviewResult{}, fmt.Errorf("passed is required and must be a boolean")
 	}
+	var continuityPassed bool
+	continuityJSON, ok := raw["continuity_passed"]
+	if !ok || string(bytes.TrimSpace(continuityJSON)) == "null" {
+		return ReviewResult{}, fmt.Errorf("continuity_passed is required and must be a boolean")
+	}
+	if err := json.Unmarshal(continuityJSON, &continuityPassed); err != nil {
+		return ReviewResult{}, fmt.Errorf("continuity_passed is required and must be a boolean")
+	}
 	var critique string
 	if critiqueJSON, ok := raw["critique"]; ok {
 		if string(bytes.TrimSpace(critiqueJSON)) == "null" {
@@ -105,13 +117,13 @@ func decodeReviewResult(candidate []byte) (ReviewResult, error) {
 			return ReviewResult{}, fmt.Errorf("critique must be a string")
 		}
 	}
-	return ReviewResult{Passed: passed, Critique: critique}, nil
+	return ReviewResult{Passed: passed, ContinuityPassed: continuityPassed, Critique: critique}, nil
 }
 
 func validateReviewResult(result *ReviewResult) error {
 	result.Critique = strings.TrimSpace(result.Critique)
-	if !result.Passed && result.Critique == "" {
-		return fmt.Errorf("critique is required when passed is false")
+	if (!result.Passed || !result.ContinuityPassed) && result.Critique == "" {
+		return fmt.Errorf("critique is required when review or continuity fails")
 	}
 	return nil
 }

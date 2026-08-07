@@ -12,9 +12,12 @@ import (
 	"sync"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/go-chi/chi/v5"
@@ -25,16 +28,21 @@ type generationEngine interface {
 	PrepareContext(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	RunChapterGeneration(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	PublishChapterGenerated(context.Context, *agents.GenerationState) error
+	ExtractContinuity(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 }
 
 type generationChapterTarget struct {
-	ID        int
-	Title     string
-	Content   string
-	WordCount int
-	Order     int
-	Status    string
-	UpdatedAt time.Time
+	ID                 int
+	Title              string
+	Content            string
+	WordCount          int
+	Order              int
+	Status             string
+	LastBeat           string
+	OpenLoops          []string
+	NextAction         string
+	PreviousContinuity agents.ContinuityPacket
+	UpdatedAt          time.Time
 }
 
 type generationChapterStore interface {
@@ -78,7 +86,11 @@ func (s *entGenerationChapterStore) Prepare(
 		return nil, err
 	}
 	if err == nil {
-		return generationChapterTargetFromRow(row), nil
+		target := generationChapterTargetFromRow(row)
+		if err := s.loadPreviousContinuity(ctx, novelID, target); err != nil {
+			return nil, err
+		}
+		return target, nil
 	}
 	if chapterID > 0 {
 		return nil, errors.New("chapter not found")
@@ -96,7 +108,37 @@ func (s *entGenerationChapterStore) Prepare(
 	if err != nil {
 		return nil, err
 	}
-	return generationChapterTargetFromRow(row), nil
+	target := generationChapterTargetFromRow(row)
+	if err := s.loadPreviousContinuity(ctx, novelID, target); err != nil {
+		return nil, err
+	}
+	return target, nil
+}
+
+func (s *entGenerationChapterStore) loadPreviousContinuity(
+	ctx context.Context,
+	novelID int,
+	target *generationChapterTarget,
+) error {
+	if target == nil || target.Order <= 1 {
+		return nil
+	}
+	previous, err := s.client.Chapter.Query().Where(
+		chapter.OrderEQ(target.Order-1),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).Only(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	target.PreviousContinuity = agents.ContinuityPacket{
+		LastBeat:   strings.TrimSpace(previous.LastBeat),
+		OpenLoops:  append([]string(nil), previous.OpenLoops...),
+		NextAction: strings.TrimSpace(previous.NextAction),
+	}
+	return nil
 }
 
 func (s *entGenerationChapterStore) Save(
@@ -112,11 +154,26 @@ func (s *entGenerationChapterStore) Save(
 			chapter.WordCountEQ(target.WordCount),
 			chapter.OrderEQ(target.Order),
 			chapter.StatusEQ(target.Status),
+			chapter.LastBeatEQ(target.LastBeat),
+			predicate.Chapter(func(selector *sql.Selector) {
+				openLoopsPredicate := sqljson.ValueEQ(chapter.FieldOpenLoops, target.OpenLoops)
+				if len(target.OpenLoops) == 0 {
+					openLoopsPredicate = sql.Or(
+						sql.IsNull(chapter.FieldOpenLoops),
+						openLoopsPredicate,
+					)
+				}
+				selector.Where(openLoopsPredicate)
+			}),
+			chapter.NextActionEQ(target.NextAction),
 			chapter.UpdatedAtEQ(target.UpdatedAt),
 		).
 		SetContent(state.Draft).
 		SetWordCount(wordCountOf(state.Draft)).
 		SetStatus("Draft").
+		SetLastBeat(state.Continuity.LastBeat).
+		SetOpenLoops(state.Continuity.OpenLoops).
+		SetNextAction(state.Continuity.NextAction).
 		Save(ctx)
 	if ent.IsNotFound(err) {
 		return errGenerationChapterChanged
@@ -126,13 +183,16 @@ func (s *entGenerationChapterStore) Save(
 
 func generationChapterTargetFromRow(row *ent.Chapter) *generationChapterTarget {
 	return &generationChapterTarget{
-		ID:        row.ID,
-		Title:     row.Title,
-		Content:   row.Content,
-		WordCount: row.WordCount,
-		Order:     row.Order,
-		Status:    row.Status,
-		UpdatedAt: row.UpdatedAt,
+		ID:         row.ID,
+		Title:      row.Title,
+		Content:    row.Content,
+		WordCount:  row.WordCount,
+		Order:      row.Order,
+		Status:     row.Status,
+		LastBeat:   row.LastBeat,
+		OpenLoops:  append([]string(nil), row.OpenLoops...),
+		NextAction: row.NextAction,
+		UpdatedAt:  row.UpdatedAt,
 	}
 }
 
@@ -1363,14 +1423,16 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chapterID := ""
+	chapterIndexForGeneration := chapterIndex
 	if chapterTarget != nil {
 		chapterID = strconv.Itoa(chapterTarget.ID)
+		chapterIndexForGeneration = chapterTarget.Order
 	}
 	state := &agents.GenerationState{
 		GenerationID:    generationID,
 		NovelID:         novelID,
 		ChapterID:       chapterID,
-		ChapterIndex:    chapterIndex,
+		ChapterIndex:    chapterIndexForGeneration,
 		Idea:            idea,
 		FullOutline:     outline,
 		EditorNotes:     editorNotes,
@@ -1378,6 +1440,12 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		ExistingOutline: existingOutline,
 		OutlineStart:    outlineStart,
 		OutlineEnd:      outlineEnd,
+		PreviousContinuity: func() agents.ContinuityPacket {
+			if chapterTarget == nil {
+				return agents.ContinuityPacket{}
+			}
+			return chapterTarget.PreviousContinuity
+		}(),
 	}
 
 	prepared, prepErr := s.engine.PrepareContext(ctx, state)
@@ -1421,6 +1489,11 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	capacityOwnedByHandler = false
 	go func() {
 		finalState, runErr := s.engine.RunChapterGeneration(ctx, prepared)
+		if runErr == nil && persist && finalState != nil {
+			finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
+			finalState.NovelID = novelID
+			finalState, runErr = s.engine.ExtractContinuity(ctx, finalState)
+		}
 		cause := s.generationGuard.finish(novelIDInt, generationID)
 		result := classifyGenerationResult(
 			generationID,
@@ -1430,8 +1503,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		)
 
 		if result.Status == generationStatusSuccess && persist {
-			finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
-			finalState.NovelID = novelID
 			postprocessCtx, cancelPostprocess := context.WithDeadline(
 				s.lifecycleCtx,
 				generationDeadline,

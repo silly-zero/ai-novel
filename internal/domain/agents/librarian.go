@@ -270,7 +270,7 @@ func (l *LibrarianAgent) makeRetrievalPlan(ctx context.Context, state *Generatio
 }
 务必确保输出是合法的 JSON。`
 
-	userPrompt := fmt.Sprintf("【场景描述】\n%s\n\n【本章大纲】\n%s\n", state.SceneCard, state.Outline)
+	userPrompt := fmt.Sprintf("【场景描述】\n%s\n\n【本章大纲】\n%s\n\n%s\n", state.SceneCard, state.Outline, continuityPrompt(state.PreviousContinuity))
 	if state.EditorNotes != "" {
 		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
 	}

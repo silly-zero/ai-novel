@@ -327,7 +327,7 @@ func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 func TestReviewerStructuredRepairProducesReviewResult(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
 		`{"passed":"false","critique":"修改"}`,
-		`{"passed":false,"critique":" 补充场景冲突 "}`,
+		`{"passed":false,"continuity_passed":false,"critique":" 补充场景冲突 "}`,
 	}}
 	agent := NewReviewerAgent(llm)
 	state := &GenerationState{Draft: strings.Repeat("文", 2500)}
@@ -370,8 +370,9 @@ func TestStructuredValidatorsRejectMissingRequiredFields(t *testing.T) {
 	for _, response := range []string{
 		`{"critique":"missing passed"}`,
 		`{"passed":null,"critique":"invalid null"}`,
-		`{"passed":true,"critique":null}`,
-		`{"passed":false,"critique":" "}`,
+		`{"passed":true,"continuity_passed":true,"critique":null}`,
+		`{"passed":false,"continuity_passed":false,"critique":" "}`,
+		`{"passed":true,"continuity_passed":false,"critique":" "}`,
 	} {
 		_, err := parseStructuredResponse(response, decodeReviewResult, validateReviewResult)
 		if err == nil {

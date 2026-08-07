@@ -59,6 +59,40 @@ func (_c *ChapterCreate) SetNillableStatus(v *string) *ChapterCreate {
 	return _c
 }
 
+// SetLastBeat sets the "last_beat" field.
+func (_c *ChapterCreate) SetLastBeat(v string) *ChapterCreate {
+	_c.mutation.SetLastBeat(v)
+	return _c
+}
+
+// SetNillableLastBeat sets the "last_beat" field if the given value is not nil.
+func (_c *ChapterCreate) SetNillableLastBeat(v *string) *ChapterCreate {
+	if v != nil {
+		_c.SetLastBeat(*v)
+	}
+	return _c
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (_c *ChapterCreate) SetOpenLoops(v []string) *ChapterCreate {
+	_c.mutation.SetOpenLoops(v)
+	return _c
+}
+
+// SetNextAction sets the "next_action" field.
+func (_c *ChapterCreate) SetNextAction(v string) *ChapterCreate {
+	_c.mutation.SetNextAction(v)
+	return _c
+}
+
+// SetNillableNextAction sets the "next_action" field if the given value is not nil.
+func (_c *ChapterCreate) SetNillableNextAction(v *string) *ChapterCreate {
+	if v != nil {
+		_c.SetNextAction(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *ChapterCreate) SetCreatedAt(v time.Time) *ChapterCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -137,6 +171,14 @@ func (_c *ChapterCreate) defaults() {
 		v := chapter.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.LastBeat(); !ok {
+		v := chapter.DefaultLastBeat
+		_c.mutation.SetLastBeat(v)
+	}
+	if _, ok := _c.mutation.NextAction(); !ok {
+		v := chapter.DefaultNextAction
+		_c.mutation.SetNextAction(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := chapter.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -163,6 +205,12 @@ func (_c *ChapterCreate) check() error {
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Chapter.status"`)}
+	}
+	if _, ok := _c.mutation.LastBeat(); !ok {
+		return &ValidationError{Name: "last_beat", err: errors.New(`ent: missing required field "Chapter.last_beat"`)}
+	}
+	if _, ok := _c.mutation.NextAction(); !ok {
+		return &ValidationError{Name: "next_action", err: errors.New(`ent: missing required field "Chapter.next_action"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Chapter.created_at"`)}
@@ -218,6 +266,18 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(chapter.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.LastBeat(); ok {
+		_spec.SetField(chapter.FieldLastBeat, field.TypeString, value)
+		_node.LastBeat = value
+	}
+	if value, ok := _c.mutation.OpenLoops(); ok {
+		_spec.SetField(chapter.FieldOpenLoops, field.TypeJSON, value)
+		_node.OpenLoops = value
+	}
+	if value, ok := _c.mutation.NextAction(); ok {
+		_spec.SetField(chapter.FieldNextAction, field.TypeString, value)
+		_node.NextAction = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(chapter.FieldCreatedAt, field.TypeTime, value)
