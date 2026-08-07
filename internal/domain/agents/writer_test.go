@@ -155,6 +155,13 @@ func TestWriterRunCompletesStream(t *testing.T) {
 		Context:   "背景",
 		Draft:     "旧草稿",
 		Critique:  "修改意见",
+		ContractAssessment: ChapterContractAssessment{
+			Goal: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧草稿依据",
+			},
+		},
+		IsApproved: true,
 	}
 
 	got, err := writer.Run(context.Background(), state)
@@ -166,6 +173,15 @@ func TestWriterRunCompletesStream(t *testing.T) {
 	}
 	if got.Critique != "" {
 		t.Fatalf("Critique = %q, want empty", got.Critique)
+	}
+	if got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		len(got.ContractAssessment.MustHappen) != 0 ||
+		len(got.ContractAssessment.MustNotHappen) != 0 ||
+		got.ContractAssessment.EndState != (ContractRequirementAssessment{}) {
+		t.Fatalf("ContractAssessment = %#v, want empty", got.ContractAssessment)
+	}
+	if got.IsApproved {
+		t.Fatal("IsApproved = true, want false for unreviewed draft")
 	}
 }
 
@@ -181,7 +197,15 @@ func TestWriterRunReturnsStreamErrorWithoutReplacingDraft(t *testing.T) {
 		Context:   "背景",
 		Draft:     "旧草稿",
 		Critique:  "修改意见",
+		ContractAssessment: ChapterContractAssessment{
+			Goal: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧草稿依据",
+			},
+		},
+		IsApproved: true,
 	}
+	originalAssessment := state.ContractAssessment
 
 	got, err := writer.Run(context.Background(), state)
 	if !errors.Is(err, streamErr) {
@@ -195,6 +219,9 @@ func TestWriterRunReturnsStreamErrorWithoutReplacingDraft(t *testing.T) {
 	}
 	if got.Critique != "修改意见" {
 		t.Fatalf("Critique = %q, want original critique", got.Critique)
+	}
+	if got.ContractAssessment.Goal != originalAssessment.Goal || !got.IsApproved {
+		t.Fatalf("review state changed on stream failure: assessment = %#v, approved = %v", got.ContractAssessment, got.IsApproved)
 	}
 }
 

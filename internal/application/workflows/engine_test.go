@@ -33,9 +33,9 @@ func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (s
 		f.reviewCalls++
 		passed := f.passOn > 0 && f.reviewCalls >= f.passOn
 		if passed {
-			return `{"passed":true,"continuity_passed":true,"contract_passed":true,"violations":[],"critique":""}`, nil
+			return `{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"线索已找到"}],"must_not_happen":[{"satisfied":true,"evidence":"真相未揭晓"}],"end_state":{"satisfied":true,"evidence":"决定继续追查"}},"critique":""}`, nil
 		}
-		return `{"passed":false,"continuity_passed":false,"contract_passed":false,"violations":["缺少契约事件"],"critique":"继续修改"}`, nil
+		return `{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":false,"evidence":"正文没有找到线索"}],"must_not_happen":[{"satisfied":true,"evidence":"真相未揭晓"}],"end_state":{"satisfied":true,"evidence":"决定继续追查"}},"critique":""}`, nil
 	}
 	return "unused", nil
 }

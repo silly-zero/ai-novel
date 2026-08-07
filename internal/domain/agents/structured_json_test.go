@@ -309,10 +309,19 @@ func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
 func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{"not json", "still not json"}}
 	agent := NewReviewerAgent(llm)
+	oldAssessment := ChapterContractAssessment{
+		Goal: ContractRequirementAssessment{
+			Satisfied: true,
+			Evidence:  "旧评估依据",
+		},
+	}
 	state := &GenerationState{
-		Draft:      strings.Repeat("文", 2500),
-		Critique:   "existing critique",
-		RetryCount: 2,
+		Draft:              strings.Repeat("文", 2500),
+		ChapterContract:    validChapterContract(),
+		ContractAssessment: oldAssessment,
+		Critique:           "existing critique",
+		IsApproved:         true,
+		RetryCount:         2,
 	}
 
 	_, err := agent.Run(context.Background(), state)
@@ -321,6 +330,37 @@ func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 	}
 	if state.Critique != "existing critique" || state.RetryCount != 2 || llm.calls != 2 {
 		t.Fatalf("state = %#v, calls = %d", state, llm.calls)
+	}
+	if state.ContractAssessment.Goal != oldAssessment.Goal || !state.IsApproved {
+		t.Fatalf("review state changed after invalid responses: assessment = %#v, approved = %v", state.ContractAssessment, state.IsApproved)
+	}
+}
+
+func TestReviewerWordCountPrecheckClearsOldContractAssessment(t *testing.T) {
+	llm := &queuedStructuredLLM{}
+	state := &GenerationState{
+		Draft: strings.Repeat("文", 2499),
+		ContractAssessment: ChapterContractAssessment{
+			Goal: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧评估依据",
+			},
+		},
+		IsApproved: true,
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		len(got.ContractAssessment.MustHappen) != 0 ||
+		len(got.ContractAssessment.MustNotHappen) != 0 ||
+		got.ContractAssessment.EndState != (ContractRequirementAssessment{}) {
+		t.Fatalf("ContractAssessment = %#v, want empty", got.ContractAssessment)
+	}
+	if got.IsApproved || llm.calls != 0 {
+		t.Fatalf("approved = %v, calls = %d", got.IsApproved, llm.calls)
 	}
 }
 
@@ -341,25 +381,27 @@ func TestReviewerStructuredRepairProducesReviewResult(t *testing.T) {
 	}
 }
 
+func passingContractAssessmentJSON() string {
+	return `{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"已进入密门"},{"satisfied":true,"evidence":"已发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"未揭晓反派"}],"end_state":{"satisfied":true,"evidence":"决定追踪祭坛"}}`
+}
+
 func TestReviewerContractGate(t *testing.T) {
-	tests := []struct {
+	passing := `{"passed":true,"continuity_passed":true,"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
+	failing := `{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"已进入密门"},{"satisfied":false,"evidence":"正文没有发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"未揭晓反派"}],"end_state":{"satisfied":true,"evidence":"决定追踪祭坛"}},"critique":"补强情节"}`
+
+	for _, test := range []struct {
 		name         string
 		response     string
 		wantApproved bool
-		wantCritique string
+		wantCritique []string
 	}{
+		{name: "passes complete contract", response: passing, wantApproved: true},
 		{
-			name:         "passes complete contract",
-			response:     `{"passed":true,"continuity_passed":true,"contract_passed":true,"violations":[],"critique":""}`,
-			wantApproved: true,
+			name:         "rejects derived contract violation",
+			response:     failing,
+			wantCritique: []string{"must_happen[1]", "主角发现旧王朝血书", "正文没有发现血书", "补强情节"},
 		},
-		{
-			name:         "rejects contract violation",
-			response:     `{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":["缺少血书事件"],"critique":"补写发现血书的过程"}`,
-			wantCritique: "补写发现血书的过程",
-		},
-	}
-	for _, test := range tests {
+	} {
 		t.Run(test.name, func(t *testing.T) {
 			llm := &queuedStructuredLLM{responses: []string{test.response}}
 			state := &GenerationState{
@@ -371,27 +413,93 @@ func TestReviewerContractGate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.IsApproved != test.wantApproved || got.Critique != test.wantCritique {
+			if got.IsApproved != test.wantApproved {
 				t.Fatalf("state = %#v", got)
+			}
+			for _, value := range test.wantCritique {
+				if !strings.Contains(got.Critique, value) {
+					t.Fatalf("critique missing %q: %s", value, got.Critique)
+				}
+			}
+			if got.ContractAssessment.Goal.Evidence != "目标已完成" {
+				t.Fatalf("assessment = %#v", got.ContractAssessment)
+			}
+			if llm.calls != 1 {
+				t.Fatalf("reviewer calls = %d, want 1 for a structurally valid assessment", llm.calls)
 			}
 		})
 	}
 }
 
+func TestChapterContractViolationsCoversEveryRequirementKind(t *testing.T) {
+	contract := validChapterContract()
+	assessment := ChapterContractAssessment{
+		Goal: ContractRequirementAssessment{Evidence: "目标未完成"},
+		MustHappen: []ContractRequirementAssessment{
+			{Satisfied: true, Evidence: "已进入密门"},
+			{Evidence: "没有发现血书"},
+		},
+		MustNotHappen: []ContractRequirementAssessment{
+			{Evidence: "正文提前揭晓了反派"},
+		},
+		EndState: ContractRequirementAssessment{Evidence: "没有决定追踪祭坛"},
+	}
+
+	violations := chapterContractViolations(contract, assessment)
+	joined := strings.Join(violations, "\n")
+	for _, value := range []string{
+		"chapter_goal",
+		contract.Goal,
+		"must_happen[1]",
+		contract.MustHappen[1],
+		"must_not_happen[0]",
+		contract.MustNotHappen[0],
+		"end_state",
+		contract.EndState,
+		"目标未完成",
+		"没有发现血书",
+		"正文提前揭晓了反派",
+		"没有决定追踪祭坛",
+	} {
+		if !strings.Contains(joined, value) {
+			t.Fatalf("violations missing %q: %s", value, joined)
+		}
+	}
+}
+
+func TestReviewerRepairsStructurallyInvalidContractAssessmentOnce(t *testing.T) {
+	invalid := `{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"依据"},"must_happen":[],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`
+	valid := `{"passed":true,"continuity_passed":true,"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
+	state := &GenerationState{
+		Draft:           strings.Repeat("文", 2500),
+		ChapterContract: validChapterContract(),
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsApproved || llm.calls != 2 {
+		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
+	}
+}
+
 func TestReviewerContractValidationRejectsInvalidResults(t *testing.T) {
+	tooLongEvidence := strings.Repeat("据", maxContractAssessmentEvidenceRunes+1)
 	tests := []string{
-		`{"passed":true,"continuity_passed":true,"violations":[],"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_passed":true,"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":["缺少事件"],"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":[],"critique":"补写事件"}`,
-		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":[" "],"critique":"补写事件"}`,
-		`{"passed":true,"continuity_passed":true,"contract_passed":true,"violations":["缺少事件"],"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_assessment":null,"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"evidence":"依据"},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"依据"},"must_happen":[],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":" "},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
+		fmt.Sprintf(`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":%q},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`, tooLongEvidence),
 	}
 	for _, response := range tests {
 		_, err := parseStructuredResponse(
 			response,
 			func(candidate []byte) (ReviewResult, error) {
-				return decodeReviewResultWithContract(candidate, true)
+				return decodeReviewResultWithContract(candidate, validChapterContract())
 			},
 			validateReviewResult,
 		)
@@ -403,14 +511,14 @@ func TestReviewerContractValidationRejectsInvalidResults(t *testing.T) {
 
 func TestReviewerWithoutContractKeepsLegacyResponseCompatibility(t *testing.T) {
 	result, err := parseStructuredResponse(
-		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":["应忽略"],"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"critique":""}`,
 		decodeReviewResult,
 		validateReviewResult,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Passed || !result.ContinuityPassed || result.contractChecked {
+	if !result.Passed || !result.ContinuityPassed || result.contractChecked || !result.ContractPassed {
 		t.Fatalf("result = %#v", result)
 	}
 }
