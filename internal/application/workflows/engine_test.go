@@ -33,9 +33,9 @@ func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (s
 		f.reviewCalls++
 		passed := f.passOn > 0 && f.reviewCalls >= f.passOn
 		if passed {
-			return `{"passed":true,"continuity_passed":true,"critique":""}`, nil
+			return `{"passed":true,"continuity_passed":true,"contract_passed":true,"violations":[],"critique":""}`, nil
 		}
-		return `{"passed":false,"continuity_passed":false,"critique":"继续修改"}`, nil
+		return `{"passed":false,"continuity_passed":false,"contract_passed":false,"violations":["缺少契约事件"],"critique":"继续修改"}`, nil
 	}
 	return "unused", nil
 }
@@ -73,8 +73,14 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	state := &agents.GenerationState{
 		ExistingOutline: "大纲",
 		Outline:         "本章大纲",
-		SceneCard:       "场景卡",
-		Context:         "背景",
+		ChapterContract: agents.ChapterContract{
+			Goal:          "完成调查",
+			MustHappen:    []string{"找到线索"},
+			MustNotHappen: []string{"揭晓真相"},
+			EndState:      "决定继续追查",
+		},
+		SceneCard: "场景卡",
+		Context:   "背景",
 		StreamSink: func(_ context.Context, event agents.GenerationStreamEvent) error {
 			if event.Type == agents.GenerationStreamEventRetry {
 				retries = append(retries, event.RetryCount)
@@ -105,8 +111,14 @@ func TestRunChapterGenerationStopsRewritingAfterApproval(t *testing.T) {
 	state := &agents.GenerationState{
 		ExistingOutline: "大纲",
 		Outline:         "本章大纲",
-		SceneCard:       "场景卡",
-		Context:         "背景",
+		ChapterContract: agents.ChapterContract{
+			Goal:          "完成调查",
+			MustHappen:    []string{"找到线索"},
+			MustNotHappen: []string{"揭晓真相"},
+			EndState:      "决定继续追查",
+		},
+		SceneCard: "场景卡",
+		Context:   "背景",
 		StreamSink: func(_ context.Context, event agents.GenerationStreamEvent) error {
 			if event.Type == agents.GenerationStreamEventRetry {
 				retries++

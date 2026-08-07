@@ -47,6 +47,17 @@ func (p ContinuityPacket) IsEmpty() bool {
 	return p.LastBeat == "" && len(p.OpenLoops) == 0 && p.NextAction == ""
 }
 
+type ChapterContract struct {
+	Goal          string   `json:"chapter_goal"`
+	MustHappen    []string `json:"must_happen"`
+	MustNotHappen []string `json:"must_not_happen"`
+	EndState      string   `json:"end_state"`
+}
+
+func (c ChapterContract) IsEmpty() bool {
+	return c.Goal == "" && len(c.MustHappen) == 0 && len(c.MustNotHappen) == 0 && c.EndState == ""
+}
+
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
 	GenerationID       string
@@ -60,6 +71,7 @@ type GenerationState struct {
 	OutlineStart       int              // 生成大纲的起始章
 	OutlineEnd         int              // 生成大纲的结束章
 	Outline            string           // 当前章节剧情大纲 (由 Plot Agent 生成)
+	ChapterContract    ChapterContract  // 当前章节必须遵守的结构化剧情契约
 	SceneCard          string           // 导演拆解出的场景卡
 	EditorNotes        string           // 人工干预：作者/编辑给出的指令或限制
 	ManualContext      string           // 人工补充的资料片段（优先注入到 Context）

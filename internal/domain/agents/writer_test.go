@@ -86,6 +86,39 @@ func TestWriterRunInjectsPreviousContinuityOnRewrite(t *testing.T) {
 		t.Fatalf("writer system prompt missing continuity rule: %s", llm.systemPrompt)
 	}
 }
+func TestWriterRunInjectsChapterContractOnRewrite(t *testing.T) {
+	llm := &writerTestLLM{chunks: []string{"新正文"}}
+	state := &GenerationState{
+		SceneCard:       "场景",
+		Context:         "背景",
+		ChapterContract: validChapterContract(),
+		Draft:           "旧正文",
+		Critique:        "补齐血书情节",
+	}
+
+	if _, err := NewWriterAgent(llm).Run(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{
+		"主角确认密门与身世有关",
+		"主角进入密门",
+		"主角发现旧王朝血书",
+		"揭晓最终反派身份",
+		"主角决定追踪血书指向的地下祭坛",
+		"旧正文",
+		"补齐血书情节",
+	} {
+		if !strings.Contains(llm.userPrompt, value) {
+			t.Fatalf("writer prompt missing %q: %s", value, llm.userPrompt)
+		}
+	}
+	for _, rule := range []string{"完成全部 MustHappen", "不得执行 MustNotHappen", "章尾达到 EndState"} {
+		if !strings.Contains(llm.systemPrompt, rule) {
+			t.Fatalf("writer system prompt missing %q: %s", rule, llm.systemPrompt)
+		}
+	}
+}
+
 func TestWriterRunReturnsSinkErrorWithoutReplacingDraft(t *testing.T) {
 	sinkErr := errors.New("stream consumer stopped")
 	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"第一段", "第二段", "第三段"}})

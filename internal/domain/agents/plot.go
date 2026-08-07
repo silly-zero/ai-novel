@@ -28,14 +28,16 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 		return state, fmt.Errorf("plot agent requires full outline or idea but both are empty")
 	}
 
-	systemPrompt := `你是一位资深网文编剧。你的任务是根据【小说想法】和【全书大纲】，为指定的【章节序号】撰写详细的本章剧情大纲。
-大纲要求：
-- 逻辑自洽，充满冲突。
-- 强制“分章推进”：一个大事件必须拆分为多个阶段，不能在单章内完整解决。
-- 本章只推进一个阶段（例如：铺垫/试探/受挫/反转之一），并留下明确未解问题或下一章悬念。
-- 除非全书大纲明确该章为终局章，否则不要在本章里让核心矛盾彻底收束。
-- 字数在 200-400 字之间。
-- 直接输出大纲内容，不要有多余的描述。`
+	systemPrompt := `你是一位资深网文编剧。你的任务是根据【小说想法】、【全书大纲】、【章节序号】和【上一章接力状态】，制定本章必须遵守的结构化剧情契约。
+要求：
+- 本章只推进一个阶段（铺垫、试探、受挫或反转之一），不能在单章内完整解决一个应跨多章的大事件。
+- chapter_goal：本章唯一核心目标，具体且可验证。
+- must_happen：正文必须实际发生的关键事件，1-5条，按发生顺序排列。
+- must_not_happen：本章禁止发生或禁止提前解决的事件，0-5条；用于保护后续主线和核心矛盾。
+- end_state：正文结束时必须达到的具体状态，必须能自然导向下一章行动。
+- 如果存在上一章接力状态，契约开端必须承接 NextAction 或合理处理 OpenLoops。
+只返回合法 JSON，不要 Markdown 或解释：
+{"chapter_goal":"...","must_happen":["..."],"must_not_happen":["..."],"end_state":"..."}`
 
 	idea := state.Idea
 	if idea == "" {
@@ -46,15 +48,23 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 		fullOutline = "（未提供）"
 	}
 
-	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n请输出本章详细大纲：",
+	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n请输出本章剧情契约：",
 		idea, fullOutline, state.ChapterIndex, continuityPrompt(state.PreviousContinuity))
 
-	outline, err := p.llm.Generate(ctx, systemPrompt, userPrompt)
+	contract, err := generateStructuredResponse(
+		ctx,
+		p.llm,
+		"plot",
+		systemPrompt,
+		userPrompt,
+		decodeChapterContract,
+		validateChapterContract,
+	)
 	if err != nil {
-		return state, fmt.Errorf("plot agent failed to generate outline: %w", err)
+		return state, fmt.Errorf("plot agent failed to generate chapter contract: %w", err)
 	}
 
-	// 3. 将生成的大纲写入状态
-	state.Outline = outline
+	state.ChapterContract = contract
+	state.Outline = formatChapterContract(contract)
 	return state, nil
 }

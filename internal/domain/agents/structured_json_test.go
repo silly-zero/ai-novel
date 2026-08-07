@@ -341,6 +341,80 @@ func TestReviewerStructuredRepairProducesReviewResult(t *testing.T) {
 	}
 }
 
+func TestReviewerContractGate(t *testing.T) {
+	tests := []struct {
+		name         string
+		response     string
+		wantApproved bool
+		wantCritique string
+	}{
+		{
+			name:         "passes complete contract",
+			response:     `{"passed":true,"continuity_passed":true,"contract_passed":true,"violations":[],"critique":""}`,
+			wantApproved: true,
+		},
+		{
+			name:         "rejects contract violation",
+			response:     `{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":["缺少血书事件"],"critique":"补写发现血书的过程"}`,
+			wantCritique: "补写发现血书的过程",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			llm := &queuedStructuredLLM{responses: []string{test.response}}
+			state := &GenerationState{
+				Draft:           strings.Repeat("文", 2500),
+				ChapterContract: validChapterContract(),
+			}
+
+			got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.IsApproved != test.wantApproved || got.Critique != test.wantCritique {
+				t.Fatalf("state = %#v", got)
+			}
+		})
+	}
+}
+
+func TestReviewerContractValidationRejectsInvalidResults(t *testing.T) {
+	tests := []string{
+		`{"passed":true,"continuity_passed":true,"violations":[],"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_passed":true,"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":["缺少事件"],"critique":""}`,
+		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":[],"critique":"补写事件"}`,
+		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":[" "],"critique":"补写事件"}`,
+		`{"passed":true,"continuity_passed":true,"contract_passed":true,"violations":["缺少事件"],"critique":""}`,
+	}
+	for _, response := range tests {
+		_, err := parseStructuredResponse(
+			response,
+			func(candidate []byte) (ReviewResult, error) {
+				return decodeReviewResultWithContract(candidate, true)
+			},
+			validateReviewResult,
+		)
+		if err == nil {
+			t.Fatalf("contract review response %q was accepted", response)
+		}
+	}
+}
+
+func TestReviewerWithoutContractKeepsLegacyResponseCompatibility(t *testing.T) {
+	result, err := parseStructuredResponse(
+		`{"passed":true,"continuity_passed":true,"contract_passed":false,"violations":["应忽略"],"critique":""}`,
+		decodeReviewResult,
+		validateReviewResult,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Passed || !result.ContinuityPassed || result.contractChecked {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
 func TestCharacterAndWorldValidatorsRejectBeforePersistence(t *testing.T) {
 	characterRepo := &characterRepositoryFake{}
 	characterLLM := &queuedStructuredLLM{responses: []string{

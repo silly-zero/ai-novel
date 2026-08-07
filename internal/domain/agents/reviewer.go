@@ -26,9 +26,12 @@ func (r *ReviewerAgent) Role() AgentRole {
 
 // ReviewResult 审查结果的结构化定义
 type ReviewResult struct {
-	Passed           bool   `json:"passed"`
-	ContinuityPassed bool   `json:"continuity_passed"`
-	Critique         string `json:"critique"`
+	Passed           bool     `json:"passed"`
+	ContinuityPassed bool     `json:"continuity_passed"`
+	ContractPassed   bool     `json:"contract_passed"`
+	Violations       []string `json:"violations"`
+	Critique         string   `json:"critique"`
+	contractChecked  bool
 }
 
 func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
@@ -56,38 +59,49 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 5. 分章节奏：是否把一个应跨多章的大事件在本章“一次性写完”？如果是，必须判定不通过，并要求改成“本章只推进一个阶段，结尾保留悬念/未完成目标”。
 6. 连贯性硬门槛：如果存在上一章接力状态，章首是否承接 NextAction 或合理处理 OpenLoops？OpenLoops 可以被解决、升级或转化，不要求原样复述；若无因断裂或凭空重启，必须判定 continuity_passed=false。
 7. 本章结尾是否留下具体、可行动的未完成目标供下一章继续？第一章跳过上一章承接检查，但仍检查本章结尾。
+8. 章节契约硬门槛：如果存在【本章契约】，逐项检查 chapter_goal、全部 must_happen、全部 must_not_happen 和 end_state；漏写必须事件、写入禁止事件或章尾未达到指定状态时，contract_passed=false，并在 violations 中列出具体违约项。
 
 请你严格审查，并输出 JSON 格式的审查结果：
 {
 	"passed": true或false,
 	"continuity_passed": true或false,
-		"critique": "如果不通过，在这里写明具体的、可执行的修改意见。如果通过，请留空。"
+	"contract_passed": true或false,
+	"violations": ["具体违约项；没有则为空数组"],
+	"critique": "如果任一检查不通过，在这里写明具体的、可执行的修改意见。如果全部通过，请留空。"
 }
 务必确保输出是合法的 JSON 字符串。`
 
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
-		state.SceneCard, state.Context, continuityPrompt(state.PreviousContinuity), state.Draft)
+	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
+		state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), continuityPrompt(state.PreviousContinuity), state.Draft)
 
+	requireContract := !state.ChapterContract.IsEmpty()
 	result, err := generateStructuredResponse(
 		ctx,
 		r.llm,
 		"reviewer",
 		systemPrompt,
 		userPrompt,
-		decodeReviewResult,
+		func(candidate []byte) (ReviewResult, error) {
+			return decodeReviewResultWithContract(candidate, requireContract)
+		},
 		validateReviewResult,
 	)
 	if err != nil {
 		return state, fmt.Errorf("reviewer agent failed to analyze draft: %w", err)
 	}
 
-	state.IsApproved = result.Passed && result.ContinuityPassed
+	contractPassed := !requireContract || result.ContractPassed
+	state.IsApproved = result.Passed && result.ContinuityPassed && contractPassed
 	state.Critique = strings.TrimSpace(result.Critique)
 
 	return state, nil
 }
 
 func decodeReviewResult(candidate []byte) (ReviewResult, error) {
+	return decodeReviewResultWithContract(candidate, false)
+}
+
+func decodeReviewResultWithContract(candidate []byte, requireContract bool) (ReviewResult, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(candidate, &raw); err != nil {
 		return ReviewResult{}, err
@@ -108,6 +122,25 @@ func decodeReviewResult(candidate []byte) (ReviewResult, error) {
 	if err := json.Unmarshal(continuityJSON, &continuityPassed); err != nil {
 		return ReviewResult{}, fmt.Errorf("continuity_passed is required and must be a boolean")
 	}
+	var contractPassed bool
+	var violations []string
+	contractChecked := requireContract
+	if requireContract {
+		contractJSON, ok := raw["contract_passed"]
+		if !ok || string(bytes.TrimSpace(contractJSON)) == "null" {
+			return ReviewResult{}, fmt.Errorf("contract_passed is required when a chapter contract is present")
+		}
+		if err := json.Unmarshal(contractJSON, &contractPassed); err != nil {
+			return ReviewResult{}, fmt.Errorf("contract_passed must be a boolean")
+		}
+		violationsJSON, ok := raw["violations"]
+		if !ok || string(bytes.TrimSpace(violationsJSON)) == "null" {
+			return ReviewResult{}, fmt.Errorf("violations is required when a chapter contract is present")
+		}
+		if err := json.Unmarshal(violationsJSON, &violations); err != nil {
+			return ReviewResult{}, fmt.Errorf("violations must be an array of strings")
+		}
+	}
 	var critique string
 	if critiqueJSON, ok := raw["critique"]; ok {
 		if string(bytes.TrimSpace(critiqueJSON)) == "null" {
@@ -117,13 +150,36 @@ func decodeReviewResult(candidate []byte) (ReviewResult, error) {
 			return ReviewResult{}, fmt.Errorf("critique must be a string")
 		}
 	}
-	return ReviewResult{Passed: passed, ContinuityPassed: continuityPassed, Critique: critique}, nil
+	return ReviewResult{
+		Passed:           passed,
+		ContinuityPassed: continuityPassed,
+		ContractPassed:   contractPassed,
+		Violations:       violations,
+		Critique:         critique,
+		contractChecked:  contractChecked,
+	}, nil
 }
 
 func validateReviewResult(result *ReviewResult) error {
 	result.Critique = strings.TrimSpace(result.Critique)
-	if (!result.Passed || !result.ContinuityPassed) && result.Critique == "" {
-		return fmt.Errorf("critique is required when review or continuity fails")
+	violations := make([]string, 0, len(result.Violations))
+	for _, violation := range result.Violations {
+		violation = strings.TrimSpace(violation)
+		if violation == "" {
+			return fmt.Errorf("violations must not contain empty items")
+		}
+		violations = append(violations, violation)
+	}
+	result.Violations = violations
+	contractFailed := result.contractChecked && !result.ContractPassed
+	if (!result.Passed || !result.ContinuityPassed || contractFailed) && result.Critique == "" {
+		return fmt.Errorf("critique is required when review, continuity, or contract fails")
+	}
+	if contractFailed && len(result.Violations) == 0 {
+		return fmt.Errorf("violations is required when contract_passed is false")
+	}
+	if result.contractChecked && result.ContractPassed && len(result.Violations) > 0 {
+		return fmt.Errorf("violations must be empty when contract_passed is true")
 	}
 	return nil
 }
