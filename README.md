@@ -23,14 +23,18 @@
 - **Writer Agent (主笔)**: 负责具体章节撰写，根据场景卡与背景资料遣词造句。支持 **Token 级流式输出**。
 - **Reviewer Agent (审查员)**: 负责质量把关。如果不合格，会生成修改意见并触发 `Writer` 重写，形成 Actor-Critic 闭环。
 
-### 🧠 记忆系统与异步解耦
+### 🧠 记忆系统与实时生成
 
-- **RAG 系统**: 
-  - **Embedding**: 使用智谱 OpenAI-compatible 接口的 `embedding-3` 模型。
-  - **Vector Store**: 采用 PostgreSQL + 内存余弦相似度检索，确保数据持久化且检索高效。
+- **RAG 系统**:
+  - **Embedding**: 默认使用智谱 OpenAI-compatible API 的 `embedding-3` 模型。
+  - **Vector Store**: 采用 PostgreSQL 持久化 JSON 向量，并在 Go 中执行有界的余弦相似度检索。
 - **实时生成与 EventBus**:
   - Writer 的正文 Token 与 Retry 通过请求级同步 Sink 有序推送到 SSE，支持背压和取消。
-  - `chapter.generated` 通过领域事件触发记忆存储（Ingestion）、日志记录等异步流程。
+  - 章节成功持久化后发布 `chapter.generated`；订阅处理器并行执行，`Publish` 等待全部处理器结束并聚合错误。
+
+### 🔌 本地服务边界
+
+项目面向单人本地使用，服务默认监听 `127.0.0.1:8081`，不提供认证或多租户功能。前端开发服务器默认监听 `http://localhost:5173`，并将 `/api` 请求代理到后端。
 
 ## 📂 项目结构 (Project Structure)
 
@@ -39,7 +43,7 @@ ai-novel/
 ├── cmd/
 │   └── server/                # 应用程序入口
 ├── configs/
-│   └── config.yaml            # 核心配置文件 (LLM, Embedding, 数据库等)
+│   └── config.yaml.example    # 非密钥配置模板；本地 config.yaml 不应提交
 ├── ent/                       # Ent ORM 生成代码 (数据库 Schema)
 ├── internal/
 │   ├── application/           # 应用层：业务流程编排
@@ -53,7 +57,7 @@ ai-novel/
 │   ├── infrastructure/        # 基础设施层：技术选型具体实现
 │   │   ├── config/            # Viper 配置加载器
 │   │   ├── database/          # PostgreSQL + Ent 实现
-│   │   ├── eventbus/          # 异步事件总线实现 (Go Channels)
+│   │   ├── eventbus/          # 进程内同步并行事件总线
 │   │   ├── llm/               # LLM/Embedding 适配器 (Eino-ext)
 │   │   └── vectorstore/       # 向量数据库实现 (EntStore)
 │   └── interfaces/            # 接口层：外部通信
@@ -64,24 +68,35 @@ ai-novel/
 
 ## 🛠 技术栈
 
-- **语言**: Go 1.18+
+- **语言**: Go 1.25.4（以 `go.mod` 为准）
 - **Agent 框架**: [Eino](https://github.com/cloudwego/eino) (字节跳动开源)
 - **ORM**: [Ent](https://entgo.io/) (Facebook 开源)
 - **配置管理**: Viper (YAML + 环境变量支持)
-- **LLM 组件**: Eino-ext (OpenAI 协议兼容)
-- **事件机制**: 进程内异步 EventBus (Channel-based)
+- **LLM 组件**: Eino-ext OpenAI-compatible 适配器（默认使用智谱 API，可替换兼容服务的 endpoint、model 和凭据）
+- **事件机制**: 进程内同步并行 EventBus
 - **数据库**: PostgreSQL (支持数据持久化)
 
 ## 📦 快速开始
 
+### 前置条件
+
+- Go 1.25.4。
+- PostgreSQL 已运行，并允许配置中的用户连接到 PostgreSQL 管理库；服务启动时会创建目标数据库并执行 Ent schema migration。
+- 智谱或其他 OpenAI-compatible Chat/Embedding API 凭据。
+
 1. **配置**:
-   编辑 `configs/config.yaml` 填入 API 和数据库信息：
+   复制 tracked 的 `configs/config.yaml.example` 为本地 `configs/config.yaml`，再填写数据库和模型凭据。真实的 `configs/config.yaml` 已被忽略，不能提交；也可以只使用环境变量提供配置。
+
+   Chat 与 Embedding 独立配置，当前默认模型分别为 `glm-4.5-air` 和 `embedding-3`：
    ```yaml
    database:
      postgres:
        host: "localhost"
+       port: 5432
+       user: "postgres"
        password: "your-password"
        dbname: "ai_novel"
+       sslmode: "disable"
    llm:
      chat:
        api_key: "your-api-key"
@@ -95,29 +110,42 @@ ai-novel/
        model: "embedding-3"
        timeout: "1m"
    ```
-   上述字段也可通过 `LLM_CHAT_*` 与 `LLM_EMBEDDING_*` 环境变量覆盖。
+
+   `app` 配置控制本地监听地址、CORS、生成并发数和超时；`rag` 配置控制相似度阈值、候选窗口、每次查询结果数、查询数和最终上下文上限。带单位的 duration 示例包括 `5m`、`1m` 和 `30m`。完整字段和默认值见 `configs/config.yaml.example`。
+
+   上述 `app`、`llm` 和 `rag` 字段均可通过环境变量覆盖，或在无配置文件时直接提供。支持 `APP_*`、`LLM_CHAT_*`、`LLM_EMBEDDING_*` 和 `RAG_*` 变量，包括：
+   - `APP_LISTEN_ADDR`、`APP_CORS_ORIGINS`、`APP_MAX_CONCURRENT_GENERATIONS`、`APP_READ_HEADER_TIMEOUT`、`APP_READ_TIMEOUT`、`APP_WRITE_TIMEOUT`、`APP_IDLE_TIMEOUT`、`APP_GENERATION_TIMEOUT`、`APP_STARTUP_TIMEOUT`、`APP_SHUTDOWN_TIMEOUT`
+   - `LLM_CHAT_API_KEY`、`LLM_CHAT_BASE_URL`、`LLM_CHAT_MODEL`、`LLM_CHAT_MAX_TOKENS`、`LLM_CHAT_TIMEOUT`
+   - `LLM_EMBEDDING_API_KEY`、`LLM_EMBEDDING_BASE_URL`、`LLM_EMBEDDING_MODEL`、`LLM_EMBEDDING_TIMEOUT`
+   - `RAG_MIN_SIMILARITY`、`RAG_CANDIDATE_LIMIT`、`RAG_RESULT_LIMIT`、`RAG_MAX_QUERIES`、`RAG_MAX_CONTEXT_MEMORIES`
+
+   示例中的 API key 只是占位符；不要把真实凭据写入 README、示例配置或 Git。
 
 2. **运行**:
    ```bash
-   go run cmd/server/main.go
+   go run ./cmd/server
    ```
+   默认 API 地址为 `http://127.0.0.1:8081`，可通过 `app.listen_addr` 或 `APP_LISTEN_ADDR` 修改。
 
 3. **体验流式 API**:
+
+   `novel_id` 和 `chapter_index` 必须是正整数；请先创建小说，并将示例中的 `1` 替换为数据库中的实际小说 ID。
    ```bash
    # 基础用法：从大纲生成
-   curl -N "http://localhost:8080/api/v1/novel/generate?novel_id=test-001&outline=写一个主角在深山发现古老遗迹的故事"
+   curl -N "http://127.0.0.1:8081/api/v1/novel/generate?novel_id=1&outline=写一个主角在深山发现古老遗迹的故事"
 
    # 人工干预/共创：注入作者指令与手工资料
-   curl -N "http://localhost:8080/api/v1/novel/generate?novel_id=test-001&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默的语气, 禁用第一人称&manual_context=青阳镇位于群山脚下, 镇北有一条小河"
+   curl -N "http://127.0.0.1:8081/api/v1/novel/generate?novel_id=1&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默的语气, 禁用第一人称&manual_context=青阳镇位于群山脚下, 镇北有一条小河"
    ```
 
-   说明：SSE 会先推送 `event: context_meta`（本次生成使用的指令/资料摘要），随后才开始逐 token 推送正文。
+   SSE 过程事件依次包括 `start`、`context_meta`、`token` 和可能出现的 `retry`；每个请求最后只发送一次 `terminal`，状态为 `success`、`error` 或 `cancelled`。
 
-4. **预览/下载合成上下文（只改不写）**:
+4. **预览上下文 JSON（不写入章节）**:
    ```bash
    # 仅生成“场景卡 + 背景资料 + 共创指令”，不进入写作/审查
-   curl "http://localhost:8080/api/v1/novel/preview-context?novel_id=test-001&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默,禁用第一人称&manual_context=青阳镇位于群山脚下,镇北有小河"
+   curl "http://127.0.0.1:8081/api/v1/novel/preview-context?novel_id=1&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默,禁用第一人称&manual_context=青阳镇位于群山脚下,镇北有小河"
    ```
+   该接口返回 JSON 合成上下文，由前端创作工作台内嵌展示；项目没有独立预览页面，也不是文件下载接口。
 
 ## 📋 任务路线图 (Roadmap)
 
@@ -125,7 +153,7 @@ ai-novel/
 - [x] 集成 Eino 编排 4 大 Agent 协作流 (State Graph)
 - [x] 实现 LLM 基础设施适配器 (Chat & Embedding)
 - [x] 实现 RAG 检索模型与内存向量库
-- [x] 引入领域事件总线 (EventBus) 实现异步解耦
+- [x] 引入领域事件总线 (EventBus) 实现同步并行 fan-out
 - [x] 实现 Ingestion 订阅者（自动提取剧情摘要并存入记忆库）
 - [x] 实现 PostgreSQL + Ent 数据库持久化
 - [x] 实现基于 SSE 的流式 API 接口
