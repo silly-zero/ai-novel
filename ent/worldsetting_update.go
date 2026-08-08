@@ -84,6 +84,20 @@ func (_u *WorldSettingUpdate) SetNillableDescription(v *string) *WorldSettingUpd
 	return _u
 }
 
+// SetCurrentState sets the "current_state" field.
+func (_u *WorldSettingUpdate) SetCurrentState(v string) *WorldSettingUpdate {
+	_u.mutation.SetCurrentState(v)
+	return _u
+}
+
+// SetNillableCurrentState sets the "current_state" field if the given value is not nil.
+func (_u *WorldSettingUpdate) SetNillableCurrentState(v *string) *WorldSettingUpdate {
+	if v != nil {
+		_u.SetCurrentState(*v)
+	}
+	return _u
+}
+
 // SetMetadata sets the "metadata" field.
 func (_u *WorldSettingUpdate) SetMetadata(v map[string]interface{}) *WorldSettingUpdate {
 	_u.mutation.SetMetadata(v)
@@ -178,6 +192,9 @@ func (_u *WorldSettingUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(worldsetting.FieldDescription, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.CurrentState(); ok {
+		_spec.SetField(worldsetting.FieldCurrentState, field.TypeString, value)
+	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(worldsetting.FieldMetadata, field.TypeJSON, value)
 	}
@@ -262,6 +279,20 @@ func (_u *WorldSettingUpdateOne) SetDescription(v string) *WorldSettingUpdateOne
 func (_u *WorldSettingUpdateOne) SetNillableDescription(v *string) *WorldSettingUpdateOne {
 	if v != nil {
 		_u.SetDescription(*v)
+	}
+	return _u
+}
+
+// SetCurrentState sets the "current_state" field.
+func (_u *WorldSettingUpdateOne) SetCurrentState(v string) *WorldSettingUpdateOne {
+	_u.mutation.SetCurrentState(v)
+	return _u
+}
+
+// SetNillableCurrentState sets the "current_state" field if the given value is not nil.
+func (_u *WorldSettingUpdateOne) SetNillableCurrentState(v *string) *WorldSettingUpdateOne {
+	if v != nil {
+		_u.SetCurrentState(*v)
 	}
 	return _u
 }
@@ -389,6 +420,9 @@ func (_u *WorldSettingUpdateOne) sqlSave(ctx context.Context) (_node *WorldSetti
 	}
 	if value, ok := _u.mutation.Description(); ok {
 		_spec.SetField(worldsetting.FieldDescription, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.CurrentState(); ok {
+		_spec.SetField(worldsetting.FieldCurrentState, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(worldsetting.FieldMetadata, field.TypeJSON, value)

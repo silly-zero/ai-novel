@@ -19,6 +19,7 @@ func (WorldSetting) Fields() []ent.Field {
 		field.String("category"), // 如：地理、武学等级、势力、宝物、传说
 		field.String("name"),     // 设定名称，如“青阳镇”、“大荒囚天指”
 		field.Text("description"),
+		field.Text("current_state").Default(""),
 		field.JSON("metadata", map[string]interface{}{}).Optional(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),

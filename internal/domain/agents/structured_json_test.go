@@ -201,6 +201,52 @@ func TestGenerateStructuredResponseRepairsOnce(t *testing.T) {
 	}
 }
 
+func TestCharacterStructuredResponseRepairsMissingCurrentStatus(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		`{"characters":[{"name":"林云"}]}`,
+		`{"characters":[{"name":"林云","current_status":"本章结束时留在青云山"}]}`,
+	}}
+
+	result, err := generateStructuredResponse(
+		context.Background(),
+		llm,
+		"character",
+		"schema",
+		"task",
+		decodeCharacterExtraction,
+		validateCharacterExtraction,
+	)
+	if err != nil {
+		t.Fatalf("generateStructuredResponse returned error: %v", err)
+	}
+	if llm.calls != 2 || len(result.Characters) != 1 || result.Characters[0].CurrentStatus != "本章结束时留在青云山" {
+		t.Fatalf("result = %#v, calls = %d", result, llm.calls)
+	}
+}
+
+func TestWorldStructuredResponseRepairsMissingCurrentState(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		`[{"category":"地理","name":"青云山","description":"终年云雾环绕的修炼宗门"}]`,
+		`[{"category":"地理","name":"青云山","description":"终年云雾环绕的修炼宗门","current_state":"本章结束时山门封闭"}]`,
+	}}
+
+	result, err := generateStructuredResponse(
+		context.Background(),
+		llm,
+		"world",
+		"schema",
+		"task",
+		decodeJSON[[]WorldSettingUpdate],
+		validateWorldSettingUpdatesForExisting(nil),
+	)
+	if err != nil {
+		t.Fatalf("generateStructuredResponse returned error: %v", err)
+	}
+	if llm.calls != 2 || len(result) != 1 || result[0].CurrentState != "本章结束时山门封闭" {
+		t.Fatalf("result = %#v, calls = %d", result, llm.calls)
+	}
+}
+
 func TestGenerateStructuredResponseReturnsBoundedErrorAfterRepair(t *testing.T) {
 	largeResponse := strings.Repeat("模型输出异常", 5000)
 	llm := &queuedStructuredLLM{responses: []string{largeResponse, largeResponse}}
@@ -567,6 +613,8 @@ func TestStructuredValidatorsRejectMissingRequiredFields(t *testing.T) {
 		`{"oops":"value"}`,
 		`{"characters":null,"relationships":[]}`,
 		`{"characters":[],"relationships":null}`,
+		`{"characters":[{"name":"林云","current_status":" "}],"relationships":[]}`,
+		fmt.Sprintf(`{"characters":[{"name":"林云","current_status":%q}],"relationships":[]}`, strings.Repeat("状", maxCharacterStateRunes+1)),
 		`{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":" "}]}`,
 	} {
 		_, err := parseStructuredResponse(
@@ -580,8 +628,10 @@ func TestStructuredValidatorsRejectMissingRequiredFields(t *testing.T) {
 	}
 
 	for _, response := range []string{
-		`[{"category":" ","name":"青云山"}]`,
-		`[{"category":"地理","name":" "}]`,
+		`[{"category":" ","name":"青云山","current_state":"山门封闭"}]`,
+		`[{"category":"地理","name":" ","current_state":"山门封闭"}]`,
+		`[{"category":"地理","name":"青云山","current_state":" "}]`,
+		fmt.Sprintf(`[{"category":"地理","name":"青云山","current_state":%q}]`, strings.Repeat("状", maxWorldStateRunes+1)),
 	} {
 		_, err := parseStructuredResponse(
 			response,
@@ -596,7 +646,7 @@ func TestStructuredValidatorsRejectMissingRequiredFields(t *testing.T) {
 
 func TestCharacterAgentKeepsLegacyArrayResponse(t *testing.T) {
 	repo := &characterRepositoryFake{}
-	llm := &queuedStructuredLLM{responses: []string{`[{"name":" 林云 "}]`}}
+	llm := &queuedStructuredLLM{responses: []string{`[{"name":" 林云 ","current_status":"在城门等待"}]`}}
 
 	_, err := NewCharacterAgent(llm, repo).Run(
 		context.Background(),

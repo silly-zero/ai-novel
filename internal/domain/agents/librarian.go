@@ -88,8 +88,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		for _, name := range plan.CharacterNames {
 			char, err := l.charRepo.FindByName(ctx, state.NovelID, name)
 			if err == nil && char != nil {
-				contextBuilder.WriteString(fmt.Sprintf("- %s: 性格(%s), 外貌(%s), 当前状态(%s)\n",
-					char.Name, char.Personality, char.Appearance, char.CurrentStatus))
+				writeCharacterLedgerEntry(&contextBuilder, char)
 			}
 		}
 		contextBuilder.WriteString("\n")
@@ -136,8 +135,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 				}
 				char, err := l.charRepo.FindByName(ctx, state.NovelID, name)
 				if err == nil && char != nil {
-					contextBuilder.WriteString(fmt.Sprintf("- %s: 性格(%s), 外貌(%s), 当前状态(%s)\n",
-						char.Name, char.Personality, char.Appearance, char.CurrentStatus))
+					writeCharacterLedgerEntry(&contextBuilder, char)
 					addedCards++
 					if addedCards >= 8 {
 						break
@@ -154,8 +152,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		for _, name := range plan.WorldSettings {
 			setting, err := l.worldRepo.FindByName(ctx, state.NovelID, name)
 			if err == nil && setting != nil {
-				contextBuilder.WriteString(fmt.Sprintf("- [%s] %s: %s\n",
-					setting.Category, setting.Name, setting.Description))
+				writeWorldLedgerEntry(&contextBuilder, setting)
 			}
 		}
 		contextBuilder.WriteString("\n")
@@ -223,6 +220,31 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 
 	state.Context = contextBuilder.String()
 	return state, nil
+}
+
+func writeCharacterLedgerEntry(builder *strings.Builder, character *domain.Character) {
+	fmt.Fprintf(
+		builder,
+		"- %s: 静态档案(性别:%s, 年龄:%d, 外貌:%s, 性格:%s, 背景:%s)",
+		character.Name,
+		character.Gender,
+		character.Age,
+		character.Appearance,
+		character.Personality,
+		character.Background,
+	)
+	if currentStatus := strings.TrimSpace(character.CurrentStatus); currentStatus != "" {
+		fmt.Fprintf(builder, "; 当前状态:%s", currentStatus)
+	}
+	builder.WriteString("\n")
+}
+
+func writeWorldLedgerEntry(builder *strings.Builder, setting *domain.WorldSetting) {
+	fmt.Fprintf(builder, "- [%s] %s: 静态说明:%s", setting.Category, setting.Name, setting.Description)
+	if currentState := strings.TrimSpace(setting.CurrentState); currentState != "" {
+		fmt.Fprintf(builder, "; 当前状态:%s", currentState)
+	}
+	builder.WriteString("\n")
 }
 
 type rankedMemory struct {

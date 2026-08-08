@@ -90,12 +90,16 @@ func init() {
 	relationship.UpdateDefaultUpdatedAt = relationshipDescUpdatedAt.UpdateDefault.(func() time.Time)
 	worldsettingFields := schema.WorldSetting{}.Fields()
 	_ = worldsettingFields
+	// worldsettingDescCurrentState is the schema descriptor for current_state field.
+	worldsettingDescCurrentState := worldsettingFields[4].Descriptor()
+	// worldsetting.DefaultCurrentState holds the default value on creation for the current_state field.
+	worldsetting.DefaultCurrentState = worldsettingDescCurrentState.Default.(string)
 	// worldsettingDescCreatedAt is the schema descriptor for created_at field.
-	worldsettingDescCreatedAt := worldsettingFields[5].Descriptor()
+	worldsettingDescCreatedAt := worldsettingFields[6].Descriptor()
 	// worldsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
 	worldsetting.DefaultCreatedAt = worldsettingDescCreatedAt.Default.(func() time.Time)
 	// worldsettingDescUpdatedAt is the schema descriptor for updated_at field.
-	worldsettingDescUpdatedAt := worldsettingFields[6].Descriptor()
+	worldsettingDescUpdatedAt := worldsettingFields[7].Descriptor()
 	// worldsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	worldsetting.DefaultUpdatedAt = worldsettingDescUpdatedAt.Default.(func() time.Time)
 	// worldsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

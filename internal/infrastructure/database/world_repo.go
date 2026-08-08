@@ -24,6 +24,7 @@ func (r *WorldRepository) SaveSetting(ctx context.Context, s *domain.WorldSettin
 			SetCategory(s.Category).
 			SetName(s.Name).
 			SetDescription(s.Description).
+			SetCurrentState(s.CurrentState).
 			SetMetadata(s.Metadata).
 			Save(ctx)
 		if err != nil {
@@ -38,6 +39,7 @@ func (r *WorldRepository) SaveSetting(ctx context.Context, s *domain.WorldSettin
 	return r.client.WorldSetting.UpdateOneID(id).
 		SetCategory(s.Category).
 		SetDescription(s.Description).
+		SetCurrentState(s.CurrentState).
 		SetMetadata(s.Metadata).
 		Exec(ctx)
 }
@@ -82,13 +84,14 @@ func (r *WorldRepository) ListAll(ctx context.Context, novelID string) ([]*domai
 
 func (r *WorldRepository) toDomain(row *ent.WorldSetting) *domain.WorldSetting {
 	return &domain.WorldSetting{
-		ID:          fmt.Sprintf("%d", row.ID),
-		NovelID:     row.NovelID,
-		Category:    row.Category,
-		Name:        row.Name,
-		Description: row.Description,
-		Metadata:    row.Metadata,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
+		ID:           fmt.Sprintf("%d", row.ID),
+		NovelID:      row.NovelID,
+		Category:     row.Category,
+		Name:         row.Name,
+		Description:  row.Description,
+		CurrentState: row.CurrentState,
+		Metadata:     row.Metadata,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
 	}
 }

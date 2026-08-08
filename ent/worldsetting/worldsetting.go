@@ -21,6 +21,8 @@ const (
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldCurrentState holds the string denoting the current_state field in the database.
+	FieldCurrentState = "current_state"
 	// FieldMetadata holds the string denoting the metadata field in the database.
 	FieldMetadata = "metadata"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -38,6 +40,7 @@ var Columns = []string{
 	FieldCategory,
 	FieldName,
 	FieldDescription,
+	FieldCurrentState,
 	FieldMetadata,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -54,6 +57,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultCurrentState holds the default value on creation for the "current_state" field.
+	DefaultCurrentState string
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -88,6 +93,11 @@ func ByName(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
+}
+
+// ByCurrentState orders the results by the current_state field.
+func ByCurrentState(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCurrentState, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

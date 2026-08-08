@@ -74,6 +74,11 @@ func Description(v string) predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldEQ(FieldDescription, v))
 }
 
+// CurrentState applies equality check predicate on the "current_state" field. It's identical to CurrentStateEQ.
+func CurrentState(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldEQ(FieldCurrentState, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldEQ(FieldCreatedAt, v))
@@ -342,6 +347,71 @@ func DescriptionEqualFold(v string) predicate.WorldSetting {
 // DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
 func DescriptionContainsFold(v string) predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldContainsFold(FieldDescription, v))
+}
+
+// CurrentStateEQ applies the EQ predicate on the "current_state" field.
+func CurrentStateEQ(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldEQ(FieldCurrentState, v))
+}
+
+// CurrentStateNEQ applies the NEQ predicate on the "current_state" field.
+func CurrentStateNEQ(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldNEQ(FieldCurrentState, v))
+}
+
+// CurrentStateIn applies the In predicate on the "current_state" field.
+func CurrentStateIn(vs ...string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldIn(FieldCurrentState, vs...))
+}
+
+// CurrentStateNotIn applies the NotIn predicate on the "current_state" field.
+func CurrentStateNotIn(vs ...string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldNotIn(FieldCurrentState, vs...))
+}
+
+// CurrentStateGT applies the GT predicate on the "current_state" field.
+func CurrentStateGT(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldGT(FieldCurrentState, v))
+}
+
+// CurrentStateGTE applies the GTE predicate on the "current_state" field.
+func CurrentStateGTE(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldGTE(FieldCurrentState, v))
+}
+
+// CurrentStateLT applies the LT predicate on the "current_state" field.
+func CurrentStateLT(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldLT(FieldCurrentState, v))
+}
+
+// CurrentStateLTE applies the LTE predicate on the "current_state" field.
+func CurrentStateLTE(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldLTE(FieldCurrentState, v))
+}
+
+// CurrentStateContains applies the Contains predicate on the "current_state" field.
+func CurrentStateContains(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldContains(FieldCurrentState, v))
+}
+
+// CurrentStateHasPrefix applies the HasPrefix predicate on the "current_state" field.
+func CurrentStateHasPrefix(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldHasPrefix(FieldCurrentState, v))
+}
+
+// CurrentStateHasSuffix applies the HasSuffix predicate on the "current_state" field.
+func CurrentStateHasSuffix(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldHasSuffix(FieldCurrentState, v))
+}
+
+// CurrentStateEqualFold applies the EqualFold predicate on the "current_state" field.
+func CurrentStateEqualFold(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldEqualFold(FieldCurrentState, v))
+}
+
+// CurrentStateContainsFold applies the ContainsFold predicate on the "current_state" field.
+func CurrentStateContainsFold(v string) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldContainsFold(FieldCurrentState, v))
 }
 
 // MetadataIsNil applies the IsNil predicate on the "metadata" field.

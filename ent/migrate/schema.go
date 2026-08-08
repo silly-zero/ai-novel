@@ -128,6 +128,7 @@ var (
 		{Name: "category", Type: field.TypeString},
 		{Name: "name", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Size: 2147483647},
+		{Name: "current_state", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},

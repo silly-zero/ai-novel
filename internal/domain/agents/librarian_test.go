@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ai-novel/studio/internal/domain/memory"
+	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
 
 type librarianLLMFake struct {
@@ -148,6 +149,80 @@ func TestLibrarianOmitsMemorySectionWithoutRelevantResults(t *testing.T) {
 	}
 	if strings.Contains(result.Context, "前情提要与伏笔") {
 		t.Fatalf("Context contains empty memory section: %q", result.Context)
+	}
+}
+
+func TestLibrarianInjectsStaticAndDynamicLedgerState(t *testing.T) {
+	characterRepo := &characterRepositoryFake{existing: &domain.Character{
+		NovelID:       "novel",
+		Name:          "林云",
+		Gender:        "男",
+		Age:           20,
+		Appearance:    "黑衣",
+		Personality:   "谨慎",
+		Background:    "边城出身",
+		CurrentStatus: "已进入青云山密室",
+	}}
+	worldRepo := &worldRepositoryFake{existing: &domain.WorldSetting{
+		NovelID:     "novel",
+		Category:    "地理",
+		Name:        "青云山",
+		Description: "终年云雾环绕的修炼宗门",
+	}}
+	embedder := &librarianEmbedderFake{vectors: [][]float32{{1}}}
+	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{}}}
+	agent := NewLibrarianAgent(
+		librarianLLMFake{response: `{"character_names":["林云"],"world_settings":["青云山"],"search_queries":["密室线索"]}`},
+		embedder,
+		store,
+		characterRepo,
+		worldRepo,
+		librarianTestConfig(),
+	)
+
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{
+		"静态档案(性别:男, 年龄:20, 外貌:黑衣, 性格:谨慎, 背景:边城出身)",
+		"当前状态:已进入青云山密室",
+		"[地理] 青云山: 静态说明:终年云雾环绕的修炼宗门",
+	} {
+		if !strings.Contains(result.Context, value) {
+			t.Fatalf("Context missing %q: %s", value, result.Context)
+		}
+	}
+	if strings.Contains(result.Context, "青云山: 静态说明:终年云雾环绕的修炼宗门; 当前状态:") {
+		t.Fatalf("Context contains empty world current-state label: %s", result.Context)
+	}
+}
+
+func TestLibrarianIncludesWorldCurrentState(t *testing.T) {
+	worldRepo := &worldRepositoryFake{existing: &domain.WorldSetting{
+		NovelID:      "novel",
+		Category:     "地理",
+		Name:         "青云山",
+		Description:  "终年云雾环绕的修炼宗门",
+		CurrentState: "山门封闭并由长老守卫",
+	}}
+	embedder := &librarianEmbedderFake{vectors: [][]float32{{1}}}
+	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{}}}
+	agent := NewLibrarianAgent(
+		librarianLLMFake{response: `{"character_names":[],"world_settings":["青云山"],"search_queries":["山门状态"]}`},
+		embedder,
+		store,
+		nil,
+		worldRepo,
+		librarianTestConfig(),
+	)
+
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Context, "静态说明:终年云雾环绕的修炼宗门; 当前状态:山门封闭并由长老守卫") {
+		t.Fatalf("Context = %s", result.Context)
 	}
 }
 

@@ -44,6 +44,20 @@ func (_c *WorldSettingCreate) SetDescription(v string) *WorldSettingCreate {
 	return _c
 }
 
+// SetCurrentState sets the "current_state" field.
+func (_c *WorldSettingCreate) SetCurrentState(v string) *WorldSettingCreate {
+	_c.mutation.SetCurrentState(v)
+	return _c
+}
+
+// SetNillableCurrentState sets the "current_state" field if the given value is not nil.
+func (_c *WorldSettingCreate) SetNillableCurrentState(v *string) *WorldSettingCreate {
+	if v != nil {
+		_c.SetCurrentState(*v)
+	}
+	return _c
+}
+
 // SetMetadata sets the "metadata" field.
 func (_c *WorldSettingCreate) SetMetadata(v map[string]interface{}) *WorldSettingCreate {
 	_c.mutation.SetMetadata(v)
@@ -113,6 +127,10 @@ func (_c *WorldSettingCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *WorldSettingCreate) defaults() {
+	if _, ok := _c.mutation.CurrentState(); !ok {
+		v := worldsetting.DefaultCurrentState
+		_c.mutation.SetCurrentState(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := worldsetting.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -136,6 +154,9 @@ func (_c *WorldSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.Description(); !ok {
 		return &ValidationError{Name: "description", err: errors.New(`ent: missing required field "WorldSetting.description"`)}
+	}
+	if _, ok := _c.mutation.CurrentState(); !ok {
+		return &ValidationError{Name: "current_state", err: errors.New(`ent: missing required field "WorldSetting.current_state"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorldSetting.created_at"`)}
@@ -184,6 +205,10 @@ func (_c *WorldSettingCreate) createSpec() (*WorldSetting, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(worldsetting.FieldDescription, field.TypeString, value)
 		_node.Description = value
+	}
+	if value, ok := _c.mutation.CurrentState(); ok {
+		_spec.SetField(worldsetting.FieldCurrentState, field.TypeString, value)
+		_node.CurrentState = value
 	}
 	if value, ok := _c.mutation.Metadata(); ok {
 		_spec.SetField(worldsetting.FieldMetadata, field.TypeJSON, value)

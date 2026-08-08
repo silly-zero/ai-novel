@@ -26,6 +26,8 @@ type WorldSetting struct {
 	Name string `json:"name,omitempty"`
 	// Description holds the value of the "description" field.
 	Description string `json:"description,omitempty"`
+	// CurrentState holds the value of the "current_state" field.
+	CurrentState string `json:"current_state,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -44,7 +46,7 @@ func (*WorldSetting) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case worldsetting.FieldID:
 			values[i] = new(sql.NullInt64)
-		case worldsetting.FieldNovelID, worldsetting.FieldCategory, worldsetting.FieldName, worldsetting.FieldDescription:
+		case worldsetting.FieldNovelID, worldsetting.FieldCategory, worldsetting.FieldName, worldsetting.FieldDescription, worldsetting.FieldCurrentState:
 			values[i] = new(sql.NullString)
 		case worldsetting.FieldCreatedAt, worldsetting.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -92,6 +94,12 @@ func (_m *WorldSetting) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
 				_m.Description = value.String
+			}
+		case worldsetting.FieldCurrentState:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field current_state", values[i])
+			} else if value.Valid {
+				_m.CurrentState = value.String
 			}
 		case worldsetting.FieldMetadata:
 			if value, ok := values[i].(*[]byte); !ok {
@@ -160,6 +168,9 @@ func (_m *WorldSetting) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(_m.Description)
+	builder.WriteString(", ")
+	builder.WriteString("current_state=")
+	builder.WriteString(_m.CurrentState)
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))

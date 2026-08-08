@@ -4234,6 +4234,7 @@ type WorldSettingMutation struct {
 	category      *string
 	name          *string
 	description   *string
+	current_state *string
 	metadata      *map[string]interface{}
 	created_at    *time.Time
 	updated_at    *time.Time
@@ -4485,6 +4486,42 @@ func (m *WorldSettingMutation) ResetDescription() {
 	m.description = nil
 }
 
+// SetCurrentState sets the "current_state" field.
+func (m *WorldSettingMutation) SetCurrentState(s string) {
+	m.current_state = &s
+}
+
+// CurrentState returns the value of the "current_state" field in the mutation.
+func (m *WorldSettingMutation) CurrentState() (r string, exists bool) {
+	v := m.current_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentState returns the old "current_state" field's value of the WorldSetting entity.
+// If the WorldSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldSettingMutation) OldCurrentState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentState: %w", err)
+	}
+	return oldValue.CurrentState, nil
+}
+
+// ResetCurrentState resets all changes to the "current_state" field.
+func (m *WorldSettingMutation) ResetCurrentState() {
+	m.current_state = nil
+}
+
 // SetMetadata sets the "metadata" field.
 func (m *WorldSettingMutation) SetMetadata(value map[string]interface{}) {
 	m.metadata = &value
@@ -4640,7 +4677,7 @@ func (m *WorldSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorldSettingMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.novel_id != nil {
 		fields = append(fields, worldsetting.FieldNovelID)
 	}
@@ -4652,6 +4689,9 @@ func (m *WorldSettingMutation) Fields() []string {
 	}
 	if m.description != nil {
 		fields = append(fields, worldsetting.FieldDescription)
+	}
+	if m.current_state != nil {
+		fields = append(fields, worldsetting.FieldCurrentState)
 	}
 	if m.metadata != nil {
 		fields = append(fields, worldsetting.FieldMetadata)
@@ -4678,6 +4718,8 @@ func (m *WorldSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.Name()
 	case worldsetting.FieldDescription:
 		return m.Description()
+	case worldsetting.FieldCurrentState:
+		return m.CurrentState()
 	case worldsetting.FieldMetadata:
 		return m.Metadata()
 	case worldsetting.FieldCreatedAt:
@@ -4701,6 +4743,8 @@ func (m *WorldSettingMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldName(ctx)
 	case worldsetting.FieldDescription:
 		return m.OldDescription(ctx)
+	case worldsetting.FieldCurrentState:
+		return m.OldCurrentState(ctx)
 	case worldsetting.FieldMetadata:
 		return m.OldMetadata(ctx)
 	case worldsetting.FieldCreatedAt:
@@ -4743,6 +4787,13 @@ func (m *WorldSettingMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDescription(v)
+		return nil
+	case worldsetting.FieldCurrentState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentState(v)
 		return nil
 	case worldsetting.FieldMetadata:
 		v, ok := value.(map[string]interface{})
@@ -4834,6 +4885,9 @@ func (m *WorldSettingMutation) ResetField(name string) error {
 		return nil
 	case worldsetting.FieldDescription:
 		m.ResetDescription()
+		return nil
+	case worldsetting.FieldCurrentState:
+		m.ResetCurrentState()
 		return nil
 	case worldsetting.FieldMetadata:
 		m.ResetMetadata()

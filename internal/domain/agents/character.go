@@ -10,6 +10,11 @@ import (
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
 
+const (
+	maxCharacterTextRunes  = 2000
+	maxCharacterStateRunes = 1000
+)
+
 func decodeCharacterExtraction(candidate []byte) (CharacterExtraction, error) {
 	trimmed := bytes.TrimSpace(candidate)
 	if len(trimmed) == 0 {
@@ -61,9 +66,33 @@ func decodeCharacterExtraction(candidate []byte) (CharacterExtraction, error) {
 
 func validateCharacterExtraction(extracted *CharacterExtraction) error {
 	for index := range extracted.Characters {
-		extracted.Characters[index].Name = strings.TrimSpace(extracted.Characters[index].Name)
-		if extracted.Characters[index].Name == "" {
+		character := &extracted.Characters[index]
+		character.Name = strings.TrimSpace(character.Name)
+		character.Gender = strings.TrimSpace(character.Gender)
+		character.Appearance = strings.TrimSpace(character.Appearance)
+		character.Personality = strings.TrimSpace(character.Personality)
+		character.Background = strings.TrimSpace(character.Background)
+		character.CurrentStatus = strings.TrimSpace(character.CurrentStatus)
+		if character.Name == "" {
 			return fmt.Errorf("characters[%d].name must not be blank", index)
+		}
+		if character.CurrentStatus == "" {
+			return fmt.Errorf("characters[%d].current_status must not be blank", index)
+		}
+		for fieldName, value := range map[string]string{
+			"gender":         character.Gender,
+			"appearance":     character.Appearance,
+			"personality":    character.Personality,
+			"background":     character.Background,
+			"current_status": character.CurrentStatus,
+		} {
+			limit := maxCharacterTextRunes
+			if fieldName == "current_status" {
+				limit = maxCharacterStateRunes
+			}
+			if len([]rune(value)) > limit {
+				return fmt.Errorf("characters[%d].%s exceeds %d characters", index, fieldName, limit)
+			}
 		}
 	}
 	for index := range extracted.Relationships {
@@ -71,6 +100,7 @@ func validateCharacterExtraction(extracted *CharacterExtraction) error {
 		relation.Source = strings.TrimSpace(relation.Source)
 		relation.Target = strings.TrimSpace(relation.Target)
 		relation.RelationType = strings.TrimSpace(relation.RelationType)
+		relation.Description = strings.TrimSpace(relation.Description)
 		if relation.Source == "" {
 			return fmt.Errorf("relationships[%d].source must not be blank", index)
 		}
@@ -129,28 +159,34 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if err != nil {
 		return state, fmt.Errorf("list existing characters: %w", err)
 	}
-	charContext := "【现有角色档案】\n"
+	var charContext strings.Builder
+	charContext.WriteString("【现有角色账本】\n")
 	for _, c := range existingChars {
-		charContext += fmt.Sprintf("- %s: %s\n", c.Name, c.Personality)
+		fmt.Fprintf(&charContext,
+			"- %s: 静态档案(性别:%s, 年龄:%d, 外貌:%s, 性格:%s, 背景:%s); 当前状态:%s\n",
+			c.Name, c.Gender, c.Age, c.Appearance, c.Personality, c.Background, c.CurrentStatus,
+		)
 	}
 
-	systemPrompt := `你是一位专业的小说人设分析师。你的任务是从提供的【小说正文】中，分析并更新【人物档案】与【角色关系网】。
+	systemPrompt := `你是一位专业的小说人物状态分析师。你的任务是从【本章正文】提取角色账本更新。
 要求：
-1. 识别文中出现的所有重要角色。
-2. 对于已有角色，根据文中描述更新其“外貌”、“性格”、“当前状态”或“背景”。
-3. 对于新出现的角色，创建完整的人设卡。
-4. 提取关键角色关系（如师徒、敌对、盟友、亲属、交易等），仅输出确定的信息。
-5. 输出必须是合法 JSON，格式如下：
+1. 只输出正文中有明确依据的重要角色和关系。
+2. 静态档案（性别、年龄、外貌、性格、背景）是长期事实；已有角色的静态字段不要改写，若正文没有新信息可留空。
+3. current_status 是本章结束时的动态快照，必须具体描述角色的位置、处境、目标、立场或持有物；已有角色也必须根据正文更新它。
+4. 新角色可以填写静态档案，但必须填写 current_status。
+5. 不要用空字符串清除已有信息。
+6. 只输出合法 JSON，不要输出 Markdown 或解释。
+格式：
 {
   "characters": [
     {
       "name": "角色名",
-      "gender": "性别",
+      "gender": "新角色的性别，否则留空",
       "age": 20,
-      "appearance": "外貌描写",
-      "personality": "性格特征",
-      "background": "背景故事",
-      "current_status": "当前在文中的状态或处境"
+      "appearance": "新信息，否则留空",
+      "personality": "新信息，否则留空",
+      "background": "新信息，否则留空",
+      "current_status": "本章结束时的具体动态状态"
     }
   ],
   "relationships": [
@@ -158,12 +194,12 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
       "source": "角色A",
       "target": "角色B",
       "relation_type": "师徒/敌人/盟友/亲属/恋人/交易等",
-      "description": "一句话说明关系依据"
+      "description": "一句话说明正文依据"
     }
   ]
 }`
 
-	userPrompt := fmt.Sprintf("%s\n\n【本章正文】\n%s\n\n请分析并输出角色更新结果：", charContext, state.Draft)
+	userPrompt := fmt.Sprintf("%s\n\n【本章正文】\n%s\n\n请分析并输出角色账本更新结果：", charContext.String(), state.Draft)
 
 	extracted, err := generateStructuredResponse(
 		ctx,
@@ -190,12 +226,22 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 			}
 		}
 
-		// 更新字段
-		char.Gender = up.Gender
-		char.Age = up.Age
-		char.Appearance = up.Appearance
-		char.Personality = up.Personality
-		char.Background = up.Background
+		// 静态档案只补数据库中的空缺，当前状态始终替换为本章结束快照。
+		if strings.TrimSpace(char.Gender) == "" {
+			char.Gender = up.Gender
+		}
+		if char.Age == 0 {
+			char.Age = up.Age
+		}
+		if strings.TrimSpace(char.Appearance) == "" {
+			char.Appearance = up.Appearance
+		}
+		if strings.TrimSpace(char.Personality) == "" {
+			char.Personality = up.Personality
+		}
+		if strings.TrimSpace(char.Background) == "" {
+			char.Background = up.Background
+		}
 		char.CurrentStatus = up.CurrentStatus
 
 		if err := a.repo.SaveCharacter(ctx, char); err != nil {

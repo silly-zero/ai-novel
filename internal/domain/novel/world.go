@@ -7,14 +7,15 @@ import (
 
 // WorldSetting 世界观设定领域模型
 type WorldSetting struct {
-	ID          string
-	NovelID     string
-	Category    string // 如：地理、武学等级、势力、宝物
-	Name        string
-	Description string
-	Metadata    map[string]interface{}
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID           string
+	NovelID      string
+	Category     string // 如：地理、武学等级、势力、宝物
+	Name         string
+	Description  string
+	CurrentState string
+	Metadata     map[string]interface{}
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // WorldRepository 世界观持久化接口
