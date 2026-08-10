@@ -54,7 +54,52 @@ type entGenerationChapterStore struct {
 	client *ent.Client
 }
 
-var errGenerationChapterChanged = errors.New("chapter changed during generation")
+var (
+	errGenerationChapterChanged         = errors.New("chapter changed during generation")
+	errGenerationPreviousChapterMissing = errors.New("previous chapter is required before generation")
+	errChapterOrderOccupied             = errors.New("chapter order is already occupied")
+	errChapterHasSuccessor              = errors.New("chapter has a successor and cannot be moved or deleted")
+)
+
+type generationPreviousChapterMissingError struct {
+	NovelID      int
+	MissingOrder int
+}
+
+func (e *generationPreviousChapterMissingError) Error() string {
+	return fmt.Sprintf(
+		"previous chapter %d is required before generating the next chapter for novel %d",
+		e.MissingOrder,
+		e.NovelID,
+	)
+}
+
+func (e *generationPreviousChapterMissingError) Unwrap() error {
+	return errGenerationPreviousChapterMissing
+}
+
+type generationNovelLock func(
+	context.Context,
+	int,
+) error
+
+type generationChapterLookup func(
+	context.Context,
+	int,
+	int,
+) (*ent.Chapter, error)
+
+type generationPreviousChapterLookup func(
+	context.Context,
+	int,
+	int,
+) (*ent.Chapter, error)
+
+type generationChapterCreate func(
+	context.Context,
+	int,
+	int,
+) (*ent.Chapter, error)
 
 func (s *entGenerationChapterStore) Prepare(
 	ctx context.Context,
@@ -87,16 +132,208 @@ func (s *entGenerationChapterStore) Prepare(
 	}
 	if err == nil {
 		target := generationChapterTargetFromRow(row)
-		if err := s.loadPreviousContinuity(ctx, novelID, target); err != nil {
+		packet, err := preparePreviousContinuity(
+			ctx,
+			novelID,
+			target.Order,
+			s.lookupPreviousChapter,
+		)
+		if err != nil {
 			return nil, err
 		}
+		target.PreviousContinuity = packet
 		return target, nil
 	}
 	if chapterID > 0 {
 		return nil, errors.New("chapter not found")
 	}
 
-	row, err = s.client.Chapter.
+	return s.prepareNewGenerationChapter(
+		ctx,
+		novelID,
+		chapterIndex,
+	)
+}
+
+func (s *entGenerationChapterStore) prepareNewGenerationChapter(
+	ctx context.Context,
+	novelID int,
+	chapterIndex int,
+) (*generationChapterTarget, error) {
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := tx.Client()
+	row, err := prepareNewGenerationChapter(
+		ctx,
+		novelID,
+		chapterIndex,
+		func(ctx context.Context, novelID int) error {
+			return lockGenerationNovel(ctx, txClient, novelID)
+		},
+		func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+			return lookupGenerationChapter(ctx, txClient, novelID, order)
+		},
+		func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+			return lookupPreviousChapterForShare(ctx, txClient, novelID, order)
+		},
+		func(ctx context.Context, novelID, chapterIndex int) (*ent.Chapter, error) {
+			return createGenerationChapter(ctx, txClient, novelID, chapterIndex)
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
+	return row, nil
+}
+
+func prepareNewGenerationChapter(
+	ctx context.Context,
+	novelID int,
+	chapterIndex int,
+	lockNovel generationNovelLock,
+	lookupTarget generationChapterLookup,
+	lookup generationPreviousChapterLookup,
+	create generationChapterCreate,
+) (*generationChapterTarget, error) {
+	if err := lockNovel(ctx, novelID); err != nil {
+		return nil, err
+	}
+	row, err := lookupTarget(ctx, novelID, chapterIndex)
+	if err == nil {
+		target := generationChapterTargetFromRow(row)
+		packet, err := preparePreviousContinuity(ctx, novelID, target.Order, lookup)
+		if err != nil {
+			return nil, err
+		}
+		target.PreviousContinuity = packet
+		return target, nil
+	}
+	if !ent.IsNotFound(err) {
+		return nil, err
+	}
+	packet, err := preparePreviousContinuity(
+		ctx,
+		novelID,
+		chapterIndex,
+		lookup,
+	)
+	if err != nil {
+		return nil, err
+	}
+	row, err = create(ctx, novelID, chapterIndex)
+	if err != nil {
+		return nil, err
+	}
+	target := generationChapterTargetFromRow(row)
+	target.PreviousContinuity = packet
+	return target, nil
+}
+
+func preparePreviousContinuity(
+	ctx context.Context,
+	novelID int,
+	targetOrder int,
+	lookup generationPreviousChapterLookup,
+) (agents.ContinuityPacket, error) {
+	if targetOrder <= 1 {
+		return agents.ContinuityPacket{}, nil
+	}
+	previousOrder := targetOrder - 1
+	previous, err := lookup(ctx, novelID, previousOrder)
+	if ent.IsNotFound(err) {
+		return agents.ContinuityPacket{}, &generationPreviousChapterMissingError{
+			NovelID:      novelID,
+			MissingOrder: previousOrder,
+		}
+	}
+	if err != nil {
+		return agents.ContinuityPacket{}, err
+	}
+	return agents.ContinuityPacket{
+		LastBeat:   strings.TrimSpace(previous.LastBeat),
+		OpenLoops:  append([]string(nil), previous.OpenLoops...),
+		NextAction: strings.TrimSpace(previous.NextAction),
+	}, nil
+}
+
+func lockGenerationNovel(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+) error {
+	_, err := client.Novel.Query().Where(
+		novel.ID(novelID),
+		func(selector *sql.Selector) {
+			selector.ForUpdate()
+		},
+	).Only(ctx)
+	return err
+}
+
+func lookupGenerationChapter(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	order int,
+) (*ent.Chapter, error) {
+	return client.Chapter.Query().Where(
+		chapter.OrderEQ(order),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).Only(ctx)
+}
+
+func lookupPreviousChapterForShare(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	order int,
+) (*ent.Chapter, error) {
+	return client.Chapter.Query().Where(
+		chapter.OrderEQ(order),
+		chapter.HasNovelWith(novel.ID(novelID)),
+		func(selector *sql.Selector) {
+			selector.ForShare()
+		},
+	).Only(ctx)
+}
+
+func lookupPreviousChapter(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	order int,
+) (*ent.Chapter, error) {
+	return lookupGenerationChapter(ctx, client, novelID, order)
+}
+
+func (s *entGenerationChapterStore) lookupPreviousChapter(
+	ctx context.Context,
+	novelID int,
+	order int,
+) (*ent.Chapter, error) {
+	return lookupPreviousChapter(ctx, s.client, novelID, order)
+}
+
+func createGenerationChapter(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	chapterIndex int,
+) (*ent.Chapter, error) {
+	return client.Chapter.
 		Create().
 		SetNovelID(novelID).
 		SetTitle(chapterTitle(chapterIndex)).
@@ -105,39 +342,291 @@ func (s *entGenerationChapterStore) Prepare(
 		SetOrder(chapterIndex).
 		SetStatus("Draft").
 		Save(ctx)
-	if err != nil {
-		return nil, err
-	}
-	target := generationChapterTargetFromRow(row)
-	if err := s.loadPreviousContinuity(ctx, novelID, target); err != nil {
-		return nil, err
-	}
-	return target, nil
 }
 
-func (s *entGenerationChapterStore) loadPreviousContinuity(
+func (s *entGenerationChapterStore) createGenerationChapter(
 	ctx context.Context,
 	novelID int,
-	target *generationChapterTarget,
-) error {
-	if target == nil || target.Order <= 1 {
-		return nil
+	chapterIndex int,
+) (*ent.Chapter, error) {
+	return createGenerationChapter(ctx, s.client, novelID, chapterIndex)
+}
+
+func isChapterIntegrityConflict(err error) bool {
+	return errors.Is(err, errGenerationPreviousChapterMissing) ||
+		errors.Is(err, errChapterOrderOccupied) ||
+		errors.Is(err, errChapterHasSuccessor)
+}
+
+func chapterMutationHTTPStatus(err error) int {
+	switch {
+	case ent.IsNotFound(err):
+		return http.StatusNotFound
+	case isChapterIntegrityConflict(err):
+		return http.StatusConflict
+	default:
+		return http.StatusInternalServerError
 	}
-	previous, err := s.client.Chapter.Query().Where(
-		chapter.OrderEQ(target.Order-1),
-		chapter.HasNovelWith(novel.ID(novelID)),
-	).Only(ctx)
+}
+
+func requireAvailableChapterOrder(
+	ctx context.Context,
+	novelID int,
+	order int,
+	currentChapterID int,
+	lookup generationChapterLookup,
+) error {
+	row, err := lookup(ctx, novelID, order)
 	if ent.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	target.PreviousContinuity = agents.ContinuityPacket{
-		LastBeat:   strings.TrimSpace(previous.LastBeat),
-		OpenLoops:  append([]string(nil), previous.OpenLoops...),
-		NextAction: strings.TrimSpace(previous.NextAction),
+	if currentChapterID > 0 && row.ID == currentChapterID {
+		return nil
 	}
+	return errChapterOrderOccupied
+}
+
+func requirePreviousChapterOrder(
+	ctx context.Context,
+	novelID int,
+	order int,
+	currentChapterID int,
+	lookup generationChapterLookup,
+) error {
+	if order <= 1 {
+		return nil
+	}
+	previousOrder := order - 1
+	row, err := lookup(ctx, novelID, previousOrder)
+	if ent.IsNotFound(err) {
+		return &generationPreviousChapterMissingError{
+			NovelID:      novelID,
+			MissingOrder: previousOrder,
+		}
+	}
+	if err != nil {
+		return err
+	}
+	if currentChapterID > 0 && row.ID == currentChapterID {
+		return &generationPreviousChapterMissingError{
+			NovelID:      novelID,
+			MissingOrder: previousOrder,
+		}
+	}
+	return nil
+}
+
+func requireNoChapterSuccessor(
+	ctx context.Context,
+	novelID int,
+	order int,
+	lookup generationChapterLookup,
+) error {
+	_, err := lookup(ctx, novelID, order+1)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errChapterHasSuccessor
+}
+
+func createChapterWithIntegrity(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	requestedOrder int,
+	title string,
+	content string,
+	status string,
+) (*ent.Chapter, error) {
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := tx.Client()
+	if err := lockGenerationNovel(ctx, txClient, novelID); err != nil {
+		return nil, err
+	}
+	order := requestedOrder
+	if order <= 0 {
+		last, queryErr := txClient.Chapter.Query().Where(
+			chapter.HasNovelWith(novel.ID(novelID)),
+		).Order(ent.Desc(chapter.FieldOrder)).First(ctx)
+		switch {
+		case queryErr == nil:
+			order = last.Order + 1
+		case ent.IsNotFound(queryErr):
+			order = 1
+		default:
+			return nil, queryErr
+		}
+	}
+	lookup := func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+		return lookupGenerationChapter(ctx, txClient, novelID, order)
+	}
+	if err := requireAvailableChapterOrder(ctx, novelID, order, 0, lookup); err != nil {
+		return nil, err
+	}
+	if err := requirePreviousChapterOrder(ctx, novelID, order, 0, lookup); err != nil {
+		return nil, err
+	}
+	if title == "" {
+		title = chapterTitle(order)
+	}
+	row, err := txClient.Chapter.Create().
+		SetNovelID(novelID).
+		SetTitle(title).
+		SetContent(content).
+		SetWordCount(wordCountOf(content)).
+		SetOrder(order).
+		SetStatus(status).
+		Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
+	return row.Unwrap(), nil
+}
+
+func updateChapterWithIntegrity(
+	ctx context.Context,
+	client *ent.Client,
+	chapterID int,
+	req UpdateChapterRequest,
+) (*ent.Chapter, error) {
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := tx.Client()
+	row, err := txClient.Chapter.Query().Where(chapter.ID(chapterID)).WithNovel().Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	novelRow, err := row.Edges.NovelOrErr()
+	if err != nil {
+		return nil, err
+	}
+	if err := lockGenerationNovel(ctx, txClient, novelRow.ID); err != nil {
+		return nil, err
+	}
+	row, err = txClient.Chapter.Query().Where(
+		chapter.ID(chapterID),
+		chapter.HasNovelWith(novel.ID(novelRow.ID)),
+	).Only(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req.Order != nil && *req.Order != row.Order {
+		lookup := func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+			return lookupGenerationChapter(ctx, txClient, novelID, order)
+		}
+		if err := requireNoChapterSuccessor(ctx, novelRow.ID, row.Order, lookup); err != nil {
+			return nil, err
+		}
+		if err := requireAvailableChapterOrder(ctx, novelRow.ID, *req.Order, chapterID, lookup); err != nil {
+			return nil, err
+		}
+		if err := requirePreviousChapterOrder(ctx, novelRow.ID, *req.Order, chapterID, lookup); err != nil {
+			return nil, err
+		}
+	}
+
+	update := txClient.Chapter.UpdateOneID(chapterID)
+	if req.Title != nil {
+		update.SetTitle(strings.TrimSpace(*req.Title))
+	}
+	if req.Order != nil {
+		update.SetOrder(*req.Order)
+	}
+	if req.Status != nil {
+		update.SetStatus(strings.TrimSpace(*req.Status))
+	}
+	if req.Content != nil {
+		update.SetContent(*req.Content)
+		update.SetWordCount(wordCountOf(*req.Content))
+	}
+	row, err = update.Save(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
+	return row.Unwrap(), nil
+}
+
+func deleteChapterWithIntegrity(
+	ctx context.Context,
+	client *ent.Client,
+	chapterID int,
+) error {
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := tx.Client()
+	row, err := txClient.Chapter.Query().Where(chapter.ID(chapterID)).WithNovel().Only(ctx)
+	if err != nil {
+		return err
+	}
+	novelRow, err := row.Edges.NovelOrErr()
+	if err != nil {
+		return err
+	}
+	if err := lockGenerationNovel(ctx, txClient, novelRow.ID); err != nil {
+		return err
+	}
+	row, err = txClient.Chapter.Query().Where(
+		chapter.ID(chapterID),
+		chapter.HasNovelWith(novel.ID(novelRow.ID)),
+	).Only(ctx)
+	if err != nil {
+		return err
+	}
+	lookup := func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+		return lookupGenerationChapter(ctx, txClient, novelID, order)
+	}
+	if err := requireNoChapterSuccessor(ctx, novelRow.ID, row.Order, lookup); err != nil {
+		return err
+	}
+	if err := txClient.Chapter.DeleteOneID(chapterID).Exec(ctx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 
@@ -914,43 +1403,30 @@ func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order := req.Order
-	if order <= 0 {
-		last, queryErr := s.db.Chapter.
-			Query().
-			Where(chapter.HasNovelWith(novel.ID(novelID))).
-			Order(ent.Desc(chapter.FieldOrder)).
-			First(r.Context())
-		if queryErr == nil && last != nil {
-			order = last.Order + 1
-		} else {
-			order = 1
-		}
-	}
-
 	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		title = chapterTitle(order)
-	}
 	content := req.Content
 	status := strings.TrimSpace(req.Status)
 	if status == "" {
 		status = "Draft"
 	}
 
-	row, err := s.db.Chapter.
-		Create().
-		SetNovelID(novelID).
-		SetTitle(title).
-		SetContent(content).
-		SetWordCount(wordCountOf(content)).
-		SetOrder(order).
-		SetStatus(status).
-		Save(r.Context())
+	row, err := createChapterWithIntegrity(
+		r.Context(),
+		s.db,
+		novelID,
+		order,
+		title,
+		content,
+		status,
+	)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if ent.IsNotFound(err) {
+			http.Error(w, "novel not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), chapterMutationHTTPStatus(err))
 		return
 	}
-
 	item := ChapterItem{
 		ID:        fmt.Sprintf("%d", row.ID),
 		NovelID:   fmt.Sprintf("%d", novelID),
@@ -989,32 +1465,17 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upd := s.db.Chapter.UpdateOneID(id)
-	if req.Title != nil {
-		upd.SetTitle(strings.TrimSpace(*req.Title))
+	if req.Order != nil && *req.Order <= 0 {
+		http.Error(w, "order must be > 0", http.StatusBadRequest)
+		return
 	}
-	if req.Order != nil {
-		if *req.Order <= 0 {
-			http.Error(w, "order must be > 0", http.StatusBadRequest)
-			return
-		}
-		upd.SetOrder(*req.Order)
-	}
-	if req.Status != nil {
-		upd.SetStatus(strings.TrimSpace(*req.Status))
-	}
-	if req.Content != nil {
-		upd.SetContent(*req.Content)
-		upd.SetWordCount(wordCountOf(*req.Content))
-	}
-
-	row, saveErr := upd.Save(r.Context())
+	row, saveErr := updateChapterWithIntegrity(r.Context(), s.db, id, req)
 	if saveErr != nil {
 		if ent.IsNotFound(saveErr) {
 			http.Error(w, "chapter not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, saveErr.Error(), http.StatusInternalServerError)
+		http.Error(w, saveErr.Error(), chapterMutationHTTPStatus(saveErr))
 		return
 	}
 
@@ -1052,12 +1513,12 @@ func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.Chapter.DeleteOneID(id).Exec(r.Context()); err != nil {
+	if err := deleteChapterWithIntegrity(r.Context(), s.db, id); err != nil {
 		if ent.IsNotFound(err) {
 			http.Error(w, "chapter not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), chapterMutationHTTPStatus(err))
 		return
 	}
 

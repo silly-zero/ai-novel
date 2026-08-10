@@ -2,9 +2,11 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 
+	"entgo.io/ent/dialect/sql"
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/novel"
@@ -58,13 +60,63 @@ func (r *Repository) GetNovel(ctx context.Context, id int) (*domain.Novel, error
 	}, nil
 }
 
+var (
+	errChapterOrderOccupied       = errors.New("chapter order is already occupied")
+	errPreviousChapterUnavailable = errors.New("previous chapter is required")
+)
+
 func (r *Repository) SaveChapter(ctx context.Context, c *domain.Chapter) error {
+	if c == nil {
+		return errors.New("chapter is nil")
+	}
 	novelID, err := strconv.Atoi(c.NovelID)
 	if err != nil || novelID <= 0 {
 		return fmt.Errorf("invalid chapter novel id: %q", c.NovelID)
 	}
+	if c.Order <= 0 {
+		return fmt.Errorf("invalid chapter order: %d", c.Order)
+	}
 
-	_, err = r.client.Chapter.
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("start chapter transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := tx.Client()
+	if _, err := txClient.Novel.Query().Where(
+		novel.ID(novelID),
+		func(selector *sql.Selector) {
+			selector.ForUpdate()
+		},
+	).Only(ctx); err != nil {
+		return fmt.Errorf("lock chapter novel: %w", err)
+	}
+	if _, err := txClient.Chapter.Query().Where(
+		chapter.OrderEQ(c.Order),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).Only(ctx); err == nil {
+		return errChapterOrderOccupied
+	} else if !ent.IsNotFound(err) {
+		return fmt.Errorf("check chapter order: %w", err)
+	}
+	if c.Order > 1 {
+		if _, err := txClient.Chapter.Query().Where(
+			chapter.OrderEQ(c.Order-1),
+			chapter.HasNovelWith(novel.ID(novelID)),
+		).Only(ctx); ent.IsNotFound(err) {
+			return fmt.Errorf("%w: order %d", errPreviousChapterUnavailable, c.Order-1)
+		} else if err != nil {
+			return fmt.Errorf("check previous chapter: %w", err)
+		}
+	}
+
+	_, err = txClient.Chapter.
 		Create().
 		SetNovelID(novelID).
 		SetTitle(c.Title).
@@ -76,6 +128,10 @@ func (r *Repository) SaveChapter(ctx context.Context, c *domain.Chapter) error {
 	if err != nil {
 		return fmt.Errorf("failed to save chapter: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit chapter transaction: %w", err)
+	}
+	committed = true
 	return nil
 }
 

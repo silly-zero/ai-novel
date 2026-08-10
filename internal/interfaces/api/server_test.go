@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/internal/domain/agents"
 )
 
@@ -621,6 +622,391 @@ func TestHandleGenerateChapterReleasesLeaseAfterSuccess(t *testing.T) {
 	}
 }
 
+func TestGenerationPreviousChapterMissingErrorSupportsInspection(t *testing.T) {
+	err := &generationPreviousChapterMissingError{
+		NovelID:      7,
+		MissingOrder: 2,
+	}
+	if !errors.Is(err, errGenerationPreviousChapterMissing) {
+		t.Fatalf("errors.Is(%v) = false", err)
+	}
+	var typed *generationPreviousChapterMissingError
+	if !errors.As(err, &typed) || typed.NovelID != 7 || typed.MissingOrder != 2 {
+		t.Fatalf("typed error = %#v", typed)
+	}
+	if !strings.Contains(err.Error(), "chapter 2") || !strings.Contains(err.Error(), "novel 7") {
+		t.Fatalf("error = %q", err)
+	}
+}
+
+func TestPreparePreviousContinuityAllowsFirstChapterWithoutLookup(t *testing.T) {
+	called := false
+	packet, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		1,
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			called = true
+			return nil, nil
+		},
+	)
+	if err != nil || called || !packet.IsEmpty() {
+		t.Fatalf("packet = %#v, called = %v, error = %v", packet, called, err)
+	}
+}
+
+func TestPreparePreviousContinuityRequiresMissingChapter(t *testing.T) {
+	packet, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		3,
+		func(_ context.Context, novelID int, order int) (*ent.Chapter, error) {
+			if novelID != 7 || order != 2 {
+				t.Fatalf("lookup = novel %d order %d", novelID, order)
+			}
+			return nil, &ent.NotFoundError{}
+		},
+	)
+	if !packet.IsEmpty() || !errors.Is(err, errGenerationPreviousChapterMissing) {
+		t.Fatalf("packet = %#v, error = %v", packet, err)
+	}
+	var typed *generationPreviousChapterMissingError
+	if !errors.As(err, &typed) || typed.NovelID != 7 || typed.MissingOrder != 2 {
+		t.Fatalf("typed error = %#v", typed)
+	}
+}
+
+func TestPreparePreviousContinuityCopiesPreviousPacket(t *testing.T) {
+	loops := []string{"线索一", "线索二"}
+	packet, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return &ent.Chapter{
+				LastBeat:   "  最后动作  ",
+				OpenLoops:  loops,
+				NextAction: "  继续追查  ",
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet.LastBeat != "最后动作" || packet.NextAction != "继续追查" || len(packet.OpenLoops) != 2 {
+		t.Fatalf("packet = %#v", packet)
+	}
+	packet.OpenLoops[0] = "已修改"
+	if loops[0] != "线索一" {
+		t.Fatalf("lookup loops shared backing array: %#v", loops)
+	}
+}
+
+func TestPreparePreviousContinuityPropagatesLookupError(t *testing.T) {
+	lookupErr := errors.New("lookup failed")
+	_, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return nil, lookupErr
+		},
+	)
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("error = %v, want %v", err, lookupErr)
+	}
+}
+
+func TestPrepareNewGenerationChapterChecksPredecessorBeforeCreate(t *testing.T) {
+	createCalled := false
+	_, err := prepareNewGenerationChapter(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int) error {
+			return nil
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return nil, &ent.NotFoundError{}
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return nil, &ent.NotFoundError{}
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			createCalled = true
+			return nil, nil
+		},
+	)
+	if !errors.Is(err, errGenerationPreviousChapterMissing) {
+		t.Fatalf("error = %v", err)
+	}
+	if createCalled {
+		t.Fatal("target chapter was created before predecessor validation")
+	}
+}
+
+func TestPrepareNewGenerationChapterAttachesPreviousContinuity(t *testing.T) {
+	var events []string
+	target, err := prepareNewGenerationChapter(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int) error {
+			events = append(events, "lock")
+			return nil
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			events = append(events, "target")
+			return nil, &ent.NotFoundError{}
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			events = append(events, "lookup")
+			return &ent.Chapter{LastBeat: "结尾", NextAction: "行动"}, nil
+		},
+		func(_ context.Context, novelID int, order int) (*ent.Chapter, error) {
+			events = append(events, "create")
+			return &ent.Chapter{ID: 11, Order: order}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(events, ",") != "lock,target,lookup,create" || target.ID != 11 || target.Order != 3 || target.PreviousContinuity.LastBeat != "结尾" {
+		t.Fatalf("events = %v, target = %#v", events, target)
+	}
+}
+
+func TestPrepareNewGenerationChapterReusesTargetAfterLock(t *testing.T) {
+	createCalled := false
+	target, err := prepareNewGenerationChapter(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int) error { return nil },
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return &ent.Chapter{ID: 11, Order: 3}, nil
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return &ent.Chapter{LastBeat: "结尾", NextAction: "行动"}, nil
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			createCalled = true
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if createCalled || target.ID != 11 || target.PreviousContinuity.LastBeat != "结尾" {
+		t.Fatalf("create called = %v, target = %#v", createCalled, target)
+	}
+}
+
+func TestPrepareNewGenerationChapterStopsAtNovelLockFailure(t *testing.T) {
+	lockErr := errors.New("lock failed")
+	lookupCalled := false
+	_, err := prepareNewGenerationChapter(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int) error { return lockErr },
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			lookupCalled = true
+			return nil, nil
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			lookupCalled = true
+			return nil, nil
+		},
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			lookupCalled = true
+			return nil, nil
+		},
+	)
+	if !errors.Is(err, lockErr) || lookupCalled {
+		t.Fatalf("error = %v, downstream called = %v", err, lookupCalled)
+	}
+}
+
+func TestIsChapterIntegrityConflict(t *testing.T) {
+	conflicts := []error{
+		&generationPreviousChapterMissingError{NovelID: 7, MissingOrder: 2},
+		fmt.Errorf("wrapped: %w", errChapterOrderOccupied),
+		errChapterHasSuccessor,
+	}
+	for _, err := range conflicts {
+		if !isChapterIntegrityConflict(err) {
+			t.Fatalf("isChapterIntegrityConflict(%v) = false", err)
+		}
+	}
+	for _, err := range []error{nil, errors.New("database unavailable"), &ent.NotSingularError{}} {
+		if isChapterIntegrityConflict(err) {
+			t.Fatalf("isChapterIntegrityConflict(%v) = true", err)
+		}
+	}
+}
+
+func TestChapterMutationHTTPStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int
+	}{
+		{name: "not found", err: fmt.Errorf("wrapped: %w", &ent.NotFoundError{}), status: http.StatusNotFound},
+		{name: "missing predecessor", err: &generationPreviousChapterMissingError{NovelID: 7, MissingOrder: 2}, status: http.StatusConflict},
+		{name: "occupied order", err: errChapterOrderOccupied, status: http.StatusConflict},
+		{name: "has successor", err: fmt.Errorf("wrapped: %w", errChapterHasSuccessor), status: http.StatusConflict},
+		{name: "database failure", err: errors.New("database unavailable"), status: http.StatusInternalServerError},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if status := chapterMutationHTTPStatus(test.err); status != test.status {
+				t.Fatalf("status = %d, want %d", status, test.status)
+			}
+		})
+	}
+}
+
+func TestRequireAvailableChapterOrder(t *testing.T) {
+	lookupErr := errors.New("lookup failed")
+	tests := []struct {
+		name             string
+		currentChapterID int
+		row              *ent.Chapter
+		lookupErr        error
+		wantErr          error
+	}{
+		{name: "available", lookupErr: &ent.NotFoundError{}},
+		{name: "current chapter", currentChapterID: 11, row: &ent.Chapter{ID: 11}},
+		{name: "occupied", currentChapterID: 11, row: &ent.Chapter{ID: 12}, wantErr: errChapterOrderOccupied},
+		{name: "not singular", lookupErr: &ent.NotSingularError{}, wantErr: &ent.NotSingularError{}},
+		{name: "lookup failure", lookupErr: lookupErr, wantErr: lookupErr},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := requireAvailableChapterOrder(
+				context.Background(),
+				7,
+				3,
+				test.currentChapterID,
+				func(_ context.Context, novelID, order int) (*ent.Chapter, error) {
+					if novelID != 7 || order != 3 {
+						t.Fatalf("lookup = novel %d order %d", novelID, order)
+					}
+					return test.row, test.lookupErr
+				},
+			)
+			switch {
+			case test.wantErr == nil && err != nil:
+				t.Fatalf("error = %v, want nil", err)
+			case errors.Is(test.wantErr, lookupErr) && !errors.Is(err, lookupErr):
+				t.Fatalf("error = %v, want %v", err, lookupErr)
+			case ent.IsNotSingular(test.wantErr) && !ent.IsNotSingular(err):
+				t.Fatalf("error = %v, want not singular", err)
+			case test.wantErr != nil && !errors.Is(err, test.wantErr) && !ent.IsNotSingular(test.wantErr):
+				t.Fatalf("error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestRequirePreviousChapterOrder(t *testing.T) {
+	lookupErr := errors.New("lookup failed")
+	tests := []struct {
+		name             string
+		order            int
+		currentChapterID int
+		row              *ent.Chapter
+		lookupErr        error
+		wantMissingOrder int
+		wantErr          error
+		wantLookup       bool
+	}{
+		{name: "first chapter", order: 1},
+		{name: "previous exists", order: 3, row: &ent.Chapter{ID: 10}, wantLookup: true},
+		{name: "previous missing", order: 3, lookupErr: &ent.NotFoundError{}, wantMissingOrder: 2, wantLookup: true},
+		{name: "current chapter is previous", order: 4, currentChapterID: 11, row: &ent.Chapter{ID: 11}, wantMissingOrder: 3, wantLookup: true},
+		{name: "not singular", order: 3, lookupErr: &ent.NotSingularError{}, wantErr: &ent.NotSingularError{}, wantLookup: true},
+		{name: "lookup failure", order: 3, lookupErr: lookupErr, wantErr: lookupErr, wantLookup: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			called := false
+			err := requirePreviousChapterOrder(
+				context.Background(),
+				7,
+				test.order,
+				test.currentChapterID,
+				func(_ context.Context, novelID, order int) (*ent.Chapter, error) {
+					called = true
+					if novelID != 7 || order != test.order-1 {
+						t.Fatalf("lookup = novel %d order %d", novelID, order)
+					}
+					return test.row, test.lookupErr
+				},
+			)
+			if called != test.wantLookup {
+				t.Fatalf("lookup called = %v, want %v", called, test.wantLookup)
+			}
+			if test.wantMissingOrder > 0 {
+				var missing *generationPreviousChapterMissingError
+				if !errors.As(err, &missing) || missing.NovelID != 7 || missing.MissingOrder != test.wantMissingOrder {
+					t.Fatalf("error = %v, typed = %#v", err, missing)
+				}
+				return
+			}
+			switch {
+			case test.wantErr == nil && err != nil:
+				t.Fatalf("error = %v, want nil", err)
+			case errors.Is(test.wantErr, lookupErr) && !errors.Is(err, lookupErr):
+				t.Fatalf("error = %v, want %v", err, lookupErr)
+			case ent.IsNotSingular(test.wantErr) && !ent.IsNotSingular(err):
+				t.Fatalf("error = %v, want not singular", err)
+			}
+		})
+	}
+}
+
+func TestRequireNoChapterSuccessor(t *testing.T) {
+	lookupErr := errors.New("lookup failed")
+	tests := []struct {
+		name      string
+		row       *ent.Chapter
+		lookupErr error
+		wantErr   error
+	}{
+		{name: "no successor", lookupErr: &ent.NotFoundError{}},
+		{name: "has successor", row: &ent.Chapter{ID: 12}, wantErr: errChapterHasSuccessor},
+		{name: "not singular", lookupErr: &ent.NotSingularError{}, wantErr: &ent.NotSingularError{}},
+		{name: "lookup failure", lookupErr: lookupErr, wantErr: lookupErr},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := requireNoChapterSuccessor(
+				context.Background(),
+				7,
+				3,
+				func(_ context.Context, novelID, order int) (*ent.Chapter, error) {
+					if novelID != 7 || order != 4 {
+						t.Fatalf("lookup = novel %d order %d", novelID, order)
+					}
+					return test.row, test.lookupErr
+				},
+			)
+			switch {
+			case test.wantErr == nil && err != nil:
+				t.Fatalf("error = %v, want nil", err)
+			case errors.Is(test.wantErr, lookupErr) && !errors.Is(err, lookupErr):
+				t.Fatalf("error = %v, want %v", err, lookupErr)
+			case ent.IsNotSingular(test.wantErr) && !ent.IsNotSingular(err):
+				t.Fatalf("error = %v, want not singular", err)
+			case test.wantErr != nil && !errors.Is(err, test.wantErr) && !ent.IsNotSingular(test.wantErr):
+				t.Fatalf("error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestEntGenerationChapterStoreRejectsInvalidTarget(t *testing.T) {
 	store := &entGenerationChapterStore{}
 	if _, err := store.Prepare(context.Background(), 0, 0, 1); err == nil ||
@@ -714,6 +1100,74 @@ func TestHandleGenerateChapterPersistRequiresChapterStore(t *testing.T) {
 	}
 }
 
+func TestHandleGenerateChapterMissingPreviousChapterFailsClosed(t *testing.T) {
+	missingErr := &generationPreviousChapterMissingError{NovelID: 7, MissingOrder: 2}
+	store := &generationChapterStoreFake{
+		prepare: func(context.Context, int, int, int) (*generationChapterTarget, error) {
+			return nil, missingErr
+		},
+	}
+	prepareContextCalls := 0
+	runCalls := 0
+	extractCalls := 0
+	publishCalls := 0
+	engine := &generationTestEngine{
+		prepare: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			prepareContextCalls++
+			return nil, errors.New("PrepareContext must not run")
+		},
+		run: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			runCalls++
+			return nil, errors.New("RunChapterGeneration must not run")
+		},
+		extract: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			extractCalls++
+			return nil, errors.New("ExtractContinuity must not run")
+		},
+		publish: func(context.Context, *agents.GenerationState) error {
+			publishCalls++
+			return errors.New("PublishChapterGenerated must not run")
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+
+	first := httptest.NewRecorder()
+	server.HandleGenerateChapter(
+		first,
+		generateRequestWithPersist(context.Background(), "7", 3, true),
+	)
+	body := first.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "chapter 2") ||
+		!strings.Contains(body, "novel 7") {
+		t.Fatalf("SSE body missing missing-predecessor error: %s", body)
+	}
+	if prepareContextCalls != 0 || runCalls != 0 || extractCalls != 0 || publishCalls != 0 {
+		t.Fatalf("downstream calls = prepare %d run %d extract %d publish %d", prepareContextCalls, runCalls, extractCalls, publishCalls)
+	}
+	prepareCalls, saveCalls := store.calls()
+	if prepareCalls != 1 || saveCalls != 0 {
+		t.Fatalf("store calls = (%d, %d), want (1, 0)", prepareCalls, saveCalls)
+	}
+
+	second := httptest.NewRecorder()
+	server.HandleGenerateChapter(
+		second,
+		generateRequestWithPersist(context.Background(), "7", 3, true),
+	)
+	if second.Code != http.StatusOK {
+		t.Fatalf("second status = %d, want %d", second.Code, http.StatusOK)
+	}
+	prepareCalls, saveCalls = store.calls()
+	if prepareCalls != 2 || saveCalls != 0 {
+		t.Fatalf("store calls after retry = (%d, %d), want (2, 0)", prepareCalls, saveCalls)
+	}
+}
+
 func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T) {
 	store := &generationChapterStoreFake{}
 	published := false
@@ -734,7 +1188,7 @@ func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T)
 
 	server.HandleGenerateChapter(
 		recorder,
-		generateRequest(context.Background(), "7", 1),
+		generateRequest(context.Background(), "7", 3),
 	)
 
 	prepareCalls, saveCalls := store.calls()
