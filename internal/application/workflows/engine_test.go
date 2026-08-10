@@ -23,13 +23,23 @@ func (b *workflowEventBusFake) Subscribe(string, events.Handler) string { return
 func (b *workflowEventBusFake) Unsubscribe(string, string)              {}
 
 type workflowLLMFake struct {
-	streamCalls int
-	reviewCalls int
-	passOn      int
-	draft       string
+	streamCalls   int
+	reviewCalls   int
+	plotCalls     int
+	directorCalls int
+	passOn        int
+	draft         string
 }
 
 func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (string, error) {
+	if strings.Contains(systemPrompt, "资深网文编剧") {
+		f.plotCalls++
+		return `{"chapter_goal":"完成调查","must_happen":["找到线索"],"must_not_happen":["揭晓真相"],"end_state":"决定继续追查"}`, nil
+	}
+	if strings.Contains(systemPrompt, "资深小说主编") {
+		f.directorCalls++
+		return "场景卡", nil
+	}
 	if strings.Contains(systemPrompt, "审查员") {
 		f.reviewCalls++
 		passed := f.passOn > 0 && f.reviewCalls >= f.passOn
@@ -69,6 +79,50 @@ func newReviewerLoopEngine(t *testing.T, llm *workflowLLMFake) *WorkflowEngine {
 		t.Fatal(err)
 	}
 	return engine
+}
+
+func TestRunChapterGenerationStopsAtInvalidStructuredOutline(t *testing.T) {
+	llm := &workflowLLMFake{}
+	engine := newReviewerLoopEngine(t, llm)
+	outline := "第2章：不应出现在错误消息中的秘密事件"
+	state := &agents.GenerationState{
+		FullOutline:  outline,
+		ChapterIndex: 1,
+	}
+
+	finalState, err := engine.RunChapterGeneration(context.Background(), state)
+	if err == nil || !strings.Contains(err.Error(), "current_chapter_missing") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), outline) {
+		t.Fatalf("error leaked outline: %v", err)
+	}
+	if finalState != nil {
+		t.Fatalf("final state = %#v, want nil", finalState)
+	}
+	if llm.plotCalls != 0 || llm.directorCalls != 0 || llm.streamCalls != 0 || llm.reviewCalls != 0 {
+		t.Fatalf("downstream calls = plot %d director %d writer %d reviewer %d", llm.plotCalls, llm.directorCalls, llm.streamCalls, llm.reviewCalls)
+	}
+}
+
+func TestRunChapterGenerationKeepsNonstandardManualOutlineCompatible(t *testing.T) {
+	llm := &workflowLLMFake{passOn: 1}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		FullOutline:  "人工大纲：主角调查身世",
+		ChapterIndex: 1,
+	}
+
+	finalState, err := engine.RunChapterGeneration(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalState == nil || !finalState.IsApproved || finalState.MainlineBeat != (agents.MainlineEventBeat{}) {
+		t.Fatalf("final state = %#v", finalState)
+	}
+	if llm.plotCalls != 1 || llm.directorCalls != 1 || llm.streamCalls != 1 || llm.reviewCalls != 1 {
+		t.Fatalf("calls = plot %d director %d writer %d reviewer %d", llm.plotCalls, llm.directorCalls, llm.streamCalls, llm.reviewCalls)
+	}
 }
 
 func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {

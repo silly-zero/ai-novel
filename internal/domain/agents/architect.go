@@ -22,37 +22,51 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	state.MainlineBeat = MainlineEventBeat{}
 
 	// 已有大纲且未指定续写范围：直接复用，不触发生成/续写
-	if state.ExistingOutline != "" && state.OutlineStart <= 0 && state.OutlineEnd <= 0 {
-		if state.FullOutline == "" {
-			state.FullOutline = state.ExistingOutline
+	if state.ExistingOutline != "" && state.OutlineStart == 0 && state.OutlineEnd == 0 {
+		beat, err := validatedExistingMainlineBeat(state.ExistingOutline, state.ChapterIndex)
+		if err != nil {
+			return state, err
 		}
-		state.MainlineBeat = selectMainlineEventBeat(state.FullOutline, state.ChapterIndex)
+		state.FullOutline = state.ExistingOutline
+		state.MainlineBeat = beat
 		return state, nil
 	}
 
 	// FullOutline 已有且未指定续写范围：跳过生成
-	if state.FullOutline != "" && state.OutlineStart <= 0 && state.OutlineEnd <= 0 {
-		state.MainlineBeat = selectMainlineEventBeat(state.FullOutline, state.ChapterIndex)
+	if state.FullOutline != "" && state.OutlineStart == 0 && state.OutlineEnd == 0 {
+		beat, err := validatedExistingMainlineBeat(state.FullOutline, state.ChapterIndex)
+		if err != nil {
+			return state, err
+		}
+		state.MainlineBeat = beat
 		return state, nil
 	}
 
 	// 续写时优先使用显式 ExistingOutline，否则使用 FullOutline，但只在生成成功后提交新状态。
 	existingOutline := state.ExistingOutline
-	if existingOutline == "" && state.FullOutline != "" && (state.OutlineStart > 0 || state.OutlineEnd > 0) {
+	if existingOutline == "" && state.FullOutline != "" {
 		existingOutline = state.FullOutline
 	}
 
+	start, end, rangeErr := architectOutlineRange(state.OutlineStart, state.OutlineEnd)
+	if rangeErr != "" {
+		return state, architectOutlineError(rangeErr)
+	}
 	if state.Idea == "" && existingOutline == "" {
 		return state, fmt.Errorf("architect agent requires an idea or existing outline but both are empty")
 	}
-
-	start := state.OutlineStart
-	if start <= 0 {
-		start = 1
+	if existingOutline == "" && (state.ChapterIndex < start || state.ChapterIndex > end) {
+		return state, architectOutlineError(mainlineBeatIssueMissingCurrent)
 	}
-	end := state.OutlineEnd
-	if end <= 0 {
-		end = 10
+	if existingOutline != "" {
+		if issue := validateOutlineRangeDoesNotOverlap(existingOutline, start, end); issue != "" {
+			return state, architectOutlineError(issue)
+		}
+		if state.ChapterIndex < start || state.ChapterIndex > end {
+			if _, err := validatedExistingMainlineBeat(existingOutline, state.ChapterIndex); err != nil {
+				return state, err
+			}
+		}
 	}
 
 	systemPrompt := fmt.Sprintf(`你是一位资深小说架构师。你的任务是根据用户提供的小说【想法(Idea)】和可能存在的【已有大纲】，构思或续写小说的【大纲】。
@@ -82,14 +96,50 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if err != nil {
 		return state, fmt.Errorf("architect agent failed: %w", err)
 	}
+	if issue := validateGeneratedOutlineSegment(fullOutline, start, end); issue != "" {
+		return state, architectOutlineError(issue)
+	}
+
+	mergedOutline := fullOutline
+	if existingOutline != "" {
+		mergedOutline = existingOutline + "\n" + fullOutline
+	}
+	beatSource := existingOutline
+	if state.ChapterIndex >= start && state.ChapterIndex <= end {
+		beatSource = fullOutline
+	}
+	beat, err := validatedExistingMainlineBeat(beatSource, state.ChapterIndex)
+	if err != nil {
+		return state, err
+	}
 
 	if existingOutline != "" {
 		state.ExistingOutline = existingOutline
-		state.FullOutline = existingOutline + "\n" + fullOutline
-	} else {
-		state.FullOutline = fullOutline
 	}
-	state.MainlineBeat = selectMainlineEventBeat(state.FullOutline, state.ChapterIndex)
+	state.FullOutline = mergedOutline
+	state.MainlineBeat = beat
 
 	return state, nil
+}
+
+func architectOutlineRange(start, end int) (int, int, string) {
+	if start == 0 && end == 0 {
+		return 1, 10, ""
+	}
+	if start <= 0 || end <= 0 || start > end {
+		return 0, 0, outlineIssueInvalidRange
+	}
+	return start, end, ""
+}
+
+func validatedExistingMainlineBeat(fullOutline string, chapterIndex int) (MainlineEventBeat, error) {
+	selection := inspectMainlineEventBeat(fullOutline, chapterIndex)
+	if selection.HasStructuredOutline && selection.IssueCode != "" {
+		return MainlineEventBeat{}, architectOutlineError(selection.IssueCode)
+	}
+	return selection.Beat, nil
+}
+
+func architectOutlineError(issueCode string) error {
+	return fmt.Errorf("architect outline validation failed: %s", issueCode)
 }
