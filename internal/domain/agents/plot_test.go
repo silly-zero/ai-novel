@@ -15,6 +15,11 @@ func TestPlotRunGeneratesStructuredChapterContract(t *testing.T) {
 		Idea:         "主角调查身世",
 		FullOutline:  "主角最终发现旧王朝真相",
 		ChapterIndex: 4,
+		MainlineBeat: MainlineEventBeat{
+			ChapterIndex: 4,
+			CurrentEvent: "主角找到旧王朝血书",
+			NextEvent:    "主角前往地下祭坛",
+		},
 		PreviousContinuity: ContinuityPacket{
 			LastBeat:   "主角推开密门。",
 			OpenLoops:  []string{"血书来自何人"},
@@ -36,9 +41,14 @@ func TestPlotRunGeneratesStructuredChapterContract(t *testing.T) {
 			t.Fatalf("outline missing %q: %s", value, got.Outline)
 		}
 	}
-	for _, value := range []string{"第4章", "主角推开密门。", "血书来自何人", "立即进入密门。"} {
+	for _, value := range []string{"第4章", "主角找到旧王朝血书", "主角前往地下祭坛", "主角推开密门。", "血书来自何人", "立即进入密门。"} {
 		if !strings.Contains(llm.users[0], value) {
 			t.Fatalf("plot prompt missing %q: %s", value, llm.users[0])
+		}
+	}
+	for _, rule := range []string{"实际推进本章事件", "不得在本章提前完成", "上一章接力为事实基础"} {
+		if !strings.Contains(llm.systems[0], rule) {
+			t.Fatalf("plot system prompt missing %q: %s", rule, llm.systems[0])
 		}
 	}
 }

@@ -119,6 +119,33 @@ func TestWriterRunInjectsChapterContractOnRewrite(t *testing.T) {
 	}
 }
 
+func TestWriterRunInjectsMainlineBeat(t *testing.T) {
+	llm := &writerTestLLM{chunks: []string{"新正文"}}
+	state := &GenerationState{
+		SceneCard: "场景",
+		Context:   "背景",
+		MainlineBeat: MainlineEventBeat{
+			ChapterIndex: 4,
+			CurrentEvent: "主角找到血书",
+			NextEvent:    "主角前往地下祭坛",
+		},
+	}
+
+	if _, err := NewWriterAgent(llm).Run(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛"} {
+		if !strings.Contains(llm.userPrompt, value) {
+			t.Fatalf("writer prompt missing %q: %s", value, llm.userPrompt)
+		}
+	}
+	for _, rule := range []string{"实际呈现本章事件", "不得在本章提前完成"} {
+		if !strings.Contains(llm.systemPrompt, rule) {
+			t.Fatalf("writer system prompt missing %q: %s", rule, llm.systemPrompt)
+		}
+	}
+}
+
 func TestWriterRunReturnsSinkErrorWithoutReplacingDraft(t *testing.T) {
 	sinkErr := errors.New("stream consumer stopped")
 	writer := NewWriterAgent(&writerTestLLM{chunks: []string{"第一段", "第二段", "第三段"}})

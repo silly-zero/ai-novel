@@ -352,6 +352,38 @@ func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
 	}
 }
 
+func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		`{"passed":false,"continuity_passed":true,"contract_assessment":null,"critique":"本章只提到血书线索，没有让主角实际找到血书"}`,
+	}}
+	state := &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+		MainlineBeat: MainlineEventBeat{
+			ChapterIndex: 4,
+			CurrentEvent: "主角找到血书",
+			NextEvent:    "主角前往地下祭坛",
+		},
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsApproved || got.Critique != "本章只提到血书线索，没有让主角实际找到血书" {
+		t.Fatalf("state = %#v", got)
+	}
+	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛"} {
+		if !strings.Contains(llm.users[0], value) {
+			t.Fatalf("reviewer prompt missing %q: %s", value, llm.users[0])
+		}
+	}
+	for _, rule := range []string{"实际发生本章事件", "提前完成下一章预定事件", "passed=false"} {
+		if !strings.Contains(llm.systems[0], rule) {
+			t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
+		}
+	}
+}
+
 func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{"not json", "still not json"}}
 	agent := NewReviewerAgent(llm)

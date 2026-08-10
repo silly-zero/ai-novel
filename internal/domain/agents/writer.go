@@ -30,10 +30,11 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 - 如果有【修改意见(Critique)】，请务必针对意见对原稿进行重写修正。
 - 如果存在上一章接力状态，开头必须承接 NextAction 或合理处理 OpenLoops；不得无因重启冲突。
 - 如果存在本章契约，必须完成全部 MustHappen，不得执行 MustNotHappen，并让章尾达到 EndState。
+- 如果存在主线事件节拍，正文必须实际呈现本章事件，不能只承诺以后发生；下一章预定事件只能被铺垫，不得在本章提前完成。
 - 本章只推进一个阶段，结尾必须留下具体、可行动的未完成目标供下一章继续。`
 
 	// 2. 构建 User Prompt：拼装当前状态中的各类上下文
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n", state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), continuityPrompt(state.PreviousContinuity))
+	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n", state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
 	if state.ManualContext != "" {
 		userPrompt += fmt.Sprintf("\n【人工补充资料】\n%s\n", state.ManualContext)
 	}

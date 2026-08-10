@@ -36,6 +36,8 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 - must_not_happen：本章禁止发生或禁止提前解决的事件，0-5条；用于保护后续主线和核心矛盾。
 - end_state：正文结束时必须达到的具体状态，必须能自然导向下一章行动。
 - 如果存在上一章接力状态，契约开端必须承接 NextAction 或合理处理 OpenLoops。
+- 如果存在【主线事件节拍】，chapter_goal 和 must_happen 必须实际推进本章事件；下一章预定事件只能形成因果牵引，不得在本章提前完成。
+- 如果主线计划与上一章实际接力存在偏差，以上一章接力为事实基础，在不跳跃、不重启冲突的前提下调整推进方式。
 只返回合法 JSON，不要 Markdown 或解释：
 {"chapter_goal":"...","must_happen":["..."],"must_not_happen":["..."],"end_state":"..."}`
 
@@ -48,8 +50,8 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 		fullOutline = "（未提供）"
 	}
 
-	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n请输出本章剧情契约：",
-		idea, fullOutline, state.ChapterIndex, continuityPrompt(state.PreviousContinuity))
+	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n%s\n\n请输出本章剧情契约：",
+		idea, fullOutline, state.ChapterIndex, mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
 
 	contract, err := generateStructuredResponse(
 		ctx,

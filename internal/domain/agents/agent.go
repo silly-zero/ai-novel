@@ -70,6 +70,12 @@ func (c ChapterContract) IsEmpty() bool {
 	return c.Goal == "" && len(c.MustHappen) == 0 && len(c.MustNotHappen) == 0 && c.EndState == ""
 }
 
+type MainlineEventBeat struct {
+	ChapterIndex int
+	CurrentEvent string
+	NextEvent    string
+}
+
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
 	GenerationID       string
@@ -84,6 +90,7 @@ type GenerationState struct {
 	OutlineEnd         int                       // 生成大纲的结束章
 	Outline            string                    // 当前章节剧情大纲 (由 Plot Agent 生成)
 	ChapterContract    ChapterContract           // 当前章节必须遵守的结构化剧情契约
+	MainlineBeat       MainlineEventBeat         // 从全书逐章大纲确定性选出的当前/下一主线节拍
 	ContractAssessment ChapterContractAssessment // 最终草稿对章节契约的瞬时评估
 	SceneCard          string                    // 导演拆解出的场景卡
 	EditorNotes        string                    // 人工干预：作者/编辑给出的指令或限制

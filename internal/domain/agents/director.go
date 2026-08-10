@@ -29,11 +29,12 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 2. 出场人物及其当前状态。
 3. 核心矛盾与情节推进点。
 4. 给作者（主笔）的写作建议。
-- 5. 分章节奏约束：本章必须停在“阶段性节点”，不能把整件大事一次写完；结尾要保留下一章的悬念或未完成目标。
+5. 分章节奏约束：本章必须停在“阶段性节点”，不能把整件大事一次写完；结尾要保留下一章的悬念或未完成目标。
+6. 如果存在主线事件节拍，场景必须实际推动本章事件，并形成通向下一章预定事件的因果牵引，但不得提前完成下一章事件。
 
 请直接输出场景卡的文本内容，不要有多余的寒暄。`
 
-	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n\n%s\n", state.Outline, continuityPrompt(state.PreviousContinuity))
+	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n\n%s\n\n%s\n", state.Outline, mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
 	if state.EditorNotes != "" {
 		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
 	}
