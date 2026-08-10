@@ -262,11 +262,15 @@ func preparePreviousContinuity(
 	if err != nil {
 		return agents.ContinuityPacket{}, err
 	}
-	return agents.ContinuityPacket{
+	packet := agents.ContinuityPacket{
 		LastBeat:   strings.TrimSpace(previous.LastBeat),
 		OpenLoops:  append([]string(nil), previous.OpenLoops...),
 		NextAction: strings.TrimSpace(previous.NextAction),
-	}, nil
+	}
+	if err := agents.ValidateContinuityPacket(&packet); err != nil {
+		return agents.ContinuityPacket{}, fmt.Errorf("previous chapter continuity is invalid: %w", err)
+	}
+	return packet, nil
 }
 
 func lockGenerationNovel(
@@ -688,17 +692,20 @@ func validateGenerationChapterSave(
 		return errors.New("generation state is not approved")
 	}
 	issues := agents.ValidateGeneratedContent(state.Draft)
-	if len(issues) == 0 {
-		return nil
+	if len(issues) > 0 {
+		codes := make([]string, 0, len(issues))
+		for _, issue := range issues {
+			codes = append(codes, issue.Code)
+		}
+		return fmt.Errorf(
+			"generated chapter content failed validation: %s",
+			strings.Join(codes, ", "),
+		)
 	}
-	codes := make([]string, 0, len(issues))
-	for _, issue := range issues {
-		codes = append(codes, issue.Code)
+	if err := agents.ValidateContinuityPacket(&state.Continuity); err != nil {
+		return fmt.Errorf("generated chapter continuity failed validation: %w", err)
 	}
-	return fmt.Errorf(
-		"generated chapter content failed validation: %s",
-		strings.Join(codes, ", "),
-	)
+	return nil
 }
 
 func generationChapterTargetFromRow(row *ent.Chapter) *generationChapterTarget {

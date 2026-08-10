@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -29,6 +30,71 @@ func (f *continuityExtractorLLM) Generate(_ context.Context, _, user string) (st
 
 func (*continuityExtractorLLM) StreamGenerate(context.Context, string, string, func(string) error) error {
 	return nil
+}
+
+func TestValidateContinuityPacketRejectsNil(t *testing.T) {
+	if err := ValidateContinuityPacket(nil); err == nil || err.Error() != "continuity packet is nil" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateContinuityPacketNormalizesValidPacket(t *testing.T) {
+	packet := ContinuityPacket{
+		LastBeat:   "  结尾动作  ",
+		OpenLoops:  []string{"  悬念一  ", "", "悬念二"},
+		NextAction: "  下一步动作  ",
+	}
+	if err := ValidateContinuityPacket(&packet); err != nil {
+		t.Fatal(err)
+	}
+	if packet.LastBeat != "结尾动作" || packet.NextAction != "下一步动作" ||
+		!reflect.DeepEqual(packet.OpenLoops, []string{"悬念一", "悬念二"}) {
+		t.Fatalf("packet = %#v", packet)
+	}
+}
+
+func TestValidateContinuityPacketIgnoresBlankLoopsBeforeCounting(t *testing.T) {
+	packet := ContinuityPacket{
+		LastBeat:   "结尾动作",
+		OpenLoops:  []string{"一", "二", "三", "  "},
+		NextAction: "下一步动作",
+	}
+	if err := ValidateContinuityPacket(&packet); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(packet.OpenLoops, []string{"一", "二", "三"}) {
+		t.Fatalf("packet = %#v", packet)
+	}
+}
+
+func TestValidateContinuityPacketAllowsEmptyOpenLoops(t *testing.T) {
+	packet := ContinuityPacket{LastBeat: "结尾动作", NextAction: "下一步动作"}
+	if err := ValidateContinuityPacket(&packet); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateContinuityPacketRejectsInvalidFields(t *testing.T) {
+	tests := []struct {
+		name   string
+		packet ContinuityPacket
+		want   string
+	}{
+		{name: "missing last beat", packet: ContinuityPacket{NextAction: "下一步"}, want: "last_beat is required"},
+		{name: "missing next action", packet: ContinuityPacket{LastBeat: "结尾"}, want: "next_action is required"},
+		{name: "long last beat", packet: ContinuityPacket{LastBeat: strings.Repeat("字", maxContinuityTextRunes+1), NextAction: "下一步"}, want: "last_beat exceeds"},
+		{name: "long next action", packet: ContinuityPacket{LastBeat: "结尾", NextAction: strings.Repeat("字", maxContinuityTextRunes+1)}, want: "next_action exceeds"},
+		{name: "long loop", packet: ContinuityPacket{LastBeat: "结尾", OpenLoops: []string{strings.Repeat("字", maxContinuityTextRunes+1)}, NextAction: "下一步"}, want: "open_loops exceeds"},
+		{name: "too many loops", packet: ContinuityPacket{LastBeat: "结尾", OpenLoops: []string{"一", "二", "三", "四"}, NextAction: "下一步"}, want: "at most 3"},
+		{name: "duplicate loops", packet: ContinuityPacket{LastBeat: "结尾", OpenLoops: []string{"悬念", " 悬念 "}, NextAction: "下一步"}, want: "duplicate"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateContinuityPacket(&test.packet); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
 }
 
 func TestContinuityExtractorExtractsFinalDraftPacket(t *testing.T) {

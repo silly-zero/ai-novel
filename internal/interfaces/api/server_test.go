@@ -94,6 +94,10 @@ func (e *generationTestEngine) ExtractContinuity(ctx context.Context, state *age
 	if e.extract != nil {
 		return e.extract(ctx, state)
 	}
+	state.Continuity = agents.ContinuityPacket{
+		LastBeat:   "结尾动作",
+		NextAction: "下一步动作",
+	}
 	return state, nil
 }
 
@@ -702,6 +706,20 @@ func TestPreparePreviousContinuityCopiesPreviousPacket(t *testing.T) {
 	}
 }
 
+func TestPreparePreviousContinuityRejectsInvalidPacket(t *testing.T) {
+	_, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return &ent.Chapter{}, nil
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "last_beat is required") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestPreparePreviousContinuityPropagatesLookupError(t *testing.T) {
 	lookupErr := errors.New("lookup failed")
 	_, err := preparePreviousContinuity(
@@ -1067,10 +1085,42 @@ func TestValidateGenerationChapterSaveAllowsApprovedValidContent(t *testing.T) {
 		&agents.GenerationState{
 			Draft:      strings.Repeat("文", 2500),
 			IsApproved: true,
+			Continuity: agents.ContinuityPacket{
+				LastBeat:   "结尾动作",
+				NextAction: "下一步动作",
+			},
 		},
 	)
 	if err != nil {
 		t.Fatalf("validateGenerationChapterSave() error = %v", err)
+	}
+}
+
+func TestValidateGenerationChapterSaveRejectsInvalidContinuity(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:      strings.Repeat("文", 2500),
+			IsApproved: true,
+			Continuity: agents.ContinuityPacket{LastBeat: "结尾"},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "next_action is required") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateGenerationChapterSavePreservesContentErrorPriority(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:      "短正文",
+			IsApproved: true,
+			Continuity: agents.ContinuityPacket{},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "content_too_short") || strings.Contains(err.Error(), "last_beat") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

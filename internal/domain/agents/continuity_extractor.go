@@ -10,6 +10,11 @@ type ContinuityExtractor struct {
 	llm LLMService
 }
 
+const (
+	maxContinuityTextRunes = 500
+	maxContinuityOpenLoops = 3
+)
+
 func NewContinuityExtractor(llm LLMService) *ContinuityExtractor {
 	return &ContinuityExtractor{llm: llm}
 }
@@ -32,7 +37,7 @@ func (e *ContinuityExtractor) Extract(ctx context.Context, state *GenerationStat
 		continuityPrompt(state.PreviousContinuity), state.Outline, state.SceneCard, state.Draft)
 	packet, err := generateStructuredResponse(
 		ctx, e.llm, "continuity extractor", systemPrompt, userPrompt,
-		decodeContinuityPacket, validateContinuityPacket,
+		decodeContinuityPacket, ValidateContinuityPacket,
 	)
 	if err != nil {
 		return state, fmt.Errorf("extract chapter continuity: %w", err)
@@ -45,7 +50,10 @@ func decodeContinuityPacket(candidate []byte) (ContinuityPacket, error) {
 	return decodeJSON[ContinuityPacket](candidate)
 }
 
-func validateContinuityPacket(packet *ContinuityPacket) error {
+func ValidateContinuityPacket(packet *ContinuityPacket) error {
+	if packet == nil {
+		return fmt.Errorf("continuity packet is nil")
+	}
 	packet.LastBeat = strings.TrimSpace(packet.LastBeat)
 	packet.NextAction = strings.TrimSpace(packet.NextAction)
 	if packet.LastBeat == "" {
@@ -54,16 +62,38 @@ func validateContinuityPacket(packet *ContinuityPacket) error {
 	if packet.NextAction == "" {
 		return fmt.Errorf("next_action is required")
 	}
-	if len(packet.OpenLoops) > 3 {
-		return fmt.Errorf("open_loops must contain at most 3 items")
+	if err := validateContinuityText("last_beat", packet.LastBeat); err != nil {
+		return err
+	}
+	if err := validateContinuityText("next_action", packet.NextAction); err != nil {
+		return err
 	}
 	loops := make([]string, 0, len(packet.OpenLoops))
+	seen := make(map[string]struct{}, len(packet.OpenLoops))
 	for _, loop := range packet.OpenLoops {
 		loop = strings.TrimSpace(loop)
-		if loop != "" {
-			loops = append(loops, loop)
+		if loop == "" {
+			continue
 		}
+		if err := validateContinuityText("open_loops", loop); err != nil {
+			return err
+		}
+		if _, exists := seen[loop]; exists {
+			return fmt.Errorf("open_loops must not contain duplicate items")
+		}
+		seen[loop] = struct{}{}
+		loops = append(loops, loop)
+	}
+	if len(loops) > maxContinuityOpenLoops {
+		return fmt.Errorf("open_loops must contain at most %d items", maxContinuityOpenLoops)
 	}
 	packet.OpenLoops = loops
+	return nil
+}
+
+func validateContinuityText(name, value string) error {
+	if len([]rune(value)) > maxContinuityTextRunes {
+		return fmt.Errorf("%s exceeds %d characters", name, maxContinuityTextRunes)
+	}
 	return nil
 }
