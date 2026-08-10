@@ -60,6 +60,9 @@ func (s *generationChapterStoreFake) Save(
 	s.mu.Lock()
 	s.saveCalls++
 	s.mu.Unlock()
+	if err := validateGenerationChapterSave(target, state); err != nil {
+		return err
+	}
 	if s.save != nil {
 		return s.save(ctx, target, state)
 	}
@@ -101,6 +104,10 @@ func (e *generationTestEngine) PublishChapterGenerated(
 		return e.publish(ctx, state)
 	}
 	return nil
+}
+
+func validGeneratedContent() string {
+	return strings.Repeat("文", 2500)
 }
 
 func generateRequest(ctx context.Context, novelID string, chapterIndex int) *http.Request {
@@ -346,7 +353,8 @@ func TestGenerationOverallDeadlineCoversChapterSave(t *testing.T) {
 	}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 	}
@@ -386,7 +394,8 @@ func TestClientDisconnectDoesNotCancelBoundedPostprocessing(t *testing.T) {
 	}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 		publish: func(ctx context.Context, _ *agents.GenerationState) error {
@@ -624,6 +633,61 @@ func TestEntGenerationChapterStoreRejectsInvalidTarget(t *testing.T) {
 	}
 }
 
+func TestEntGenerationChapterStoreRejectsInvalidSaveBeforeMutation(t *testing.T) {
+	store := &entGenerationChapterStore{}
+	validTarget := &generationChapterTarget{ID: 11}
+	validState := &agents.GenerationState{
+		Draft:      strings.Repeat("文", 2500),
+		IsApproved: true,
+	}
+	tests := []struct {
+		name    string
+		target  *generationChapterTarget
+		state   *agents.GenerationState
+		wantErr string
+	}{
+		{name: "nil target", state: validState, wantErr: "target is nil"},
+		{name: "nil state", target: validTarget, wantErr: "state is nil"},
+		{
+			name:    "unapproved state",
+			target:  validTarget,
+			state:   &agents.GenerationState{Draft: strings.Repeat("文", 2500)},
+			wantErr: "not approved",
+		},
+		{
+			name:    "invalid content",
+			target:  validTarget,
+			state:   &agents.GenerationState{Draft: strings.Repeat("文", 2500) + "【场景卡】", IsApproved: true},
+			wantErr: "prompt_label_leak",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := store.Save(context.Background(), test.target, test.state)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("Save() error = %v, want %q", err, test.wantErr)
+			}
+			if test.state != nil && strings.Contains(err.Error(), test.state.Draft) {
+				t.Fatalf("Save() error leaked draft content: %q", err)
+			}
+		})
+	}
+}
+
+func TestValidateGenerationChapterSaveAllowsApprovedValidContent(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:      strings.Repeat("文", 2500),
+			IsApproved: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("validateGenerationChapterSave() error = %v", err)
+	}
+}
+
 func TestHandleGenerateChapterPersistRequiresChapterStore(t *testing.T) {
 	runCalled := false
 	engine := &generationTestEngine{
@@ -655,7 +719,8 @@ func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T)
 	published := false
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 		publish: func(context.Context, *agents.GenerationState) error {
@@ -703,7 +768,8 @@ func TestHandleGenerateChapterUsesPersistedOrderForChapterIDRegeneration(t *test
 			return state, nil
 		},
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 	}
@@ -807,6 +873,43 @@ func TestHandleGenerateChapterFailurePreservesPreparedChapter(t *testing.T) {
 	}
 }
 
+func TestHandleGenerateChapterInvalidFinalStateDoesNotPublish(t *testing.T) {
+	published := false
+	store := &generationChapterStoreFake{}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = strings.Repeat("文", 2500) + "【场景卡】"
+			state.IsApproved = true
+			return state, nil
+		},
+		publish: func(context.Context, *agents.GenerationState) error {
+			published = true
+			return nil
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "prompt_label_leak") {
+		t.Fatalf("SSE body missing content validation error: %s", body)
+	}
+	if published {
+		t.Fatal("invalid final state published chapter.generated")
+	}
+	_, saveCalls := store.calls()
+	if saveCalls != 1 {
+		t.Fatalf("save calls = %d, want 1", saveCalls)
+	}
+}
+
 func TestHandleGenerateChapterSaveFailureUsesErrorTerminal(t *testing.T) {
 	published := false
 	store := &generationChapterStoreFake{
@@ -816,7 +919,8 @@ func TestHandleGenerateChapterSaveFailureUsesErrorTerminal(t *testing.T) {
 	}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 		publish: func(context.Context, *agents.GenerationState) error {
@@ -857,7 +961,8 @@ func TestHandleGenerateChapterCASConflictPreservesConcurrentEdit(t *testing.T) {
 	}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "过期生成正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 	}
@@ -890,7 +995,7 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 			state *agents.GenerationState,
 		) error {
 			if target.ID != 11 || target.Title != "旧标题" ||
-				state.ChapterID != "11" || state.Draft != "新正文" {
+				state.ChapterID != "11" || state.Draft != validGeneratedContent() {
 				return fmt.Errorf("unexpected save payload: target=%#v state=%#v", target, state)
 			}
 			close(saveEntered)
@@ -900,7 +1005,8 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 	}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 		publish: func(_ context.Context, state *agents.GenerationState) error {
@@ -951,7 +1057,7 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 	waitForSignal(t, firstDone)
 	select {
 	case state := <-published:
-		if state.ChapterID != "11" || state.Draft != "新正文" {
+		if state.ChapterID != "11" || state.Draft != validGeneratedContent() {
 			t.Fatalf("published state = %#v", state)
 		}
 	case <-time.After(time.Second):
@@ -963,7 +1069,8 @@ func TestHandleGenerateChapterMemoryFailureKeepsSuccessAndReleasesLease(t *testi
 	store := &generationChapterStoreFake{}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
-			state.Draft = "新正文"
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
 			return state, nil
 		},
 		publish: func(context.Context, *agents.GenerationState) error {

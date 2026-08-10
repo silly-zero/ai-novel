@@ -442,6 +442,101 @@ func TestReviewerWordCountPrecheckClearsOldContractAssessment(t *testing.T) {
 	}
 }
 
+func TestReviewerEmptyDraftStillReturnsError(t *testing.T) {
+	llm := &queuedStructuredLLM{}
+	state := &GenerationState{IsApproved: true, Critique: "旧修改意见"}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err == nil || !strings.Contains(err.Error(), "draft is empty") {
+		t.Fatalf("error = %v, want empty draft error", err)
+	}
+	if got != state || !got.IsApproved || got.Critique != "旧修改意见" || llm.calls != 0 {
+		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
+	}
+}
+
+func TestReviewerValidDraftStillRunsContinuityReview(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		`{"passed":true,"continuity_passed":false,"contract_assessment":null,"critique":"章首没有承接上一章行动"}`,
+	}}
+	state := &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+		PreviousContinuity: ContinuityPacket{
+			LastBeat:   "主角推开密门。",
+			OpenLoops:  []string{"密门后是谁"},
+			NextAction: "主角立即进入密门。",
+		},
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsApproved || got.Critique != "章首没有承接上一章行动" || llm.calls != 1 {
+		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
+	}
+	for _, value := range []string{"主角推开密门。", "密门后是谁", "主角立即进入密门。"} {
+		if !strings.Contains(llm.users[0], value) {
+			t.Fatalf("reviewer prompt missing %q: %s", value, llm.users[0])
+		}
+	}
+}
+
+func TestReviewerDeterministicPrecheckRejectsBeforeLLM(t *testing.T) {
+	llm := &queuedStructuredLLM{}
+	state := &GenerationState{
+		Draft: strings.Repeat("文", 2500) + "【场景卡】\x00",
+		ContractAssessment: ChapterContractAssessment{
+			Goal: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧评估依据",
+			},
+		},
+		Critique:   "旧修改意见",
+		IsApproved: true,
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		len(got.ContractAssessment.MustHappen) != 0 ||
+		len(got.ContractAssessment.MustNotHappen) != 0 ||
+		got.ContractAssessment.EndState != (ContractRequirementAssessment{}) {
+		t.Fatalf("ContractAssessment = %#v, want empty", got.ContractAssessment)
+	}
+	if got.IsApproved || llm.calls != 0 {
+		t.Fatalf("approved = %v, calls = %d", got.IsApproved, llm.calls)
+	}
+	for _, value := range []string{"异常控制字符", "内部提示标签"} {
+		if !strings.Contains(got.Critique, value) {
+			t.Fatalf("critique missing %q: %s", value, got.Critique)
+		}
+	}
+	if strings.Contains(got.Critique, "【场景卡】") || len([]rune(got.Critique)) > 300 {
+		t.Fatalf("unsafe or unbounded critique = %q", got.Critique)
+	}
+}
+
+func TestReviewerBoundsModelCritiqueBeforeRetry(t *testing.T) {
+	longCritique := "敏感原文" + strings.Repeat("改", maxReviewerCritiqueRunes+100)
+	llm := &queuedStructuredLLM{responses: []string{
+		fmt.Sprintf(`{"passed":false,"continuity_passed":true,"contract_assessment":null,"critique":%q}`, longCritique),
+	}}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len([]rune(got.Critique)) != maxReviewerCritiqueRunes+1 ||
+		!strings.HasSuffix(got.Critique, "…") {
+		t.Fatalf("critique length = %d, suffix = %q", len([]rune(got.Critique)), got.Critique[len(got.Critique)-3:])
+	}
+}
+
 func TestReviewerStructuredRepairProducesReviewResult(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
 		`{"passed":"false","critique":"修改"}`,

@@ -146,6 +146,10 @@ func (s *entGenerationChapterStore) Save(
 	target *generationChapterTarget,
 	state *agents.GenerationState,
 ) error {
+	if err := validateGenerationChapterSave(target, state); err != nil {
+		return err
+	}
+
 	_, err := s.client.Chapter.
 		UpdateOneID(target.ID).
 		Where(
@@ -179,6 +183,33 @@ func (s *entGenerationChapterStore) Save(
 		return errGenerationChapterChanged
 	}
 	return err
+}
+
+func validateGenerationChapterSave(
+	target *generationChapterTarget,
+	state *agents.GenerationState,
+) error {
+	if target == nil {
+		return errors.New("generation chapter target is nil")
+	}
+	if state == nil {
+		return errors.New("generation state is nil")
+	}
+	if !state.IsApproved {
+		return errors.New("generation state is not approved")
+	}
+	issues := agents.ValidateGeneratedContent(state.Draft)
+	if len(issues) == 0 {
+		return nil
+	}
+	codes := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		codes = append(codes, issue.Code)
+	}
+	return fmt.Errorf(
+		"generated chapter content failed validation: %s",
+		strings.Join(codes, ", "),
+	)
 }
 
 func generationChapterTargetFromRow(row *ent.Chapter) *generationChapterTarget {

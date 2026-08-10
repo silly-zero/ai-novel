@@ -13,6 +13,11 @@ type ReviewerAgent struct {
 	llm LLMService
 }
 
+const (
+	maxReviewerCritiqueRunes = 1000
+	maxReviewerFeedbackRunes = 8192
+)
+
 // NewReviewerAgent 构造函数
 func NewReviewerAgent(llm LLMService) *ReviewerAgent {
 	return &ReviewerAgent{
@@ -40,15 +45,10 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		return state, fmt.Errorf("draft is empty, nothing to review")
 	}
 
-	wordCount := len([]rune(strings.TrimSpace(state.Draft)))
-	if wordCount < 2500 || wordCount > 4000 {
+	if issues := ValidateGeneratedContent(state.Draft); len(issues) > 0 {
 		state.ContractAssessment = ChapterContractAssessment{}
 		state.IsApproved = false
-		if wordCount < 2500 {
-			state.Critique = fmt.Sprintf("字数不达标：当前约 %d 字。请补写细节与推进剧情，使正文总字数达到 2500-4000 字（按中文字符计），同时保持与场景卡一致。", wordCount)
-		} else {
-			state.Critique = fmt.Sprintf("字数超标：当前约 %d 字。请删减冗余描写与重复表达，使正文总字数控制在 2500-4000 字（按中文字符计），同时保持与场景卡一致。", wordCount)
-		}
+		state.Critique = generatedContentIssuesCritique(issues)
 		return state, nil
 	}
 
@@ -95,14 +95,25 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		return state, fmt.Errorf("reviewer agent failed to analyze draft: %w", err)
 	}
 
-	critique := strings.TrimSpace(result.Critique)
+	critique := boundedText(result.Critique, maxReviewerCritiqueRunes)
 	if result.contractChecked && !result.ContractPassed {
-		critique = contractFailureCritique(result.Violations, critique)
+		critique = boundedText(
+			contractFailureCritique(result.Violations, critique),
+			maxReviewerFeedbackRunes,
+		)
 	}
 	state.ContractAssessment = result.ContractAssessment
 	state.IsApproved = result.Passed && result.ContinuityPassed && result.ContractPassed
 	state.Critique = critique
 	return state, nil
+}
+
+func generatedContentIssuesCritique(issues []GeneratedContentIssue) string {
+	messages := make([]string, 0, len(issues))
+	for _, issue := range issues {
+		messages = append(messages, issue.Message)
+	}
+	return strings.Join(messages, "\n")
 }
 
 func decodeReviewResult(candidate []byte) (ReviewResult, error) {

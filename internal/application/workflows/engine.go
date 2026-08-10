@@ -137,7 +137,10 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	}
 
 	if !finalState.IsApproved {
-		return finalState, fmt.Errorf("failed to generate acceptable chapter after %d retries. Last critique: %s", finalState.RetryCount, finalState.Critique)
+		return finalState, fmt.Errorf(
+			"failed to generate acceptable chapter after %d retries",
+			finalState.RetryCount,
+		)
 	}
 
 	return finalState, nil

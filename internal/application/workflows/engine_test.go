@@ -26,6 +26,7 @@ type workflowLLMFake struct {
 	streamCalls int
 	reviewCalls int
 	passOn      int
+	draft       string
 }
 
 func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (string, error) {
@@ -46,7 +47,11 @@ func (f *workflowLLMFake) StreamGenerate(
 	onChunk func(string) error,
 ) error {
 	f.streamCalls++
-	return onChunk(strings.Repeat("文", 2500))
+	draft := f.draft
+	if draft == "" {
+		draft = strings.Repeat("文", 2500)
+	}
+	return onChunk(draft)
 }
 
 func newReviewerLoopEngine(t *testing.T, llm *workflowLLMFake) *WorkflowEngine {
@@ -93,6 +98,9 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "after 3 retries") {
 		t.Fatalf("error = %v, want retry-limit failure", err)
 	}
+	if strings.Contains(err.Error(), "正文没有找到线索") {
+		t.Fatalf("retry-limit error leaked critique: %v", err)
+	}
 	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved {
 		t.Fatalf("final state = %#v", finalState)
 	}
@@ -101,6 +109,44 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	}
 	if len(retries) != 3 || retries[0] != 1 || retries[1] != 2 || retries[2] != 3 {
 		t.Fatalf("retry events = %v, want [1 2 3]", retries)
+	}
+}
+
+func TestRunChapterGenerationRetriesDeterministicFailuresWithoutReviewerLLM(t *testing.T) {
+	llm := &workflowLLMFake{draft: strings.Repeat("文", 2500) + "【场景卡】"}
+	engine := newReviewerLoopEngine(t, llm)
+	var retries []int
+	state := &agents.GenerationState{
+		ExistingOutline: "大纲",
+		Outline:         "本章大纲",
+		SceneCard:       "场景卡",
+		Context:         "背景",
+		StreamSink: func(_ context.Context, event agents.GenerationStreamEvent) error {
+			if event.Type == agents.GenerationStreamEventRetry {
+				retries = append(retries, event.RetryCount)
+			}
+			return nil
+		},
+	}
+
+	finalState, err := engine.RunChapterGeneration(context.Background(), state)
+	if err == nil || !strings.Contains(err.Error(), "after 3 retries") {
+		t.Fatalf("error = %v, want retry-limit failure", err)
+	}
+	if strings.Contains(err.Error(), "内部提示标签") {
+		t.Fatalf("retry-limit error leaked deterministic critique: %v", err)
+	}
+	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved {
+		t.Fatalf("final state = %#v", finalState)
+	}
+	if llm.streamCalls != 4 || llm.reviewCalls != 0 {
+		t.Fatalf("writer calls = %d, reviewer calls = %d, want 4 and 0", llm.streamCalls, llm.reviewCalls)
+	}
+	if len(retries) != 3 || retries[0] != 1 || retries[1] != 2 || retries[2] != 3 {
+		t.Fatalf("retry events = %v, want [1 2 3]", retries)
+	}
+	if !strings.Contains(finalState.Critique, "内部提示标签") {
+		t.Fatalf("critique = %q", finalState.Critique)
 	}
 }
 
