@@ -554,13 +554,18 @@ func TestReviewerStructuredRepairProducesReviewResult(t *testing.T) {
 	}
 }
 
+func contractEvidenceDraft() string {
+	core := "主角确认密门与身世有关。他跨入密门，在石台上发现旧王朝血书。反派身份仍未揭晓，他决定追踪血书指向的地下祭坛。"
+	return strings.Repeat("文", 2500-len([]rune(core))) + core
+}
+
 func passingContractAssessmentJSON() string {
-	return `{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"已进入密门"},{"satisfied":true,"evidence":"已发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"未揭晓反派"}],"end_state":{"satisfied":true,"evidence":"决定追踪祭坛"}}`
+	return `{"goal":{"satisfied":true,"evidence":"主角确认密门与身世有关。"},"must_happen":[{"satisfied":true,"evidence":"他跨入密门"},{"satisfied":true,"evidence":"发现旧王朝血书"}],"must_not_happen":[{"satisfied":true,"evidence":"正文未揭晓最终反派身份"}],"end_state":{"satisfied":true,"evidence":"他决定追踪血书指向的地下祭坛。"}}`
 }
 
 func TestReviewerContractGate(t *testing.T) {
 	passing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
-	failing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"已进入密门"},{"satisfied":false,"evidence":"正文没有发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"未揭晓反派"}],"end_state":{"satisfied":true,"evidence":"决定追踪祭坛"}},"critique":"补强情节"}`
+	failing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"主角确认密门与身世有关。"},"must_happen":[{"satisfied":true,"evidence":"他跨入密门"},{"satisfied":false,"evidence":"正文没有发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"正文未揭晓最终反派身份"}],"end_state":{"satisfied":true,"evidence":"他决定追踪血书指向的地下祭坛。"}},"critique":"补强情节"}`
 
 	for _, test := range []struct {
 		name         string
@@ -578,7 +583,7 @@ func TestReviewerContractGate(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			llm := &queuedStructuredLLM{responses: []string{test.response}}
 			state := &GenerationState{
-				Draft:           strings.Repeat("文", 2500),
+				Draft:           contractEvidenceDraft(),
 				ChapterContract: validChapterContract(),
 			}
 
@@ -594,13 +599,130 @@ func TestReviewerContractGate(t *testing.T) {
 					t.Fatalf("critique missing %q: %s", value, got.Critique)
 				}
 			}
-			if got.ContractAssessment.Goal.Evidence != "目标已完成" {
+			if got.ContractAssessment.Goal.Evidence != "主角确认密门与身世有关。" {
 				t.Fatalf("assessment = %#v", got.ContractAssessment)
 			}
 			if llm.calls != 1 {
 				t.Fatalf("reviewer calls = %d, want 1 for a structurally valid assessment", llm.calls)
 			}
 		})
+	}
+}
+
+func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
+	draft := "主角确认了密门来源。随后他发现一封血书。最终他决定前往地下祭坛。反派摘下面具，坦白了真实身份。"
+	valid := ChapterContractAssessment{
+		Goal: ContractRequirementAssessment{
+			Satisfied: true,
+			Evidence:  "主角确认了密门来源。",
+		},
+		MustHappen: []ContractRequirementAssessment{
+			{Satisfied: true, Evidence: "他发现一封血书。"},
+		},
+		MustNotHappen: []ContractRequirementAssessment{
+			{Satisfied: true, Evidence: "正文没有揭晓最终反派身份"},
+		},
+		EndState: ContractRequirementAssessment{
+			Satisfied: true,
+			Evidence:  "他决定前往地下祭坛。",
+		},
+	}
+	if err := validateChapterContractAssessmentEvidence(valid, draft); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name       string
+		assessment ChapterContractAssessment
+		want       string
+	}{
+		{
+			name: "goal true requires exact quote",
+			assessment: func() ChapterContractAssessment {
+				assessment := valid
+				assessment.Goal.Evidence = "主角查明了密门来源。"
+				return assessment
+			}(),
+			want: "contract_assessment.goal.evidence",
+		},
+		{
+			name: "must happen true rejects spliced quote",
+			assessment: func() ChapterContractAssessment {
+				assessment := valid
+				assessment.MustHappen = append([]ContractRequirementAssessment(nil), valid.MustHappen...)
+				assessment.MustHappen[0].Evidence = "随后他发现血书。"
+				return assessment
+			}(),
+			want: "contract_assessment.must_happen[0].evidence",
+		},
+		{
+			name: "end state true requires exact quote",
+			assessment: func() ChapterContractAssessment {
+				assessment := valid
+				assessment.EndState.Evidence = "他准备前往地下祭坛。"
+				return assessment
+			}(),
+			want: "contract_assessment.end_state.evidence",
+		},
+		{
+			name: "forbidden event false requires violation quote",
+			assessment: func() ChapterContractAssessment {
+				assessment := valid
+				assessment.MustNotHappen = []ContractRequirementAssessment{{
+					Evidence: "反派已经公开身份",
+				}}
+				return assessment
+			}(),
+			want: "contract_assessment.must_not_happen[0].evidence",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateChapterContractAssessmentEvidence(test.assessment, draft)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateChapterContractAssessmentEvidenceAllowsReasons(t *testing.T) {
+	draft := "反派摘下面具，坦白了真实身份。"
+	assessment := ChapterContractAssessment{
+		Goal: ContractRequirementAssessment{
+			Evidence: "正文没有确认密门来源",
+		},
+		MustHappen: []ContractRequirementAssessment{
+			{Evidence: "正文没有发现血书"},
+		},
+		MustNotHappen: []ContractRequirementAssessment{
+			{Satisfied: true, Evidence: "正文没有提前揭晓幕后主使"},
+			{Evidence: "反派摘下面具，坦白了真实身份。"},
+		},
+		EndState: ContractRequirementAssessment{
+			Evidence: "正文没有决定下一步行动",
+		},
+	}
+
+	if err := validateChapterContractAssessmentEvidence(assessment, draft); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReviewerRepairsInvalidContractEvidenceOnce(t *testing.T) {
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"概括性的目标已完成"},"must_happen":[{"satisfied":true,"evidence":"他跨入密门"},{"satisfied":true,"evidence":"发现旧王朝血书"}],"must_not_happen":[{"satisfied":true,"evidence":"正文未揭晓最终反派身份"}],"end_state":{"satisfied":true,"evidence":"他决定追踪血书指向的地下祭坛。"}},"critique":""}`
+	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
+		Draft:           contractEvidenceDraft(),
+		ChapterContract: validChapterContract(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsApproved || llm.calls != 2 {
+		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
 	}
 }
 
@@ -645,7 +767,7 @@ func TestReviewerRepairsStructurallyInvalidContractAssessmentOnce(t *testing.T) 
 	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
 	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
 	state := &GenerationState{
-		Draft:           strings.Repeat("文", 2500),
+		Draft:           contractEvidenceDraft(),
 		ChapterContract: validChapterContract(),
 	}
 

@@ -117,6 +117,58 @@ func normalizeContractRequirementAssessment(
 	}, nil
 }
 
+func validateChapterContractAssessmentEvidence(
+	assessment ChapterContractAssessment,
+	draft string,
+) error {
+	if assessment.Goal.Satisfied {
+		if err := validateContractEvidenceInDraft(
+			"contract_assessment.goal",
+			assessment.Goal.Evidence,
+			draft,
+		); err != nil {
+			return err
+		}
+	}
+	for index, item := range assessment.MustHappen {
+		if item.Satisfied {
+			if err := validateContractEvidenceInDraft(
+				fmt.Sprintf("contract_assessment.must_happen[%d]", index),
+				item.Evidence,
+				draft,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	for index, item := range assessment.MustNotHappen {
+		if !item.Satisfied {
+			if err := validateContractEvidenceInDraft(
+				fmt.Sprintf("contract_assessment.must_not_happen[%d]", index),
+				item.Evidence,
+				draft,
+			); err != nil {
+				return err
+			}
+		}
+	}
+	if assessment.EndState.Satisfied {
+		return validateContractEvidenceInDraft(
+			"contract_assessment.end_state",
+			assessment.EndState.Evidence,
+			draft,
+		)
+	}
+	return nil
+}
+
+func validateContractEvidenceInDraft(name, evidence, draft string) error {
+	if !strings.Contains(draft, evidence) {
+		return fmt.Errorf("%s.evidence must be an exact draft substring", name)
+	}
+	return nil
+}
+
 func chapterContractViolations(
 	contract ChapterContract,
 	assessment ChapterContractAssessment,

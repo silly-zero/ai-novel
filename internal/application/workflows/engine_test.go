@@ -44,9 +44,9 @@ func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (s
 		f.reviewCalls++
 		passed := f.passOn > 0 && f.reviewCalls >= f.passOn
 		if passed {
-			return `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"线索已找到"}],"must_not_happen":[{"satisfied":true,"evidence":"真相未揭晓"}],"end_state":{"satisfied":true,"evidence":"决定继续追查"}},"critique":""}`, nil
+			return `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"主角完成了调查目标。"},"must_happen":[{"satisfied":true,"evidence":"主角找到了关键线索。"}],"must_not_happen":[{"satisfied":true,"evidence":"正文未揭晓真相"}],"end_state":{"satisfied":true,"evidence":"他决定继续追查。"}},"critique":""}`, nil
 		}
-		return `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":false,"evidence":"正文没有找到线索"}],"must_not_happen":[{"satisfied":true,"evidence":"真相未揭晓"}],"end_state":{"satisfied":true,"evidence":"决定继续追查"}},"critique":""}`, nil
+		return `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"主角完成了调查目标。"},"must_happen":[{"satisfied":false,"evidence":"正文没有找到线索"}],"must_not_happen":[{"satisfied":true,"evidence":"正文未揭晓真相"}],"end_state":{"satisfied":true,"evidence":"他决定继续追查。"}},"critique":""}`, nil
 	}
 	return "unused", nil
 }
@@ -59,7 +59,8 @@ func (f *workflowLLMFake) StreamGenerate(
 	f.streamCalls++
 	draft := f.draft
 	if draft == "" {
-		draft = strings.Repeat("文", 2500)
+		core := "主角完成了调查目标。主角找到了关键线索。他决定继续追查。"
+		draft = core + strings.Repeat("文", 2500-len([]rune(core)))
 	}
 	return onChunk(draft)
 }

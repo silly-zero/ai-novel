@@ -63,7 +63,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 5. 分章节奏：是否把一个应跨多章的大事件在本章“一次性写完”？如果是，必须判定不通过，并要求改成“本章只推进一个阶段，结尾保留悬念/未完成目标”。
 6. 连贯性硬门槛：如果存在上一章接力状态，章首是否承接 NextAction 或合理处理 OpenLoops？OpenLoops 可以被解决、升级或转化，不要求原样复述。
 7. 本章结尾是否留下具体、可行动的未完成目标供下一章继续？没有上一章接力时 chapter_head 必须返回 null，但仍检查 chapter_tail。
-8. 章节契约实际状态：如果存在【本章契约】，必须按原顺序逐项评估 chapter_goal、每条 must_happen、每条 must_not_happen 和 end_state。每项返回 satisfied 和来自正文的具体 evidence。must_not_happen 的 satisfied=true 表示禁止事项没有发生。
+8. 章节契约实际状态：如果存在【本章契约】，必须按原顺序逐项评估 chapter_goal、每条 must_happen、每条 must_not_happen 和 end_state。chapter_goal、must_happen、end_state 为 satisfied=true 时，evidence 必须逐字引用全稿中的单段连续原文；为 false 时写未达成原因。must_not_happen 的 satisfied=false 表示禁止事项实际发生，evidence 必须逐字引用违规原文；为 true 表示禁止事项未发生，只写简短理由，不得虚构正文证据。
 9. 主线事件节拍：如果存在【主线事件节拍】，正文必须实际发生本章事件，不能只口头提及或推迟；如果提前完成下一章预定事件，必须判定 passed=false 并给出具体修改意见。
 
 请输出合法 JSON：
@@ -81,7 +81,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 	},
 	"critique": "如果常规审查或连续性不通过，写明具体修改意见；否则可留空。"
 }
-如果没有上一章接力状态，continuity_assessment.chapter_head 必须为 null。satisfied=true 时 evidence 必须逐字引用草稿中的单段连续原文，不得概括、改写或拼接；章首证据必须来自开头，章尾证据必须来自结尾。如果没有结构化章节契约，contract_assessment 可以为 null。评估数组数量和顺序必须与契约完全一致。只返回 JSON，不要输出 Markdown 或解释。`
+如果没有上一章接力状态，continuity_assessment.chapter_head 必须为 null。continuity_assessment 的 satisfied=true evidence 必须逐字引用草稿中的单段连续原文，不得概括、改写或拼接；章首证据必须来自开头，章尾证据必须来自结尾。contract_assessment 的正向通过证据和禁止事项失败证据必须逐字引用全稿中的单段连续原文；未达成原因和禁止事项未发生的理由不要求出现在正文。如果没有结构化章节契约，contract_assessment 可以为 null。评估数组数量和顺序必须与契约完全一致。只返回 JSON，不要输出 Markdown 或解释。`
 
 	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
 		state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity), state.Draft)
@@ -176,6 +176,12 @@ func decodeReviewResultForState(
 			state.ChapterContract,
 		)
 		if err != nil {
+			return ReviewResult{}, err
+		}
+		if err := validateChapterContractAssessmentEvidence(
+			assessment,
+			state.Draft,
+		); err != nil {
 			return ReviewResult{}, err
 		}
 		violations = chapterContractViolations(state.ChapterContract, assessment)
