@@ -14,8 +14,9 @@ type ReviewerAgent struct {
 }
 
 const (
-	maxReviewerCritiqueRunes = 1000
-	maxReviewerFeedbackRunes = 8192
+	maxReviewerCritiqueRunes      = 1000
+	maxReviewerFeedbackRunes      = 8192
+	reviewerContinuityWindowRunes = 500
 )
 
 // NewReviewerAgent 构造函数
@@ -31,13 +32,14 @@ func (r *ReviewerAgent) Role() AgentRole {
 
 // ReviewResult 审查结果的结构化定义
 type ReviewResult struct {
-	Passed             bool                      `json:"passed"`
-	ContinuityPassed   bool                      `json:"continuity_passed"`
-	ContractPassed     bool                      `json:"-"`
-	Violations         []string                  `json:"-"`
-	ContractAssessment ChapterContractAssessment `json:"contract_assessment"`
-	Critique           string                    `json:"critique"`
-	contractChecked    bool
+	Passed               bool                      `json:"passed"`
+	ContinuityPassed     bool                      `json:"-"`
+	ContractPassed       bool                      `json:"-"`
+	Violations           []string                  `json:"-"`
+	ContinuityAssessment ContinuityAssessment      `json:"continuity_assessment"`
+	ContractAssessment   ChapterContractAssessment `json:"contract_assessment"`
+	Critique             string                    `json:"critique"`
+	contractChecked      bool
 }
 
 func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
@@ -47,6 +49,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 
 	if issues := ValidateGeneratedContent(state.Draft); len(issues) > 0 {
 		state.ContractAssessment = ChapterContractAssessment{}
+		state.ContinuityAssessment = ContinuityAssessment{}
 		state.IsApproved = false
 		state.Critique = generatedContentIssuesCritique(issues)
 		return state, nil
@@ -58,15 +61,18 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 3. 行文质量：是否存在逻辑硬伤、水字数、或者描写过于干瘪？
 4. 字数要求：正文总字数（按中文字符计）是否在 2500-4000 字之间？
 5. 分章节奏：是否把一个应跨多章的大事件在本章“一次性写完”？如果是，必须判定不通过，并要求改成“本章只推进一个阶段，结尾保留悬念/未完成目标”。
-6. 连贯性硬门槛：如果存在上一章接力状态，章首是否承接 NextAction 或合理处理 OpenLoops？OpenLoops 可以被解决、升级或转化，不要求原样复述；若无因断裂或凭空重启，必须判定 continuity_passed=false。
-7. 本章结尾是否留下具体、可行动的未完成目标供下一章继续？第一章跳过上一章承接检查，但仍检查本章结尾。
+6. 连贯性硬门槛：如果存在上一章接力状态，章首是否承接 NextAction 或合理处理 OpenLoops？OpenLoops 可以被解决、升级或转化，不要求原样复述。
+7. 本章结尾是否留下具体、可行动的未完成目标供下一章继续？没有上一章接力时 chapter_head 必须返回 null，但仍检查 chapter_tail。
 8. 章节契约实际状态：如果存在【本章契约】，必须按原顺序逐项评估 chapter_goal、每条 must_happen、每条 must_not_happen 和 end_state。每项返回 satisfied 和来自正文的具体 evidence。must_not_happen 的 satisfied=true 表示禁止事项没有发生。
 9. 主线事件节拍：如果存在【主线事件节拍】，正文必须实际发生本章事件，不能只口头提及或推迟；如果提前完成下一章预定事件，必须判定 passed=false 并给出具体修改意见。
 
 请输出合法 JSON：
 {
 	"passed": true或false,
-	"continuity_passed": true或false,
+	"continuity_assessment": {
+		"chapter_head": {"satisfied": true或false, "evidence": "章首原文或缺失原因"},
+		"chapter_tail": {"satisfied": true或false, "evidence": "章尾原文或缺失原因"}
+	},
 	"contract_assessment": {
 		"goal": {"satisfied": true或false, "evidence": "正文依据或缺失原因"},
 		"must_happen": [{"satisfied": true或false, "evidence": "正文依据或缺失原因"}],
@@ -75,7 +81,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 	},
 	"critique": "如果常规审查或连续性不通过，写明具体修改意见；否则可留空。"
 }
-如果没有结构化章节契约，contract_assessment 可以为 null。评估数组数量和顺序必须与契约完全一致。只返回 JSON，不要输出 Markdown 或解释。`
+如果没有上一章接力状态，continuity_assessment.chapter_head 必须为 null。satisfied=true 时 evidence 必须逐字引用草稿中的单段连续原文，不得概括、改写或拼接；章首证据必须来自开头，章尾证据必须来自结尾。如果没有结构化章节契约，contract_assessment 可以为 null。评估数组数量和顺序必须与契约完全一致。只返回 JSON，不要输出 Markdown 或解释。`
 
 	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
 		state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity), state.Draft)
@@ -87,7 +93,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		systemPrompt,
 		userPrompt,
 		func(candidate []byte) (ReviewResult, error) {
-			return decodeReviewResultWithContract(candidate, state.ChapterContract)
+			return decodeReviewResultForState(candidate, state)
 		},
 		validateReviewResult,
 	)
@@ -103,6 +109,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		)
 	}
 	state.ContractAssessment = result.ContractAssessment
+	state.ContinuityAssessment = result.ContinuityAssessment
 	state.IsApproved = result.Passed && result.ContinuityPassed && result.ContractPassed
 	state.Critique = critique
 	return state, nil
@@ -117,12 +124,24 @@ func generatedContentIssuesCritique(issues []GeneratedContentIssue) string {
 }
 
 func decodeReviewResult(candidate []byte) (ReviewResult, error) {
-	return decodeReviewResultWithContract(candidate, ChapterContract{})
+	return decodeReviewResultForState(candidate, &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+	})
 }
 
 func decodeReviewResultWithContract(
 	candidate []byte,
 	contract ChapterContract,
+) (ReviewResult, error) {
+	return decodeReviewResultForState(candidate, &GenerationState{
+		Draft:           strings.Repeat("文", 2500),
+		ChapterContract: contract,
+	})
+}
+
+func decodeReviewResultForState(
+	candidate []byte,
+	state *GenerationState,
 ) (ReviewResult, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(candidate, &raw); err != nil {
@@ -132,12 +151,16 @@ func decodeReviewResultWithContract(
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	continuityPassed, err := decodeRequiredReviewBool(raw, "continuity_passed")
+	continuityAssessment, continuityPassed, err := decodeContinuityAssessment(
+		raw,
+		state.Draft,
+		!state.PreviousContinuity.IsEmpty(),
+	)
 	if err != nil {
 		return ReviewResult{}, err
 	}
 
-	contractChecked := !contract.IsEmpty()
+	contractChecked := !state.ChapterContract.IsEmpty()
 	contractPassed := true
 	var assessment ChapterContractAssessment
 	var violations []string
@@ -148,11 +171,14 @@ func decodeReviewResultWithContract(
 				"contract_assessment is required when a chapter contract is present",
 			)
 		}
-		assessment, err = decodeChapterContractAssessment(assessmentJSON, contract)
+		assessment, err = decodeChapterContractAssessment(
+			assessmentJSON,
+			state.ChapterContract,
+		)
 		if err != nil {
 			return ReviewResult{}, err
 		}
-		violations = chapterContractViolations(contract, assessment)
+		violations = chapterContractViolations(state.ChapterContract, assessment)
 		contractPassed = len(violations) == 0
 	}
 
@@ -166,14 +192,126 @@ func decodeReviewResultWithContract(
 		}
 	}
 	return ReviewResult{
-		Passed:             passed,
-		ContinuityPassed:   continuityPassed,
-		ContractPassed:     contractPassed,
-		Violations:         violations,
-		ContractAssessment: assessment,
-		Critique:           critique,
-		contractChecked:    contractChecked,
+		Passed:               passed,
+		ContinuityPassed:     continuityPassed,
+		ContractPassed:       contractPassed,
+		Violations:           violations,
+		ContinuityAssessment: continuityAssessment,
+		ContractAssessment:   assessment,
+		Critique:             critique,
+		contractChecked:      contractChecked,
 	}, nil
+}
+
+func decodeContinuityAssessment(
+	raw map[string]json.RawMessage,
+	draft string,
+	requireHead bool,
+) (ContinuityAssessment, bool, error) {
+	candidate, ok := raw["continuity_assessment"]
+	if !ok || bytes.Equal(bytes.TrimSpace(candidate), []byte("null")) {
+		return ContinuityAssessment{}, false, fmt.Errorf(
+			"continuity_assessment is required",
+		)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(candidate, &fields); err != nil {
+		return ContinuityAssessment{}, false, fmt.Errorf(
+			"continuity_assessment must be an object",
+		)
+	}
+
+	headJSON, headPresent := fields["chapter_head"]
+	if !headPresent {
+		return ContinuityAssessment{}, false, fmt.Errorf(
+			"continuity_assessment.chapter_head is required",
+		)
+	}
+	headIsNull := bytes.Equal(bytes.TrimSpace(headJSON), []byte("null"))
+	if requireHead && headIsNull {
+		return ContinuityAssessment{}, false, fmt.Errorf(
+			"continuity_assessment.chapter_head is required when previous continuity is present",
+		)
+	}
+	if !requireHead && !headIsNull {
+		return ContinuityAssessment{}, false, fmt.Errorf(
+			"continuity_assessment.chapter_head must be null without previous continuity",
+		)
+	}
+
+	tailJSON, tailPresent := fields["chapter_tail"]
+	if !tailPresent || bytes.Equal(bytes.TrimSpace(tailJSON), []byte("null")) {
+		return ContinuityAssessment{}, false, fmt.Errorf(
+			"continuity_assessment.chapter_tail is required",
+		)
+	}
+	tail, err := decodeContinuityEvidence(
+		"continuity_assessment.chapter_tail",
+		tailJSON,
+		draft,
+		false,
+	)
+	if err != nil {
+		return ContinuityAssessment{}, false, err
+	}
+
+	assessment := ContinuityAssessment{ChapterTail: tail}
+	passed := tail.Satisfied
+	if requireHead {
+		head, err := decodeContinuityEvidence(
+			"continuity_assessment.chapter_head",
+			headJSON,
+			draft,
+			true,
+		)
+		if err != nil {
+			return ContinuityAssessment{}, false, err
+		}
+		assessment.ChapterHead = &head
+		passed = passed && head.Satisfied
+	}
+	return assessment, passed, nil
+}
+
+func decodeContinuityEvidence(
+	name string,
+	candidate []byte,
+	draft string,
+	head bool,
+) (ContractRequirementAssessment, error) {
+	var wire contractRequirementAssessmentWire
+	if err := json.Unmarshal(candidate, &wire); err != nil {
+		return ContractRequirementAssessment{}, fmt.Errorf("%s must be an object", name)
+	}
+	item, err := normalizeContractRequirementAssessment(name, wire)
+	if err != nil {
+		return ContractRequirementAssessment{}, err
+	}
+	if !item.Satisfied {
+		return item, nil
+	}
+
+	draftRunes := []rune(draft)
+	windowRunes := draftRunes
+	if len(windowRunes) > reviewerContinuityWindowRunes {
+		if head {
+			windowRunes = windowRunes[:reviewerContinuityWindowRunes]
+		} else {
+			windowRunes = windowRunes[len(windowRunes)-reviewerContinuityWindowRunes:]
+		}
+	}
+	if !strings.Contains(string(windowRunes), item.Evidence) {
+		position := "chapter tail"
+		if head {
+			position = "chapter head"
+		}
+		return ContractRequirementAssessment{}, fmt.Errorf(
+			"%s.evidence must be an exact draft substring within the %s window",
+			name,
+			position,
+		)
+	}
+	return item, nil
 }
 
 func decodeRequiredReviewBool(

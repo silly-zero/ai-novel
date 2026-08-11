@@ -66,6 +66,11 @@ type ChapterContractAssessment struct {
 	EndState      ContractRequirementAssessment   `json:"end_state"`
 }
 
+type ContinuityAssessment struct {
+	ChapterHead *ContractRequirementAssessment `json:"chapter_head"`
+	ChapterTail ContractRequirementAssessment  `json:"chapter_tail"`
+}
+
 func (c ChapterContract) IsEmpty() bool {
 	return c.Goal == "" && len(c.MustHappen) == 0 && len(c.MustNotHappen) == 0 && c.EndState == ""
 }
@@ -78,30 +83,31 @@ type MainlineEventBeat struct {
 
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
-	GenerationID       string
-	StreamSink         GenerationStreamSink
-	NovelID            string
-	ChapterID          string
-	ChapterIndex       int                       // 当前章节序号
-	Idea               string                    // 初始想法 (一句话 Idea)
-	FullOutline        string                    // 全书大纲 (由 Architect Agent 生成)
-	ExistingOutline    string                    // 已有全书大纲（续写时参考）
-	OutlineStart       int                       // 生成大纲的起始章
-	OutlineEnd         int                       // 生成大纲的结束章
-	Outline            string                    // 当前章节剧情大纲 (由 Plot Agent 生成)
-	ChapterContract    ChapterContract           // 当前章节必须遵守的结构化剧情契约
-	MainlineBeat       MainlineEventBeat         // 从全书逐章大纲确定性选出的当前/下一主线节拍
-	ContractAssessment ChapterContractAssessment // 最终草稿对章节契约的瞬时评估
-	SceneCard          string                    // 导演拆解出的场景卡
-	EditorNotes        string                    // 人工干预：作者/编辑给出的指令或限制
-	ManualContext      string                    // 人工补充的资料片段（优先注入到 Context）
-	Context            string                    // 图书管理员检索出的背景资料 (角色设定、前情提要)
-	PreviousContinuity ContinuityPacket          // 上一章的结构化接力状态
-	Draft              string                    // 主笔生成的草稿
-	Critique           string                    // 审查员的修改意见
-	Continuity         ContinuityPacket          // 当前草稿对应的结构化接力状态
-	RetryCount         int                       // 重试次数
-	IsApproved         bool                      // 是否通过审查
+	GenerationID         string
+	StreamSink           GenerationStreamSink
+	NovelID              string
+	ChapterID            string
+	ChapterIndex         int                       // 当前章节序号
+	Idea                 string                    // 初始想法 (一句话 Idea)
+	FullOutline          string                    // 全书大纲 (由 Architect Agent 生成)
+	ExistingOutline      string                    // 已有全书大纲（续写时参考）
+	OutlineStart         int                       // 生成大纲的起始章
+	OutlineEnd           int                       // 生成大纲的结束章
+	Outline              string                    // 当前章节剧情大纲 (由 Plot Agent 生成)
+	ChapterContract      ChapterContract           // 当前章节必须遵守的结构化剧情契约
+	MainlineBeat         MainlineEventBeat         // 从全书逐章大纲确定性选出的当前/下一主线节拍
+	ContractAssessment   ChapterContractAssessment // 最终草稿对章节契约的瞬时评估
+	ContinuityAssessment ContinuityAssessment      // 最终草稿的章首承接与章尾接力评估
+	SceneCard            string                    // 导演拆解出的场景卡
+	EditorNotes          string                    // 人工干预：作者/编辑给出的指令或限制
+	ManualContext        string                    // 人工补充的资料片段（优先注入到 Context）
+	Context              string                    // 图书管理员检索出的背景资料 (角色设定、前情提要)
+	PreviousContinuity   ContinuityPacket          // 上一章的结构化接力状态
+	Draft                string                    // 主笔生成的草稿
+	Critique             string                    // 审查员的修改意见
+	Continuity           ContinuityPacket          // 当前草稿对应的结构化接力状态
+	RetryCount           int                       // 重试次数
+	IsApproved           bool                      // 是否通过审查
 }
 
 // Agent 是所有智能体的顶级抽象接口

@@ -76,6 +76,7 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 	// 4. 更新状态机中的 Draft 字段
 	state.Draft = fullDraft.String()
 	state.ContractAssessment = ChapterContractAssessment{}
+	state.ContinuityAssessment = ContinuityAssessment{}
 	state.IsApproved = false
 
 	// 清理上一轮的 Critique，表示 Writer 已经做出了修改响应

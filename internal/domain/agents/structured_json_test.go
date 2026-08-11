@@ -354,7 +354,7 @@ func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
 
 func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
-		`{"passed":false,"continuity_passed":true,"contract_assessment":null,"critique":"本章只提到血书线索，没有让主角实际找到血书"}`,
+		`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":"本章只提到血书线索，没有让主角实际找到血书"}`,
 	}}
 	state := &GenerationState{
 		Draft: strings.Repeat("文", 2500),
@@ -457,7 +457,7 @@ func TestReviewerEmptyDraftStillReturnsError(t *testing.T) {
 
 func TestReviewerValidDraftStillRunsContinuityReview(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
-		`{"passed":true,"continuity_passed":false,"contract_assessment":null,"critique":"章首没有承接上一章行动"}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":{"satisfied":false,"evidence":"章首没有承接上一章行动"},"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":"章首没有承接上一章行动"}`,
 	}}
 	state := &GenerationState{
 		Draft: strings.Repeat("文", 2500),
@@ -522,7 +522,7 @@ func TestReviewerDeterministicPrecheckRejectsBeforeLLM(t *testing.T) {
 func TestReviewerBoundsModelCritiqueBeforeRetry(t *testing.T) {
 	longCritique := "敏感原文" + strings.Repeat("改", maxReviewerCritiqueRunes+100)
 	llm := &queuedStructuredLLM{responses: []string{
-		fmt.Sprintf(`{"passed":false,"continuity_passed":true,"contract_assessment":null,"critique":%q}`, longCritique),
+		fmt.Sprintf(`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":%q}`, longCritique),
 	}}
 
 	got, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
@@ -540,7 +540,7 @@ func TestReviewerBoundsModelCritiqueBeforeRetry(t *testing.T) {
 func TestReviewerStructuredRepairProducesReviewResult(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
 		`{"passed":"false","critique":"修改"}`,
-		`{"passed":false,"continuity_passed":false,"critique":" 补充场景冲突 "}`,
+		`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾没有留下具体行动"}},"critique":" 补充场景冲突 "}`,
 	}}
 	agent := NewReviewerAgent(llm)
 	state := &GenerationState{Draft: strings.Repeat("文", 2500)}
@@ -559,8 +559,8 @@ func passingContractAssessmentJSON() string {
 }
 
 func TestReviewerContractGate(t *testing.T) {
-	passing := `{"passed":true,"continuity_passed":true,"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
-	failing := `{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"已进入密门"},{"satisfied":false,"evidence":"正文没有发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"未揭晓反派"}],"end_state":{"satisfied":true,"evidence":"决定追踪祭坛"}},"critique":"补强情节"}`
+	passing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
+	failing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"目标已完成"},"must_happen":[{"satisfied":true,"evidence":"已进入密门"},{"satisfied":false,"evidence":"正文没有发现血书"}],"must_not_happen":[{"satisfied":true,"evidence":"未揭晓反派"}],"end_state":{"satisfied":true,"evidence":"决定追踪祭坛"}},"critique":"补强情节"}`
 
 	for _, test := range []struct {
 		name         string
@@ -641,8 +641,8 @@ func TestChapterContractViolationsCoversEveryRequirementKind(t *testing.T) {
 }
 
 func TestReviewerRepairsStructurallyInvalidContractAssessmentOnce(t *testing.T) {
-	invalid := `{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"依据"},"must_happen":[],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`
-	valid := `{"passed":true,"continuity_passed":true,"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"依据"},"must_happen":[],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`
+	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":` + passingContractAssessmentJSON() + `,"critique":""}`
 	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
 	state := &GenerationState{
 		Draft:           strings.Repeat("文", 2500),
@@ -661,12 +661,12 @@ func TestReviewerRepairsStructurallyInvalidContractAssessmentOnce(t *testing.T) 
 func TestReviewerContractValidationRejectsInvalidResults(t *testing.T) {
 	tooLongEvidence := strings.Repeat("据", maxContractAssessmentEvidenceRunes+1)
 	tests := []string{
-		`{"passed":true,"continuity_passed":true,"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_assessment":null,"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"evidence":"依据"},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":"依据"},"must_happen":[],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
-		`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":" "},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
-		fmt.Sprintf(`{"passed":true,"continuity_passed":true,"contract_assessment":{"goal":{"satisfied":true,"evidence":%q},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`, tooLongEvidence),
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"evidence":"依据"},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"依据"},"must_happen":[],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":" "},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`,
+		fmt.Sprintf(`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":%q},"must_happen":[{"satisfied":true,"evidence":"依据"},{"satisfied":true,"evidence":"依据"}],"must_not_happen":[{"satisfied":true,"evidence":"依据"}],"end_state":{"satisfied":true,"evidence":"依据"}},"critique":""}`, tooLongEvidence),
 	}
 	for _, response := range tests {
 		_, err := parseStructuredResponse(
@@ -684,7 +684,7 @@ func TestReviewerContractValidationRejectsInvalidResults(t *testing.T) {
 
 func TestReviewerWithoutContractKeepsLegacyResponseCompatibility(t *testing.T) {
 	result, err := parseStructuredResponse(
-		`{"passed":true,"continuity_passed":true,"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"critique":""}`,
 		decodeReviewResult,
 		validateReviewResult,
 	)
@@ -693,6 +693,176 @@ func TestReviewerWithoutContractKeepsLegacyResponseCompatibility(t *testing.T) {
 	}
 	if !result.Passed || !result.ContinuityPassed || result.contractChecked || !result.ContractPassed {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReviewerContinuityEvidenceGateApprovesValidHeadAndTail(t *testing.T) {
+	headEvidence := "主角跨进密门，身后石门轰然闭合。"
+	tailEvidence := "他握紧火把，决定沿着血迹继续追查。"
+	draft := headEvidence + strings.Repeat("文", 2500-len([]rune(headEvidence))-len([]rune(tailEvidence))) + tailEvidence
+	response := fmt.Sprintf(
+		`{"passed":true,"continuity_assessment":{"chapter_head":{"satisfied":true,"evidence":%q},"chapter_tail":{"satisfied":true,"evidence":%q}},"contract_assessment":null,"critique":""}`,
+		headEvidence,
+		tailEvidence,
+	)
+	state := &GenerationState{
+		Draft: draft,
+		PreviousContinuity: ContinuityPacket{
+			LastBeat:   "主角推开密门。",
+			NextAction: "主角进入密门。",
+		},
+	}
+
+	got, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{response}}).Run(
+		context.Background(),
+		state,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsApproved || !got.ContinuityAssessment.ChapterHead.Satisfied ||
+		!got.ContinuityAssessment.ChapterTail.Satisfied {
+		t.Fatalf("state = %#v", got)
+	}
+}
+
+func TestReviewerContinuityEvidenceGateAllowsMissingHeadWithoutPreviousContinuity(t *testing.T) {
+	tailEvidence := "他决定天亮后继续追查。"
+	draft := strings.Repeat("文", 2500-len([]rune(tailEvidence))) + tailEvidence
+	response := fmt.Sprintf(
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":%q}},"contract_assessment":null,"critique":""}`,
+		tailEvidence,
+	)
+
+	got, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{response}}).Run(
+		context.Background(),
+		&GenerationState{Draft: draft},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsApproved || got.ContinuityAssessment.ChapterHead != nil {
+		t.Fatalf("state = %#v", got)
+	}
+}
+
+func TestReviewerContinuityEvidenceGateRejectsInvalidEvidence(t *testing.T) {
+	headEvidence := "章首承接动作。"
+	tailEvidence := "章尾继续行动。"
+	middleEvidence := "只在正文中段出现的证据。"
+	draft := headEvidence +
+		strings.Repeat("文", reviewerContinuityWindowRunes) +
+		middleEvidence +
+		strings.Repeat("文", reviewerContinuityWindowRunes) +
+		tailEvidence
+	previous := ContinuityPacket{LastBeat: "上一章结尾", NextAction: "继续行动"}
+
+	tests := []struct {
+		name     string
+		headJSON string
+		tailJSON string
+		previous ContinuityPacket
+		want     string
+	}{
+		{
+			name:     "requires head with previous continuity",
+			headJSON: "null",
+			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+			previous: previous,
+			want:     "chapter_head is required",
+		},
+		{
+			name:     "rejects head evidence outside head window",
+			headJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, middleEvidence),
+			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+			previous: previous,
+			want:     "chapter head window",
+		},
+		{
+			name:     "rejects tail evidence outside tail window",
+			headJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
+			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, middleEvidence),
+			previous: previous,
+			want:     "chapter tail window",
+		},
+		{
+			name:     "requires null head without previous continuity",
+			headJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
+			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+			want:     "must be null",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := fmt.Sprintf(
+				`{"passed":true,"continuity_assessment":{"chapter_head":%s,"chapter_tail":%s},"contract_assessment":null,"critique":""}`,
+				test.headJSON,
+				test.tailJSON,
+			)
+			_, err := decodeReviewResultForState([]byte(response), &GenerationState{
+				Draft:              draft,
+				PreviousContinuity: test.previous,
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestReviewerContinuityEvidenceUsesRuneWindows(t *testing.T) {
+	headEvidence := "🙂章首承接。"
+	tailEvidence := "章尾行动🙂"
+	draft := headEvidence +
+		strings.Repeat("界", 2500-len([]rune(headEvidence))-len([]rune(tailEvidence))) +
+		tailEvidence
+	response := fmt.Sprintf(
+		`{"passed":true,"continuity_assessment":{"chapter_head":{"satisfied":true,"evidence":%q},"chapter_tail":{"satisfied":true,"evidence":%q}},"contract_assessment":null,"critique":""}`,
+		headEvidence,
+		tailEvidence,
+	)
+
+	result, err := decodeReviewResultForState([]byte(response), &GenerationState{
+		Draft: draft,
+		PreviousContinuity: ContinuityPacket{
+			LastBeat:   "上一章结尾",
+			NextAction: "继续行动",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ContinuityPassed {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestReviewerRepairsInvalidContinuityEvidenceOnce(t *testing.T) {
+	tailEvidence := "他决定继续追查。"
+	draft := strings.Repeat("文", 2500-len([]rune(tailEvidence))) + tailEvidence
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"并不存在的章尾原文"}},"contract_assessment":null,"critique":""}`
+	valid := fmt.Sprintf(
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":%q}},"contract_assessment":null,"critique":""}`,
+		tailEvidence,
+	)
+	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{Draft: draft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsApproved || llm.calls != 2 {
+		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
+	}
+}
+
+func TestReviewerRejectsLegacyContinuityBooleanWithoutAssessment(t *testing.T) {
+	_, err := decodeReviewResultForState(
+		[]byte(`{"passed":true,"continuity_passed":true,"contract_assessment":null,"critique":""}`),
+		&GenerationState{Draft: strings.Repeat("文", 2500)},
+	)
+	if err == nil || !strings.Contains(err.Error(), "continuity_assessment is required") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -725,9 +895,9 @@ func TestStructuredValidatorsRejectMissingRequiredFields(t *testing.T) {
 	for _, response := range []string{
 		`{"critique":"missing passed"}`,
 		`{"passed":null,"critique":"invalid null"}`,
-		`{"passed":true,"continuity_passed":true,"critique":null}`,
-		`{"passed":false,"continuity_passed":false,"critique":" "}`,
-		`{"passed":true,"continuity_passed":false,"critique":" "}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"critique":null}`,
+		`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾没有留下具体行动"}},"critique":" "}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾没有留下具体行动"}},"critique":" "}`,
 	} {
 		_, err := parseStructuredResponse(response, decodeReviewResult, validateReviewResult)
 		if err == nil {
