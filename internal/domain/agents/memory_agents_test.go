@@ -30,6 +30,8 @@ type characterRepositoryFake struct {
 	saveCharacterErr   error
 	saveRelationErr    error
 	existing           *domain.Character
+	byName             map[string]*domain.Character
+	relationships      []*domain.Relationship
 	savedCharacter     *domain.Character
 	saveCharacterCalls int
 	lastCharacterName  string
@@ -50,7 +52,11 @@ func (*characterRepositoryFake) GetCharacter(context.Context, string) (*domain.C
 	return nil, errors.New("not found")
 }
 
-func (r *characterRepositoryFake) FindByName(_ context.Context, _ string, _ string) (*domain.Character, error) {
+func (r *characterRepositoryFake) FindByName(_ context.Context, _ string, name string) (*domain.Character, error) {
+	if character := r.byName[name]; character != nil {
+		copy := *character
+		return &copy, nil
+	}
 	if r.existing == nil {
 		return nil, errors.New("not found")
 	}
@@ -72,8 +78,8 @@ func (r *characterRepositoryFake) SaveRelationship(context.Context, *domain.Rela
 	return r.saveRelationErr
 }
 
-func (*characterRepositoryFake) ListRelationships(context.Context, string) ([]*domain.Relationship, error) {
-	return nil, nil
+func (r *characterRepositoryFake) ListRelationships(context.Context, string) ([]*domain.Relationship, error) {
+	return r.relationships, nil
 }
 
 type worldRepositoryFake struct {

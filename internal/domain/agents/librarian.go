@@ -74,6 +74,8 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	}
 
 	contextBuilder := strings.Builder{}
+	canonConstraints := make([]CanonConstraint, 0)
+	canonSeen := make(map[string]struct{})
 
 	// 3. 检索角色档案
 	seedNames := make(map[string]bool)
@@ -89,6 +91,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 			char, err := l.charRepo.FindByName(ctx, state.NovelID, name)
 			if err == nil && char != nil {
 				writeCharacterLedgerEntry(&contextBuilder, char)
+				appendCharacterCanonConstraints(&canonConstraints, canonSeen, char)
 			}
 		}
 		contextBuilder.WriteString("\n")
@@ -97,17 +100,21 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if l.charRepo != nil && len(seedNames) > 0 {
 		rels, err := l.charRepo.ListRelationships(ctx, state.NovelID)
 		if err == nil && len(rels) > 0 {
+			sort.SliceStable(rels, func(i, j int) bool {
+				return relationshipSortKey(rels[i]) < relationshipSortKey(rels[j])
+			})
 			contextBuilder.WriteString("【角色关系网】\n")
 
-			neighborNames := make(map[string]bool)
+			neighborNames := make([]string, 0)
+			neighborSeen := make(map[string]struct{})
 			added := 0
 			for _, rel := range rels {
 				if rel == nil || rel.SourceCharacter == nil || rel.TargetCharacter == nil {
 					continue
 				}
 
-				sName := rel.SourceCharacter.Name
-				tName := rel.TargetCharacter.Name
+				sName := strings.TrimSpace(rel.SourceCharacter.Name)
+				tName := strings.TrimSpace(rel.TargetCharacter.Name)
 				if sName == "" || tName == "" {
 					continue
 				}
@@ -117,8 +124,17 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 				}
 
 				contextBuilder.WriteString(fmt.Sprintf("- %s --(%s)--> %s：%s\n", sName, rel.RelationType, tName, rel.Description))
-				neighborNames[sName] = true
-				neighborNames[tName] = true
+				if rel.SourceCharacter != nil && rel.TargetCharacter != nil {
+					appendRelationshipCanonConstraint(&canonConstraints, canonSeen, rel)
+				}
+				if _, exists := neighborSeen[sName]; !exists {
+					neighborSeen[sName] = struct{}{}
+					neighborNames = append(neighborNames, sName)
+				}
+				if _, exists := neighborSeen[tName]; !exists {
+					neighborSeen[tName] = struct{}{}
+					neighborNames = append(neighborNames, tName)
+				}
 				added++
 				if added >= 10 {
 					break
@@ -129,13 +145,14 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 
 			contextBuilder.WriteString("【关系相关角色卡】\n")
 			addedCards := 0
-			for name := range neighborNames {
+			for _, name := range neighborNames {
 				if name == "" {
 					continue
 				}
 				char, err := l.charRepo.FindByName(ctx, state.NovelID, name)
 				if err == nil && char != nil {
 					writeCharacterLedgerEntry(&contextBuilder, char)
+					appendCharacterCanonConstraints(&canonConstraints, canonSeen, char)
 					addedCards++
 					if addedCards >= 8 {
 						break
@@ -153,6 +170,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 			setting, err := l.worldRepo.FindByName(ctx, state.NovelID, name)
 			if err == nil && setting != nil {
 				writeWorldLedgerEntry(&contextBuilder, setting)
+				appendWorldCanonConstraints(&canonConstraints, canonSeen, setting)
 			}
 		}
 		contextBuilder.WriteString("\n")
@@ -219,6 +237,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	}
 
 	state.Context = contextBuilder.String()
+	state.CanonConstraints = canonConstraints
 	return state, nil
 }
 
@@ -245,6 +264,129 @@ func writeWorldLedgerEntry(builder *strings.Builder, setting *domain.WorldSettin
 		fmt.Fprintf(builder, "; 当前状态:%s", currentState)
 	}
 	builder.WriteString("\n")
+}
+
+func appendCharacterCanonConstraints(
+	constraints *[]CanonConstraint,
+	seen map[string]struct{},
+	character *domain.Character,
+) {
+	if character == nil || strings.TrimSpace(character.Name) == "" {
+		return
+	}
+	name := strings.TrimSpace(character.Name)
+	staticParts := make([]string, 0, 6)
+	if gender := strings.TrimSpace(character.Gender); gender != "" {
+		staticParts = append(staticParts, "性别:"+gender)
+	}
+	if character.Age > 0 {
+		staticParts = append(staticParts, fmt.Sprintf("年龄:%d", character.Age))
+	}
+	for _, field := range []struct {
+		label string
+		value string
+	}{
+		{label: "外貌", value: character.Appearance},
+		{label: "性格", value: character.Personality},
+		{label: "背景", value: character.Background},
+	} {
+		if value := strings.TrimSpace(field.value); value != "" {
+			staticParts = append(staticParts, field.label+":"+value)
+		}
+	}
+	if len(staticParts) > 0 {
+		appendCanonConstraint(constraints, seen, CanonConstraint{
+			Kind:      "character_static",
+			Subject:   name,
+			Statement: fmt.Sprintf("角色%s的静态档案：%s", name, strings.Join(staticParts, "；")),
+		})
+	}
+	if status := strings.TrimSpace(character.CurrentStatus); status != "" {
+		appendCanonConstraint(constraints, seen, CanonConstraint{
+			Kind:      "character_current_status",
+			Subject:   name,
+			Statement: fmt.Sprintf("角色%s当前状态：%s", name, status),
+		})
+	}
+}
+
+func relationshipSortKey(relationship *domain.Relationship) string {
+	if relationship == nil || relationship.SourceCharacter == nil || relationship.TargetCharacter == nil {
+		return ""
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(relationship.SourceCharacter.Name),
+		strings.TrimSpace(relationship.TargetCharacter.Name),
+		strings.TrimSpace(relationship.RelationType),
+		strings.TrimSpace(relationship.Description),
+		strings.TrimSpace(relationship.ID),
+	}, "\x00")
+}
+
+func appendRelationshipCanonConstraint(
+	constraints *[]CanonConstraint,
+	seen map[string]struct{},
+	relationship *domain.Relationship,
+) {
+	if relationship == nil || relationship.SourceCharacter == nil || relationship.TargetCharacter == nil {
+		return
+	}
+	source := strings.TrimSpace(relationship.SourceCharacter.Name)
+	target := strings.TrimSpace(relationship.TargetCharacter.Name)
+	relationType := strings.TrimSpace(relationship.RelationType)
+	if source == "" || target == "" || relationType == "" {
+		return
+	}
+	statement := fmt.Sprintf("角色关系：%s与%s是%s", source, target, relationType)
+	if description := strings.TrimSpace(relationship.Description); description != "" {
+		statement += "；" + description
+	}
+	appendCanonConstraint(constraints, seen, CanonConstraint{
+		Kind:      "character_relationship",
+		Subject:   fmt.Sprintf("%s->%s[%s]", source, target, relationType),
+		Statement: statement,
+	})
+}
+
+func appendWorldCanonConstraints(
+	constraints *[]CanonConstraint,
+	seen map[string]struct{},
+	setting *domain.WorldSetting,
+) {
+	if setting == nil || strings.TrimSpace(setting.Name) == "" {
+		return
+	}
+	name := strings.TrimSpace(setting.Name)
+	if description := strings.TrimSpace(setting.Description); description != "" {
+		appendCanonConstraint(constraints, seen, CanonConstraint{
+			Kind:      "world_static",
+			Subject:   name,
+			Statement: fmt.Sprintf("世界设定%s的静态说明：%s", name, description),
+		})
+	}
+	if currentState := strings.TrimSpace(setting.CurrentState); currentState != "" {
+		appendCanonConstraint(constraints, seen, CanonConstraint{
+			Kind:      "world_current_state",
+			Subject:   name,
+			Statement: fmt.Sprintf("世界设定%s当前状态：%s", name, currentState),
+		})
+	}
+}
+
+func appendCanonConstraint(
+	constraints *[]CanonConstraint,
+	seen map[string]struct{},
+	constraint CanonConstraint,
+) {
+	if strings.TrimSpace(constraint.Statement) == "" {
+		return
+	}
+	key := constraint.Kind + "\x00" + constraint.Subject
+	if _, exists := seen[key]; exists {
+		return
+	}
+	seen[key] = struct{}{}
+	*constraints = append(*constraints, constraint)
 }
 
 type rankedMemory struct {

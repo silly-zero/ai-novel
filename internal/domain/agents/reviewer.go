@@ -32,13 +32,15 @@ func (r *ReviewerAgent) Role() AgentRole {
 
 // ReviewResult 审查结果的结构化定义
 type ReviewResult struct {
-	Passed               bool                      `json:"passed"`
-	ContinuityPassed     bool                      `json:"-"`
-	ContractPassed       bool                      `json:"-"`
-	Violations           []string                  `json:"-"`
-	ContinuityAssessment ContinuityAssessment      `json:"continuity_assessment"`
-	ContractAssessment   ChapterContractAssessment `json:"contract_assessment"`
-	Critique             string                    `json:"critique"`
+	Passed               bool                         `json:"passed"`
+	ContinuityPassed     bool                         `json:"-"`
+	ContractPassed       bool                         `json:"-"`
+	CanonPassed          bool                         `json:"-"`
+	Violations           []string                     `json:"-"`
+	CanonAssessment      []CanonConsistencyAssessment `json:"canon_assessment"`
+	ContinuityAssessment ContinuityAssessment         `json:"continuity_assessment"`
+	ContractAssessment   ChapterContractAssessment    `json:"contract_assessment"`
+	Critique             string                       `json:"critique"`
 	contractChecked      bool
 }
 
@@ -50,6 +52,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 	if issues := ValidateGeneratedContent(state.Draft); len(issues) > 0 {
 		state.ContractAssessment = ChapterContractAssessment{}
 		state.ContinuityAssessment = ContinuityAssessment{}
+		state.CanonAssessment = nil
 		state.IsApproved = false
 		state.Critique = generatedContentIssuesCritique(issues)
 		return state, nil
@@ -65,6 +68,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 7. 本章结尾是否留下具体、可行动的未完成目标供下一章继续？没有上一章接力时 chapter_head 必须返回 null，但仍检查 chapter_tail。
 8. 章节契约实际状态：如果存在【本章契约】，必须按原顺序逐项评估 chapter_goal、每条 must_happen、每条 must_not_happen 和 end_state。chapter_goal、must_happen、end_state 为 satisfied=true 时，evidence 必须逐字引用全稿中的单段连续原文；为 false 时写未达成原因。must_not_happen 的 satisfied=false 表示禁止事项实际发生，evidence 必须逐字引用违规原文；为 true 表示禁止事项未发生，只写简短理由，不得虚构正文证据。
 9. 主线事件节拍：如果存在【主线事件节拍】，正文必须实际发生本章事件，不能只口头提及或推迟；如果提前完成下一章预定事件，必须判定 passed=false 并给出具体修改意见。
+10. 角色与世界账本一致性：如果存在【冻结账本约束】，必须按原顺序逐项判断正文是否冲突。constraint_index 必须等于冻结约束前的 1-based 序号。satisfied=true 表示正文与该约束一致；satisfied=false 表示正文实际发生冲突，evidence 必须逐字引用全稿中的单段连续原文。角色和世界当前状态可以被正文合理推进，不要把正常状态变化误判为冲突。
 
 请输出合法 JSON：
 {
@@ -79,12 +83,13 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		"must_not_happen": [{"satisfied": true或false, "evidence": "正文依据或发生位置"}],
 		"end_state": {"satisfied": true或false, "evidence": "正文依据或缺失原因"}
 	},
-	"critique": "如果常规审查或连续性不通过，写明具体修改意见；否则可留空。"
+	"canon_assessment": [{"constraint_index": 1, "satisfied": true或false, "evidence": "一致性理由或正文冲突原文"}],
+	"critique": "如果常规审查、连续性或账本一致性不通过，写明具体修改意见；否则可留空。"
 }
-如果没有上一章接力状态，continuity_assessment.chapter_head 必须为 null。continuity_assessment 的 satisfied=true evidence 必须逐字引用草稿中的单段连续原文，不得概括、改写或拼接；章首证据必须来自开头，章尾证据必须来自结尾。contract_assessment 的正向通过证据和禁止事项失败证据必须逐字引用全稿中的单段连续原文；未达成原因和禁止事项未发生的理由不要求出现在正文。如果没有结构化章节契约，contract_assessment 可以为 null。评估数组数量和顺序必须与契约完全一致。只返回 JSON，不要输出 Markdown 或解释。`
+如果没有上一章接力状态，continuity_assessment.chapter_head 必须为 null。continuity_assessment 的 satisfied=true evidence 必须逐字引用草稿中的单段连续原文，不得概括、改写或拼接；章首证据必须来自开头，章尾证据必须来自结尾。contract_assessment 的正向通过证据和禁止事项失败证据必须逐字引用全稿中的单段连续原文；未达成原因和禁止事项未发生的理由不要求出现在正文。如果没有结构化章节契约，contract_assessment 可以为 null。如果没有冻结账本约束，canon_assessment 可以为 null；否则数组数量和顺序必须与约束完全一致，每项 constraint_index 必须等于对应冻结约束的 1-based 序号，冲突项的 evidence 必须逐字引用正文。评估数组数量和顺序必须与对应输入完全一致。只返回 JSON，不要输出 Markdown 或解释。`
 
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
-		state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity), state.Draft)
+	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
+		state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity), canonConstraintsPrompt(state.CanonConstraints), state.Draft)
 
 	result, err := generateStructuredResponse(
 		ctx,
@@ -108,11 +113,37 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 			maxReviewerFeedbackRunes,
 		)
 	}
+	if !result.CanonPassed {
+		critique = boundedText(
+			canonFailureCritique(state.CanonConstraints, result.CanonAssessment, critique),
+			maxReviewerFeedbackRunes,
+		)
+	}
 	state.ContractAssessment = result.ContractAssessment
 	state.ContinuityAssessment = result.ContinuityAssessment
-	state.IsApproved = result.Passed && result.ContinuityPassed && result.ContractPassed
+	state.CanonAssessment = result.CanonAssessment
+	state.IsApproved = result.Passed && result.ContinuityPassed && result.ContractPassed && result.CanonPassed
 	state.Critique = critique
 	return state, nil
+}
+
+func canonConstraintsPrompt(constraints []CanonConstraint) string {
+	if len(constraints) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	builder.WriteString("【冻结账本约束】\n")
+	for index, constraint := range constraints {
+		fmt.Fprintf(
+			&builder,
+			"%d. [%s] %s：%s\n",
+			index+1,
+			constraint.Kind,
+			constraint.Subject,
+			constraint.Statement,
+		)
+	}
+	return builder.String()
 }
 
 func generatedContentIssuesCritique(issues []GeneratedContentIssue) string {
@@ -188,6 +219,26 @@ func decodeReviewResultForState(
 		contractPassed = len(violations) == 0
 	}
 
+	canonPassed := true
+	var canonAssessment []CanonConsistencyAssessment
+	if len(state.CanonConstraints) > 0 {
+		canonJSON, ok := raw["canon_assessment"]
+		if !ok || bytes.Equal(bytes.TrimSpace(canonJSON), []byte("null")) {
+			return ReviewResult{}, fmt.Errorf(
+				"canon_assessment is required when canon constraints are present",
+			)
+		}
+		canonAssessment, err = decodeCanonConsistencyAssessments(
+			canonJSON,
+			state.CanonConstraints,
+			state.Draft,
+		)
+		if err != nil {
+			return ReviewResult{}, err
+		}
+		canonPassed = canonConstraintsPassed(canonAssessment)
+	}
+
 	var critique string
 	if critiqueJSON, ok := raw["critique"]; ok {
 		if bytes.Equal(bytes.TrimSpace(critiqueJSON), []byte("null")) {
@@ -201,7 +252,9 @@ func decodeReviewResultForState(
 		Passed:               passed,
 		ContinuityPassed:     continuityPassed,
 		ContractPassed:       contractPassed,
+		CanonPassed:          canonPassed,
 		Violations:           violations,
+		CanonAssessment:      canonAssessment,
 		ContinuityAssessment: continuityAssessment,
 		ContractAssessment:   assessment,
 		Critique:             critique,
@@ -366,8 +419,8 @@ func decodeChapterContractAssessment(
 
 func validateReviewResult(result *ReviewResult) error {
 	result.Critique = strings.TrimSpace(result.Critique)
-	if (!result.Passed || !result.ContinuityPassed) && result.Critique == "" {
-		return fmt.Errorf("critique is required when review or continuity fails")
+	if (!result.Passed || !result.ContinuityPassed || !result.CanonPassed) && result.Critique == "" {
+		return fmt.Errorf("critique is required when review, continuity, or canon consistency fails")
 	}
 	return nil
 }

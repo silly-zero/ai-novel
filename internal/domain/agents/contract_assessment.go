@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -167,6 +168,100 @@ func validateContractEvidenceInDraft(name, evidence, draft string) error {
 		return fmt.Errorf("%s.evidence must be an exact draft substring", name)
 	}
 	return nil
+}
+
+type canonConsistencyAssessmentWire struct {
+	ConstraintIndex *int    `json:"constraint_index"`
+	Satisfied       *bool   `json:"satisfied"`
+	Evidence        *string `json:"evidence"`
+}
+
+func decodeCanonConsistencyAssessments(
+	candidate []byte,
+	constraints []CanonConstraint,
+	draft string,
+) ([]CanonConsistencyAssessment, error) {
+	var wire []canonConsistencyAssessmentWire
+	if err := json.Unmarshal(candidate, &wire); err != nil {
+		return nil, fmt.Errorf("canon_assessment must be an array")
+	}
+	if len(wire) != len(constraints) {
+		return nil, fmt.Errorf("canon_assessment must contain exactly %d items", len(constraints))
+	}
+	assessments := make([]CanonConsistencyAssessment, 0, len(wire))
+	for index, item := range wire {
+		name := fmt.Sprintf("canon_assessment[%d]", index)
+		if item.ConstraintIndex == nil {
+			return nil, fmt.Errorf("%s.constraint_index is required", name)
+		}
+		expectedIndex := index + 1
+		if *item.ConstraintIndex != expectedIndex {
+			return nil, fmt.Errorf("%s.constraint_index must be %d", name, expectedIndex)
+		}
+		if item.Satisfied == nil {
+			return nil, fmt.Errorf("%s.satisfied is required", name)
+		}
+		if item.Evidence == nil {
+			return nil, fmt.Errorf("%s.evidence is required", name)
+		}
+		evidence := strings.TrimSpace(*item.Evidence)
+		if evidence == "" {
+			return nil, fmt.Errorf("%s.evidence must not be empty", name)
+		}
+		if len([]rune(evidence)) > maxContractAssessmentEvidenceRunes {
+			return nil, fmt.Errorf("%s.evidence exceeds %d characters", name, maxContractAssessmentEvidenceRunes)
+		}
+		if !*item.Satisfied {
+			if err := validateContractEvidenceInDraft(name, evidence, draft); err != nil {
+				return nil, err
+			}
+		}
+		assessments = append(assessments, CanonConsistencyAssessment{
+			ConstraintIndex: expectedIndex,
+			Satisfied:       *item.Satisfied,
+			Evidence:        evidence,
+		})
+	}
+	return assessments, nil
+}
+
+func canonConstraintsPassed(assessments []CanonConsistencyAssessment) bool {
+	for _, assessment := range assessments {
+		if !assessment.Satisfied {
+			return false
+		}
+	}
+	return true
+}
+
+func canonFailureCritique(
+	constraints []CanonConstraint,
+	assessments []CanonConsistencyAssessment,
+	critique string,
+) string {
+	violations := make([]string, 0)
+	for index, assessment := range assessments {
+		if assessment.Satisfied || index >= len(constraints) {
+			continue
+		}
+		constraint := constraints[index]
+		violations = append(violations, fmt.Sprintf(
+			"%s/%s 与账本冲突：%s；正文依据：%s",
+			constraint.Kind,
+			constraint.Subject,
+			constraint.Statement,
+			assessment.Evidence,
+		))
+	}
+	critique = strings.TrimSpace(critique)
+	if len(violations) == 0 {
+		return critique
+	}
+	result := "角色或世界账本冲突：\n- " + strings.Join(violations, "\n- ")
+	if critique != "" {
+		result += "\n其他修改意见：" + critique
+	}
+	return result
 }
 
 func chapterContractViolations(

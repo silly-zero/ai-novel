@@ -804,6 +804,135 @@ func TestReviewerContractValidationRejectsInvalidResults(t *testing.T) {
 	}
 }
 
+func TestReviewerCanonGate(t *testing.T) {
+	conflictEvidence := "林云忽然说自己从未见过苏青。"
+	draft := strings.Repeat("文", 2500-len([]rune(conflictEvidence))) + conflictEvidence
+	constraints := []CanonConstraint{
+		{Kind: "character_relationship", Subject: "林云->苏青", Statement: "角色关系：林云与苏青是盟友"},
+		{Kind: "world_current_state", Subject: "青云山", Statement: "世界设定青云山当前状态：山门封闭"},
+	}
+
+	passing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":true,"evidence":"正文延续了盟友关系"},{"constraint_index":2,"satisfied":true,"evidence":"正文明确描写守卫打开山门，属于合理状态推进"}],"critique":""}`
+	got, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{passing}}).Run(
+		context.Background(),
+		&GenerationState{Draft: draft, CanonConstraints: constraints},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.IsApproved || len(got.CanonAssessment) != 2 {
+		t.Fatalf("state = %#v", got)
+	}
+
+	failing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":false,"evidence":"林云忽然说自己从未见过苏青。"},{"constraint_index":2,"satisfied":true,"evidence":"正文没有违反山门状态"}],"critique":"修正角色关系"}`
+	got, err = NewReviewerAgent(&queuedStructuredLLM{responses: []string{failing}}).Run(
+		context.Background(),
+		&GenerationState{Draft: draft, CanonConstraints: constraints},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsApproved || !strings.Contains(got.Critique, "character_relationship/林云->苏青") ||
+		!strings.Contains(got.Critique, "林云忽然说自己从未见过苏青。") {
+		t.Fatalf("state = %#v", got)
+	}
+}
+
+func TestReviewerCanonValidationRejectsInvalidResults(t *testing.T) {
+	draft := strings.Repeat("文", 2500)
+	constraint := CanonConstraint{Kind: "character_static", Subject: "林云", Statement: "角色林云的性格：谨慎"}
+	tooLong := strings.Repeat("据", maxContractAssessmentEvidenceRunes+1)
+	responses := []string{
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":null,"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[],"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"satisfied":true,"evidence":"理由"}],"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":2,"satisfied":true,"evidence":"理由"}],"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"evidence":"理由"}],"critique":""}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":true,"evidence":" "}],"critique":""}`,
+		fmt.Sprintf(`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":true,"evidence":%q}],"critique":""}`, tooLong),
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":false,"evidence":"正文外的冲突概括"}],"critique":"冲突"}`,
+	}
+	for _, response := range responses {
+		_, err := parseStructuredResponse(
+			response,
+			func(candidate []byte) (ReviewResult, error) {
+				return decodeReviewResultForState(candidate, &GenerationState{
+					Draft:            draft,
+					CanonConstraints: []CanonConstraint{constraint},
+				})
+			},
+			validateReviewResult,
+		)
+		if err == nil {
+			t.Fatalf("canon response %q was accepted", response)
+		}
+	}
+}
+
+func TestReviewerRepairsInvalidCanonEvidenceOnce(t *testing.T) {
+	conflictEvidence := "林云宣称自己从未认识苏青。"
+	draft := strings.Repeat("文", 2500-len([]rune(conflictEvidence))) + conflictEvidence
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":false,"evidence":"林云否认盟友关系"}],"critique":"修正关系"}`
+	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":false,"evidence":"林云宣称自己从未认识苏青。"}],"critique":"修正关系"}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
+	state := &GenerationState{
+		Draft: draft,
+		CanonConstraints: []CanonConstraint{{
+			Kind:      "character_relationship",
+			Subject:   "林云->苏青",
+			Statement: "角色关系：林云与苏青是盟友",
+		}},
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsApproved || llm.calls != 2 || got.CanonAssessment[0].Evidence != "林云宣称自己从未认识苏青。" {
+		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
+	}
+}
+
+func TestReviewerInvalidCanonResponsesPreserveReviewState(t *testing.T) {
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":false,"evidence":"正文外的冲突概括"}],"critique":"修正关系"}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, invalid}}
+	oldContract := ChapterContractAssessment{Goal: ContractRequirementAssessment{Satisfied: true, Evidence: "旧契约依据"}}
+	oldContinuity := ContinuityAssessment{ChapterTail: ContractRequirementAssessment{Satisfied: true, Evidence: "旧章尾依据"}}
+	oldCanon := []CanonConsistencyAssessment{{ConstraintIndex: 1, Satisfied: true, Evidence: "旧账本依据"}}
+	state := &GenerationState{
+		Draft:                strings.Repeat("文", 2500),
+		ContractAssessment:   oldContract,
+		ContinuityAssessment: oldContinuity,
+		CanonConstraints: []CanonConstraint{{
+			Kind:      "character_relationship",
+			Subject:   "林云->苏青[盟友]",
+			Statement: "角色关系：林云与苏青是盟友",
+		}},
+		CanonAssessment: append([]CanonConsistencyAssessment(nil), oldCanon...),
+		Critique:        "旧修改意见",
+		IsApproved:      true,
+	}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err == nil || !strings.Contains(err.Error(), "invalid after 2 attempts") {
+		t.Fatalf("error = %v, want bounded two-attempt structured error", err)
+	}
+	if llm.calls != 2 {
+		t.Fatalf("calls = %d, want 2", llm.calls)
+	}
+	if len([]rune(err.Error())) > 2*structuredResponsePreviewRunes+500 {
+		t.Fatalf("error is unexpectedly large: %d runes", len([]rune(err.Error())))
+	}
+	if got != state || got.Draft != state.Draft || got.Critique != "旧修改意见" ||
+		got.ContractAssessment.Goal != oldContract.Goal ||
+		got.ContinuityAssessment.ChapterTail != oldContinuity.ChapterTail ||
+		len(got.CanonAssessment) != 1 || got.CanonAssessment[0] != oldCanon[0] ||
+		!got.IsApproved {
+		t.Fatalf("review state changed after invalid canon responses: %#v", got)
+	}
+}
+
 func TestReviewerWithoutContractKeepsLegacyResponseCompatibility(t *testing.T) {
 	result, err := parseStructuredResponse(
 		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"critique":""}`,

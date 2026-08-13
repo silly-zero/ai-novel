@@ -196,6 +196,84 @@ func TestLibrarianInjectsStaticAndDynamicLedgerState(t *testing.T) {
 	if strings.Contains(result.Context, "青云山: 静态说明:终年云雾环绕的修炼宗门; 当前状态:") {
 		t.Fatalf("Context contains empty world current-state label: %s", result.Context)
 	}
+	wantConstraints := []CanonConstraint{
+		{
+			Kind:      "character_static",
+			Subject:   "林云",
+			Statement: "角色林云的静态档案：性别:男；年龄:20；外貌:黑衣；性格:谨慎；背景:边城出身",
+		},
+		{
+			Kind:      "character_current_status",
+			Subject:   "林云",
+			Statement: "角色林云当前状态：已进入青云山密室",
+		},
+		{
+			Kind:      "world_static",
+			Subject:   "青云山",
+			Statement: "世界设定青云山的静态说明：终年云雾环绕的修炼宗门",
+		},
+	}
+	if !reflect.DeepEqual(result.CanonConstraints, wantConstraints) {
+		t.Fatalf("CanonConstraints = %#v, want %#v", result.CanonConstraints, wantConstraints)
+	}
+}
+
+func TestLibrarianFreezesDistinctRelationshipConstraintsOnce(t *testing.T) {
+	lin := &domain.Character{Name: "林云", CurrentStatus: "在密室搜索"}
+	su := &domain.Character{Name: "苏青", Personality: "果断"}
+	characterRepo := &characterRepositoryFake{
+		existing: lin,
+		byName: map[string]*domain.Character{
+			"林云": lin,
+			"苏青": su,
+		},
+		relationships: []*domain.Relationship{{
+			SourceCharacter: lin,
+			TargetCharacter: su,
+			RelationType:    "盟友",
+			Description:     "共同追查血书",
+		}, {
+			SourceCharacter: lin,
+			TargetCharacter: su,
+			RelationType:    "同门",
+			Description:     "同出青云门",
+		}},
+	}
+	agent := NewLibrarianAgent(
+		librarianLLMFake{response: `{"character_names":["林云"],"world_settings":[],"search_queries":["盟友关系"]}`},
+		&librarianEmbedderFake{vectors: [][]float32{{1}}},
+		&librarianVectorStoreFake{results: [][]memory.SearchResult{{}}},
+		characterRepo,
+		nil,
+		librarianTestConfig(),
+	)
+
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds := []string{
+		"character_current_status",
+		"character_relationship",
+		"character_relationship",
+		"character_static",
+	}
+	if len(result.CanonConstraints) != len(wantKinds) {
+		t.Fatalf("CanonConstraints = %#v", result.CanonConstraints)
+	}
+	for index, kind := range wantKinds {
+		if result.CanonConstraints[index].Kind != kind {
+			t.Fatalf("CanonConstraints[%d] = %#v, want kind %q", index, result.CanonConstraints[index], kind)
+		}
+	}
+	if strings.Count(result.CanonConstraints[0].Statement, "林云") != 1 ||
+		result.CanonConstraints[1].Subject != "林云->苏青[同门]" ||
+		result.CanonConstraints[1].Statement != "角色关系：林云与苏青是同门；同出青云门" ||
+		result.CanonConstraints[2].Subject != "林云->苏青[盟友]" ||
+		result.CanonConstraints[2].Statement != "角色关系：林云与苏青是盟友；共同追查血书" ||
+		result.CanonConstraints[3].Statement != "角色苏青的静态档案：性格:果断" {
+		t.Fatalf("CanonConstraints = %#v", result.CanonConstraints)
+	}
 }
 
 func TestLibrarianIncludesWorldCurrentState(t *testing.T) {
@@ -223,6 +301,13 @@ func TestLibrarianIncludesWorldCurrentState(t *testing.T) {
 	}
 	if !strings.Contains(result.Context, "静态说明:终年云雾环绕的修炼宗门; 当前状态:山门封闭并由长老守卫") {
 		t.Fatalf("Context = %s", result.Context)
+	}
+	want := []CanonConstraint{
+		{Kind: "world_static", Subject: "青云山", Statement: "世界设定青云山的静态说明：终年云雾环绕的修炼宗门"},
+		{Kind: "world_current_state", Subject: "青云山", Statement: "世界设定青云山当前状态：山门封闭并由长老守卫"},
+	}
+	if !reflect.DeepEqual(result.CanonConstraints, want) {
+		t.Fatalf("CanonConstraints = %#v, want %#v", result.CanonConstraints, want)
 	}
 }
 
