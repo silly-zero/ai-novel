@@ -100,7 +100,7 @@ func TestValidateContinuityPacketRejectsInvalidFields(t *testing.T) {
 func TestContinuityExtractorExtractsFinalDraftPacket(t *testing.T) {
 	llm := &continuityExtractorLLM{responses: []string{`{"last_beat":" 主角推开密门。 ","open_loops":[" 门后是谁 ",""],"next_action":" 主角跨入密门。 "}`}}
 	state := &GenerationState{
-		Draft:     "最终正文",
+		Draft:     "主角推开密门。门后是谁。主角跨入密门。",
 		Outline:   "本章大纲",
 		SceneCard: "场景卡",
 		PreviousContinuity: ContinuityPacket{
@@ -126,7 +126,7 @@ func TestContinuityExtractorRepairsInvalidPacketOnce(t *testing.T) {
 		`{"last_beat":"结尾动作","open_loops":[],"next_action":"下一步动作"}`,
 	}}
 
-	if _, err := NewContinuityExtractor(llm).Extract(context.Background(), &GenerationState{Draft: "正文"}); err != nil {
+	if _, err := NewContinuityExtractor(llm).Extract(context.Background(), &GenerationState{Draft: "结尾动作。下一步动作"}); err != nil {
 		t.Fatal(err)
 	}
 	if llm.calls != 2 {
@@ -134,6 +134,73 @@ func TestContinuityExtractorRepairsInvalidPacketOnce(t *testing.T) {
 	}
 }
 
+func TestValidateContinuityPacketAgainstDraftRejectsUnsupportedEvidence(t *testing.T) {
+	draft := "主角推开密门。门后是谁。主角跨入密门。"
+	base := ContinuityPacket{
+		LastBeat:   "主角推开密门。",
+		OpenLoops:  []string{"门后是谁。"},
+		NextAction: "主角跨入密门。",
+	}
+	for _, test := range []struct {
+		name   string
+		packet ContinuityPacket
+		want   string
+	}{
+		{name: "last beat", packet: ContinuityPacket{LastBeat: "不存在的结尾", OpenLoops: base.OpenLoops, NextAction: base.NextAction}, want: "last_beat"},
+		{name: "next action", packet: ContinuityPacket{LastBeat: base.LastBeat, OpenLoops: base.OpenLoops, NextAction: "不存在的动作"}, want: "next_action"},
+		{name: "open loop", packet: ContinuityPacket{LastBeat: base.LastBeat, OpenLoops: []string{"不存在的悬念"}, NextAction: base.NextAction}, want: "open_loops"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := ValidateContinuityPacketAgainstDraft(&test.packet, draft); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateContinuityPacketAgainstDraftAllowsExactEvidence(t *testing.T) {
+	packet := ContinuityPacket{
+		LastBeat:   "主角推开密门。",
+		OpenLoops:  []string{"门后是谁。"},
+		NextAction: "主角跨入密门。",
+	}
+	if err := ValidateContinuityPacketAgainstDraft(&packet, "主角推开密门。门后是谁。主角跨入密门。"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestContinuityExtractorRepairsUnsupportedEvidenceOnce(t *testing.T) {
+	llm := &continuityExtractorLLM{responses: []string{
+		`{"last_beat":"不存在的结尾","open_loops":[],"next_action":"不存在的动作"}`,
+		`{"last_beat":"主角推开密门。","open_loops":["门后是谁。"],"next_action":"主角跨入密门。"}`,
+	}}
+	state := &GenerationState{Draft: "主角推开密门。门后是谁。主角跨入密门。"}
+	got, err := NewContinuityExtractor(llm).Extract(context.Background(), state)
+	if err != nil || llm.calls != 2 {
+		t.Fatalf("state = %#v, err = %v, calls = %d", got, err, llm.calls)
+	}
+	if got.Continuity.LastBeat != "主角推开密门。" {
+		t.Fatalf("continuity = %#v", got.Continuity)
+	}
+}
+
+func TestContinuityExtractorInvalidEvidencePreservesPacket(t *testing.T) {
+	llm := &continuityExtractorLLM{responses: []string{
+		`{"last_beat":"不存在的结尾","open_loops":[],"next_action":"不存在的动作"}`,
+		`{"last_beat":"仍不存在","open_loops":[],"next_action":"仍不存在"}`,
+	}}
+	state := &GenerationState{
+		Draft:      "正文",
+		Continuity: ContinuityPacket{LastBeat: "旧结尾", NextAction: "旧动作"},
+	}
+	got, err := NewContinuityExtractor(llm).Extract(context.Background(), state)
+	if err == nil || llm.calls != 2 {
+		t.Fatalf("state = %#v, err = %v, calls = %d", got, err, llm.calls)
+	}
+	if got.Continuity.LastBeat != "旧结尾" || got.Continuity.NextAction != "旧动作" {
+		t.Fatalf("continuity changed: %#v", got.Continuity)
+	}
+}
 func TestContinuityExtractorDoesNotReplacePacketOnFailure(t *testing.T) {
 	providerErr := errors.New("provider failed")
 	state := &GenerationState{

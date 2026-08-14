@@ -95,8 +95,8 @@ func (e *generationTestEngine) ExtractContinuity(ctx context.Context, state *age
 		return e.extract(ctx, state)
 	}
 	state.Continuity = agents.ContinuityPacket{
-		LastBeat:   "结尾动作",
-		NextAction: "下一步动作",
+		LastBeat:   "文",
+		NextAction: "文",
 	}
 	return state, nil
 }
@@ -1083,11 +1083,11 @@ func TestValidateGenerationChapterSaveAllowsApprovedValidContent(t *testing.T) {
 	err := validateGenerationChapterSave(
 		&generationChapterTarget{ID: 11},
 		&agents.GenerationState{
-			Draft:      strings.Repeat("文", 2500),
+			Draft:      "结尾动作。下一步动作。" + strings.Repeat("文", 2500-len([]rune("结尾动作。下一步动作。"))),
 			IsApproved: true,
 			Continuity: agents.ContinuityPacket{
-				LastBeat:   "结尾动作",
-				NextAction: "下一步动作",
+				LastBeat:   "结尾动作。",
+				NextAction: "下一步动作。",
 			},
 		},
 	)
@@ -1096,6 +1096,22 @@ func TestValidateGenerationChapterSaveAllowsApprovedValidContent(t *testing.T) {
 	}
 }
 
+func TestValidateGenerationChapterSaveRejectsUnsupportedContinuityEvidence(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:      strings.Repeat("文", 2500),
+			IsApproved: true,
+			Continuity: agents.ContinuityPacket{
+				LastBeat:   "正文不存在的结尾",
+				NextAction: "正文不存在的动作",
+			},
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "last_beat must be an exact draft substring") {
+		t.Fatalf("error = %v", err)
+	}
+}
 func TestValidateGenerationChapterSaveRejectsInvalidContinuity(t *testing.T) {
 	err := validateGenerationChapterSave(
 		&generationChapterTarget{ID: 11},

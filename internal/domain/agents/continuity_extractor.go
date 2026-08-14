@@ -37,7 +37,10 @@ func (e *ContinuityExtractor) Extract(ctx context.Context, state *GenerationStat
 		continuityPrompt(state.PreviousContinuity), state.Outline, state.SceneCard, state.Draft)
 	packet, err := generateStructuredResponse(
 		ctx, e.llm, "continuity extractor", systemPrompt, userPrompt,
-		decodeContinuityPacket, ValidateContinuityPacket,
+		decodeContinuityPacket,
+		func(packet *ContinuityPacket) error {
+			return ValidateContinuityPacketAgainstDraft(packet, state.Draft)
+		},
 	)
 	if err != nil {
 		return state, fmt.Errorf("extract chapter continuity: %w", err)
@@ -88,6 +91,27 @@ func ValidateContinuityPacket(packet *ContinuityPacket) error {
 		return fmt.Errorf("open_loops must contain at most %d items", maxContinuityOpenLoops)
 	}
 	packet.OpenLoops = loops
+	return nil
+}
+
+func ValidateContinuityPacketAgainstDraft(packet *ContinuityPacket, draft string) error {
+	if strings.TrimSpace(draft) == "" {
+		return fmt.Errorf("draft is required for continuity evidence validation")
+	}
+	if err := ValidateContinuityPacket(packet); err != nil {
+		return err
+	}
+	if !strings.Contains(draft, packet.LastBeat) {
+		return fmt.Errorf("last_beat must be an exact draft substring")
+	}
+	if !strings.Contains(draft, packet.NextAction) {
+		return fmt.Errorf("next_action must be an exact draft substring")
+	}
+	for _, loop := range packet.OpenLoops {
+		if !strings.Contains(draft, loop) {
+			return fmt.Errorf("open_loops item must be an exact draft substring")
+		}
+	}
 	return nil
 }
 
