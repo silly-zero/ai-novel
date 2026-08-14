@@ -83,6 +83,15 @@ type CanonConsistencyAssessment struct {
 	Evidence        string `json:"evidence"`
 }
 
+type MainlineAssessment struct {
+	CurrentEvent ContractRequirementAssessment  `json:"current_event"`
+	NextEvent    *ContractRequirementAssessment `json:"next_event"`
+}
+
+func (a MainlineAssessment) IsEmpty() bool {
+	return a.CurrentEvent == (ContractRequirementAssessment{}) && a.NextEvent == nil
+}
+
 func (c ChapterContract) IsEmpty() bool {
 	return c.Goal == "" && len(c.MustHappen) == 0 && len(c.MustNotHappen) == 0 && c.EndState == ""
 }
@@ -108,6 +117,7 @@ type GenerationState struct {
 	Outline              string                       // 当前章节剧情大纲 (由 Plot Agent 生成)
 	ChapterContract      ChapterContract              // 当前章节必须遵守的结构化剧情契约
 	MainlineBeat         MainlineEventBeat            // 从全书逐章大纲确定性选出的当前/下一主线节拍
+	MainlineAssessment   MainlineAssessment           // 最终草稿的主线事件节拍评估
 	ContractAssessment   ChapterContractAssessment    // 最终草稿对章节契约的瞬时评估
 	ContinuityAssessment ContinuityAssessment         // 最终草稿的章首承接与章尾接力评估
 	CanonConstraints     []CanonConstraint            // 本次上下文准备冻结的角色/世界账本约束

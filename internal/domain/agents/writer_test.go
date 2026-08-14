@@ -159,6 +159,12 @@ func TestWriterRunReturnsSinkErrorWithoutReplacingDraft(t *testing.T) {
 			Satisfied:       true,
 			Evidence:        "旧账本评估",
 		}},
+		MainlineAssessment: MainlineAssessment{
+			CurrentEvent: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧主线评估",
+			},
+		},
 		IsApproved: true,
 		StreamSink: func(_ context.Context, event GenerationStreamEvent) error {
 			if event.Token == "第二段" {
@@ -178,8 +184,9 @@ func TestWriterRunReturnsSinkErrorWithoutReplacingDraft(t *testing.T) {
 	if got.Critique != "修改意见" {
 		t.Fatalf("Critique = %q, want original critique", got.Critique)
 	}
-	if len(got.CanonAssessment) != 1 || got.CanonAssessment[0].Evidence != "旧账本评估" || !got.IsApproved {
-		t.Fatalf("review state changed on sink failure: canon = %#v, approved = %v", got.CanonAssessment, got.IsApproved)
+	if len(got.CanonAssessment) != 1 || got.CanonAssessment[0].Evidence != "旧账本评估" ||
+		got.MainlineAssessment.CurrentEvent.Evidence != "旧主线评估" || !got.IsApproved {
+		t.Fatalf("review state changed on sink failure: canon = %#v, mainline = %#v, approved = %v", got.CanonAssessment, got.MainlineAssessment, got.IsApproved)
 	}
 }
 
@@ -207,6 +214,12 @@ func TestWriterRunCompletesStream(t *testing.T) {
 			Satisfied: true,
 			Evidence:  "旧账本评估",
 		}},
+		MainlineAssessment: MainlineAssessment{
+			CurrentEvent: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧主线评估",
+			},
+		},
 		IsApproved: true,
 	}
 
@@ -232,6 +245,9 @@ func TestWriterRunCompletesStream(t *testing.T) {
 	}
 	if len(got.CanonAssessment) != 0 {
 		t.Fatalf("CanonAssessment = %#v, want empty", got.CanonAssessment)
+	}
+	if !got.MainlineAssessment.IsEmpty() {
+		t.Fatalf("MainlineAssessment = %#v, want empty", got.MainlineAssessment)
 	}
 	if got.IsApproved {
 		t.Fatal("IsApproved = true, want false for unreviewed draft")
@@ -266,11 +282,18 @@ func TestWriterRunReturnsStreamErrorWithoutReplacingDraft(t *testing.T) {
 			Satisfied: true,
 			Evidence:  "旧账本评估",
 		}},
+		MainlineAssessment: MainlineAssessment{
+			CurrentEvent: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧主线评估",
+			},
+		},
 		IsApproved: true,
 	}
 	originalAssessment := state.ContractAssessment
 	originalContinuity := state.ContinuityAssessment
 	originalCanon := append([]CanonConsistencyAssessment(nil), state.CanonAssessment...)
+	originalMainline := state.MainlineAssessment
 
 	got, err := writer.Run(context.Background(), state)
 	if !errors.Is(err, streamErr) {
@@ -289,6 +312,7 @@ func TestWriterRunReturnsStreamErrorWithoutReplacingDraft(t *testing.T) {
 		got.ContinuityAssessment.ChapterTail != originalContinuity.ChapterTail ||
 		len(got.CanonAssessment) != len(originalCanon) ||
 		got.CanonAssessment[0] != originalCanon[0] ||
+		got.MainlineAssessment != originalMainline ||
 		!got.IsApproved {
 		t.Fatalf("review state changed on stream failure: contract = %#v, continuity = %#v, canon = %#v, approved = %v", got.ContractAssessment, got.ContinuityAssessment, got.CanonAssessment, got.IsApproved)
 	}

@@ -183,12 +183,18 @@ func selectMainlineEventBeat(fullOutline string, chapterIndex int) MainlineEvent
 	return inspectMainlineEventBeat(fullOutline, chapterIndex).Beat
 }
 
+func mainlineEventBeatIsValid(beat MainlineEventBeat) bool {
+	return beat.ChapterIndex > 0 &&
+		strings.TrimSpace(beat.CurrentEvent) != "" &&
+		len([]rune(beat.CurrentEvent)) <= maxMainlineEventRunes
+}
+
 func mainlineBeatPrompt(beat MainlineEventBeat) string {
-	currentEvent := strings.TrimSpace(beat.CurrentEvent)
-	if beat.ChapterIndex <= 0 || currentEvent == "" || len([]rune(currentEvent)) > maxMainlineEventRunes {
+	if !mainlineEventBeatIsValid(beat) {
 		return ""
 	}
 
+	currentEvent := strings.TrimSpace(beat.CurrentEvent)
 	prompt := fmt.Sprintf("【主线事件节拍】\n- 当前章节：第%d章\n- 本章必须推动的主线事件：%s", beat.ChapterIndex, currentEvent)
 	nextEvent := strings.TrimSpace(beat.NextEvent)
 	if nextEvent != "" && len([]rune(nextEvent)) <= maxMainlineEventRunes {

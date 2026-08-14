@@ -78,6 +78,7 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 	state.ContractAssessment = ChapterContractAssessment{}
 	state.ContinuityAssessment = ContinuityAssessment{}
 	state.CanonAssessment = nil
+	state.MainlineAssessment = MainlineAssessment{}
 	state.IsApproved = false
 
 	// 清理上一轮的 Critique，表示 Writer 已经做出了修改响应

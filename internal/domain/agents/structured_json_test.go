@@ -354,7 +354,7 @@ func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
 
 func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
-		`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":"本章只提到血书线索，没有让主角实际找到血书"}`,
+		`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"文"},"next_event":{"satisfied":true,"evidence":"下一事件尚未完成"}},"critique":"本章只提到血书线索，没有让主角实际找到血书"}`,
 	}}
 	state := &GenerationState{
 		Draft: strings.Repeat("文", 2500),
@@ -377,7 +377,7 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 			t.Fatalf("reviewer prompt missing %q: %s", value, llm.users[0])
 		}
 	}
-	for _, rule := range []string{"实际发生本章事件", "提前完成下一章预定事件", "passed=false"} {
+	for _, rule := range []string{"实际发生本章事件", "提前完成", "satisfied=false"} {
 		if !strings.Contains(llm.systems[0], rule) {
 			t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
 		}
@@ -930,6 +930,145 @@ func TestReviewerInvalidCanonResponsesPreserveReviewState(t *testing.T) {
 		len(got.CanonAssessment) != 1 || got.CanonAssessment[0] != oldCanon[0] ||
 		!got.IsApproved {
 		t.Fatalf("review state changed after invalid canon responses: %#v", got)
+	}
+}
+
+func TestReviewerMainlineGate(t *testing.T) {
+	draft := "主角终于夺得血书。" + strings.Repeat("文", 2490) + "主角决定前往祭坛。"
+	beat := MainlineEventBeat{ChapterIndex: 4, CurrentEvent: "主角找到血书", NextEvent: "主角前往地下祭坛"}
+	passing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"主角终于夺得血书。"},"next_event":{"satisfied":true,"evidence":"本章仅作出前往祭坛的决定，尚未抵达"}},"critique":""}`
+	got, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{passing}}).Run(context.Background(), &GenerationState{Draft: draft, MainlineBeat: beat})
+	if err != nil || !got.IsApproved || !got.MainlineAssessment.CurrentEvent.Satisfied {
+		t.Fatalf("passing state = %#v, err = %v", got, err)
+	}
+
+	failing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":false,"evidence":"本章尚未让主角找到血书"},"next_event":{"satisfied":true,"evidence":"下一事件尚未完成"}},"critique":"补写主线事件"}`
+	got, err = NewReviewerAgent(&queuedStructuredLLM{responses: []string{failing}}).Run(context.Background(), &GenerationState{Draft: draft, MainlineBeat: beat})
+	if err != nil || got.IsApproved || !strings.Contains(got.Critique, "主角找到血书") {
+		t.Fatalf("current-event failure state = %#v, err = %v", got, err)
+	}
+
+	nextFailureEvidence := "主角已抵达地下祭坛。"
+	nextDraft := strings.Repeat("文", 2500-len([]rune(nextFailureEvidence))) + nextFailureEvidence
+	nextFailing := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"文"},"next_event":{"satisfied":false,"evidence":"主角已抵达地下祭坛。"}},"critique":"不得提前完成下一章事件"}`
+	got, err = NewReviewerAgent(&queuedStructuredLLM{responses: []string{nextFailing}}).Run(context.Background(), &GenerationState{Draft: nextDraft, MainlineBeat: beat})
+	if err != nil || got.IsApproved || !strings.Contains(got.Critique, "提前完成下一章主线事件") {
+		t.Fatalf("next-event failure state = %#v, err = %v", got, err)
+	}
+}
+
+func TestReviewerMainlineValidationRejectsInvalidResults(t *testing.T) {
+	draft := strings.Repeat("文", 2500)
+	beat := MainlineEventBeat{ChapterIndex: 4, CurrentEvent: "找到血书"}
+	responses := []string{
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":"缺少主线评估"}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":null,"critique":"缺少主线评估"}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"正文外"},"next_event":null},"critique":"证据错误"}`,
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":""},"next_event":null},"critique":"证据为空"}`,
+	}
+	for _, response := range responses {
+		_, err := parseStructuredResponse(response, func(candidate []byte) (ReviewResult, error) {
+			return decodeReviewResultForState(candidate, &GenerationState{Draft: draft, MainlineBeat: beat})
+		}, validateReviewResult)
+		if err == nil {
+			t.Fatalf("mainline response was accepted: %s", response)
+		}
+	}
+
+	withoutBeat, err := parseStructuredResponse(
+		`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":""}`,
+		decodeReviewResult,
+		validateReviewResult,
+	)
+	if err != nil || !withoutBeat.MainlinePassed {
+		t.Fatalf("legacy result = %#v, err = %v", withoutBeat, err)
+	}
+}
+
+func TestReviewerRepairsInvalidMainlineEvidenceOnce(t *testing.T) {
+	beat := MainlineEventBeat{ChapterIndex: 4, CurrentEvent: "找到血书"}
+	draft := strings.Repeat("文", 2495) + "主角找到血书。"
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"主角完成了事件"},"next_event":null},"critique":""}`
+	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"主角找到血书。"},"next_event":null},"critique":""}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
+	got, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{Draft: draft, MainlineBeat: beat})
+	if err != nil || llm.calls != 2 || !got.IsApproved {
+		t.Fatalf("repair state = %#v, err = %v, calls = %d", got, err, llm.calls)
+	}
+}
+func TestReviewerInvalidMainlineResponsesPreserveReviewState(t *testing.T) {
+	state := &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+		MainlineBeat: MainlineEventBeat{
+			ChapterIndex: 4,
+			CurrentEvent: "找到血书",
+		},
+		MainlineAssessment: MainlineAssessment{
+			CurrentEvent: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧主线证据",
+			},
+		},
+		ContractAssessment: ChapterContractAssessment{
+			Goal: ContractRequirementAssessment{Satisfied: true, Evidence: "旧契约证据"},
+		},
+		ContinuityAssessment: ContinuityAssessment{
+			ChapterTail: ContractRequirementAssessment{Satisfied: true, Evidence: "旧连续性证据"},
+		},
+		CanonAssessment: []CanonConsistencyAssessment{{
+			ConstraintIndex: 1,
+			Satisfied:       true,
+			Evidence:        "旧账本证据",
+		}},
+		Critique:   "旧修改意见",
+		IsApproved: true,
+	}
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"正文外"},"next_event":null},"critique":""}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, invalid}}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err == nil {
+		t.Fatal("Run() error = nil, want structured response failure")
+	}
+	if llm.calls != 2 {
+		t.Fatalf("calls = %d, want 2", llm.calls)
+	}
+	if len([]rune(err.Error())) > 2*structuredResponsePreviewRunes+500 {
+		t.Fatalf("error is unexpectedly large: %d runes", len([]rune(err.Error())))
+	}
+	if got != state || got.MainlineAssessment.CurrentEvent != state.MainlineAssessment.CurrentEvent ||
+		got.ContractAssessment.Goal != state.ContractAssessment.Goal ||
+		got.ContinuityAssessment.ChapterTail != state.ContinuityAssessment.ChapterTail ||
+		len(got.CanonAssessment) != 1 || got.CanonAssessment[0] != state.CanonAssessment[0] ||
+		got.Critique != "旧修改意见" || !got.IsApproved {
+		t.Fatalf("review state changed after invalid mainline responses: %#v", got)
+	}
+}
+
+func TestReviewerMainlineEvidenceRuneLimit(t *testing.T) {
+	beat := MainlineEventBeat{ChapterIndex: 4, CurrentEvent: "主线事件"}
+	for _, test := range []struct {
+		name     string
+		evidence string
+		wantErr  bool
+	}{
+		{name: "300 runes", evidence: strings.Repeat("界", 300)},
+		{name: "301 runes", evidence: strings.Repeat("界", 301), wantErr: true},
+		{name: "300 unicode runes", evidence: strings.Repeat("界", 299) + "🙂"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			response := fmt.Sprintf(
+				`{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":%q},"next_event":null},"critique":""}`,
+				test.evidence,
+			)
+			_, err := decodeReviewResultForState([]byte(response), &GenerationState{
+				Draft:        test.evidence + strings.Repeat("文", 2500-len([]rune(test.evidence))),
+				MainlineBeat: beat,
+			})
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error = %v, wantErr = %v", err, test.wantErr)
+			}
+		})
 	}
 }
 
