@@ -357,7 +357,13 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 		`{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"mainline_assessment":{"current_event":{"satisfied":true,"evidence":"文"},"next_event":{"satisfied":true,"evidence":"下一事件尚未完成"}},"critique":"本章只提到血书线索，没有让主角实际找到血书"}`,
 	}}
 	state := &GenerationState{
-		Draft: strings.Repeat("文", 2500),
+		Idea:         "调查身世",
+		FullOutline:  "全书主线：追查血书",
+		ChapterIndex: 4,
+		Outline:      "本章找到血书",
+		SceneCard:    "主角搜索密室",
+		Context:      "角色当前处于密室",
+		Draft:        strings.Repeat("文", 2500),
 		MainlineBeat: MainlineEventBeat{
 			ChapterIndex: 4,
 			CurrentEvent: "主角找到血书",
@@ -372,7 +378,19 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 	if got.IsApproved || got.Critique != "本章只提到血书线索，没有让主角实际找到血书" {
 		t.Fatalf("state = %#v", got)
 	}
-	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛"} {
+	for _, section := range []string{
+		"【小说想法】\n调查身世",
+		"【全书大纲】\n全书主线：追查血书",
+		"【当前章节序号】\n第4章",
+		"【本章大纲】\n本章找到血书",
+		"【场景卡】\n主角搜索密室",
+		"【背景资料】\n角色当前处于密室",
+	} {
+		if !strings.Contains(llm.users[0], section) {
+			t.Fatalf("reviewer prompt missing section %q: %s", section, llm.users[0])
+		}
+	}
+	for _, value := range []string{"主角找到血书", "主角前往地下祭坛"} {
 		if !strings.Contains(llm.users[0], value) {
 			t.Fatalf("reviewer prompt missing %q: %s", value, llm.users[0])
 		}

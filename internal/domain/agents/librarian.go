@@ -60,10 +60,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	// 1. 如果没有基础组件，退回到简单模式
 	if l.embedder == nil || l.vectorStore == nil || l.llm == nil {
 		state.Context = "（暂无背景资料，请根据大纲自由发挥）"
-		return state, nil
-	}
-
-	if state.Context != "" {
+		state.CanonConstraints = nil
 		return state, nil
 	}
 

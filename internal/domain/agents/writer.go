@@ -34,18 +34,11 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 - 本章只推进一个阶段，结尾必须留下具体、可行动的未完成目标供下一章继续。`
 
 	// 2. 构建 User Prompt：拼装当前状态中的各类上下文
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n", state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
-	if state.ManualContext != "" {
-		userPrompt += fmt.Sprintf("\n【人工补充资料】\n%s\n", state.ManualContext)
-	}
-	if state.EditorNotes != "" {
-		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
-	}
-
+	userPrompt := generationContextPrompt(state)
 	if state.Critique != "" {
-		userPrompt += fmt.Sprintf("\n【前一版草稿】\n%s\n\n【审查员的修改意见】\n%s\n\n请根据以上意见，重新撰写本章正文：", state.Draft, state.Critique)
+		userPrompt += fmt.Sprintf("\n\n【前一版草稿】\n%s\n\n【审查员的修改意见】\n%s\n\n请根据以上意见，重新撰写本章正文：", state.Draft, state.Critique)
 	} else {
-		userPrompt += "\n请开始撰写本章正文："
+		userPrompt += "\n\n请开始撰写本章正文："
 	}
 
 	// 3. 调用大模型进行流式文本生成

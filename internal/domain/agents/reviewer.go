@@ -95,8 +95,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 }
 如果没有上一章接力状态，continuity_assessment.chapter_head 必须为 null。continuity_assessment 的 satisfied=true evidence 必须逐字引用草稿中的单段连续原文，不得概括、改写或拼接；章首证据必须来自开头，章尾证据必须来自结尾。contract_assessment 的正向通过证据和禁止事项失败证据必须逐字引用全稿中的单段连续原文；未达成原因和禁止事项未发生的理由不要求出现在正文。如果没有结构化章节契约，contract_assessment 可以为 null。如果存在有效【主线事件节拍】，mainline_assessment 必须存在；当前事件正向 evidence 和下一事件提前完成 evidence 必须逐字引用正文。如果没有有效主线节拍，mainline_assessment 可以为 null。如果没有冻结账本约束，canon_assessment 可以为 null；否则数组数量和顺序必须与约束完全一致，每项 constraint_index 必须等于对应冻结约束的 1-based 序号，冲突项的 evidence 必须逐字引用正文。评估数组数量和顺序必须与对应输入完全一致。只返回 JSON，不要输出 Markdown 或解释。`
 
-	userPrompt := fmt.Sprintf("【场景卡】\n%s\n\n【背景资料】\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n【小说草稿】\n%s\n\n请给出你的审查结果：",
-		state.SceneCard, state.Context, chapterContractPrompt(state.ChapterContract), mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity), canonConstraintsPrompt(state.CanonConstraints), state.Draft)
+	userPrompt := generationContextPrompt(state) + "\n\n" + canonConstraintsPrompt(state.CanonConstraints) + fmt.Sprintf("\n【小说草稿】\n%s\n\n请给出你的审查结果：", state.Draft)
 
 	result, err := generateStructuredResponse(
 		ctx,

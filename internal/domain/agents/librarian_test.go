@@ -83,6 +83,54 @@ func librarianTestConfig() LibrarianConfig {
 	}
 }
 
+func TestLibrarianRebuildsExistingContext(t *testing.T) {
+	embedder := &librarianEmbedderFake{vectors: [][]float32{{1}}}
+	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{
+		{Entry: &memory.MemoryEntry{Content: "新记忆"}, Score: 0.9},
+	}}}
+	agent := NewLibrarianAgent(
+		librarianLLMFake{response: `{"character_names":[],"world_settings":[],"search_queries":["新查询"]}`},
+		embedder,
+		store,
+		nil,
+		nil,
+		librarianTestConfig(),
+	)
+	state := &GenerationState{
+		NovelID:          "novel",
+		Context:          "旧背景",
+		CanonConstraints: []CanonConstraint{{Kind: "old"}},
+	}
+
+	result, err := agent.Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Context, "旧背景") || !strings.Contains(result.Context, "新记忆") {
+		t.Fatalf("Context = %q", result.Context)
+	}
+	if len(result.CanonConstraints) != 0 {
+		t.Fatalf("CanonConstraints = %#v, want empty", result.CanonConstraints)
+	}
+	if !reflect.DeepEqual(embedder.inputs, [][]string{{"新查询"}}) {
+		t.Fatalf("EmbedBatch inputs = %#v", embedder.inputs)
+	}
+}
+
+func TestLibrarianFallbackClearsDerivedState(t *testing.T) {
+	state := &GenerationState{
+		Context:          "旧背景",
+		CanonConstraints: []CanonConstraint{{Kind: "old"}},
+	}
+	result, err := NewLibrarianAgent(nil, nil, nil, nil, nil, LibrarianConfig{}).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Context != "（暂无背景资料，请根据大纲自由发挥）" || result.CanonConstraints != nil {
+		t.Fatalf("state = %#v", result)
+	}
+}
+
 func TestLibrarianBatchesQueriesAndGloballyRanksMemories(t *testing.T) {
 	embedder := &librarianEmbedderFake{vectors: [][]float32{{1, 0}, {0, 1}}}
 	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{
@@ -349,9 +397,17 @@ func TestLibrarianPropagatesRetrievalFailures(t *testing.T) {
 				nil,
 				librarianTestConfig(),
 			)
-			_, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+			state := &GenerationState{
+				NovelID:          "novel",
+				Context:          "旧背景",
+				CanonConstraints: []CanonConstraint{{Kind: "old"}},
+			}
+			result, err := agent.Run(context.Background(), state)
 			if err == nil || !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("error = %v, want %q", err, test.wantError)
+			}
+			if result.Context != "旧背景" || len(result.CanonConstraints) != 1 || result.CanonConstraints[0].Kind != "old" {
+				t.Fatalf("derived state changed on failure: context = %q, constraints = %#v", result.Context, result.CanonConstraints)
 			}
 		})
 	}
