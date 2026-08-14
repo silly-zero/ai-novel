@@ -33,6 +33,7 @@ type generationEngine interface {
 
 type generationChapterTarget struct {
 	ID                 int
+	NovelID            int
 	Title              string
 	Content            string
 	WordCount          int
@@ -43,6 +44,7 @@ type generationChapterTarget struct {
 	NextAction         string
 	PreviousContinuity agents.ContinuityPacket
 	UpdatedAt          time.Time
+	NovelUpdatedAt     time.Time
 }
 
 type generationChapterStore interface {
@@ -113,7 +115,22 @@ func (s *entGenerationChapterStore) Prepare(
 	if chapterID <= 0 && chapterIndex <= 0 {
 		return nil, errors.New("invalid chapter index")
 	}
-	query := s.client.Chapter.Query()
+
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	txClient := tx.Client()
+	if err := lockGenerationNovel(ctx, txClient, novelID); err != nil {
+		return nil, err
+	}
+	query := txClient.Chapter.Query()
 	if chapterID > 0 {
 		query = query.Where(
 			chapter.ID(chapterID),
@@ -127,32 +144,42 @@ func (s *entGenerationChapterStore) Prepare(
 	}
 
 	row, err := query.Only(ctx)
-	if err != nil && !ent.IsNotFound(err) {
-		return nil, err
-	}
-	if err == nil {
-		target := generationChapterTargetFromRow(row)
-		packet, err := preparePreviousContinuity(
-			ctx,
-			novelID,
-			target.Order,
-			s.lookupPreviousChapter,
-		)
-		if err != nil {
+	if ent.IsNotFound(err) {
+		if err := tx.Rollback(); err != nil {
 			return nil, err
 		}
-		target.PreviousContinuity = packet
-		return target, nil
+		committed = true
+		if chapterID > 0 {
+			return nil, errors.New("chapter not found")
+		}
+		return s.prepareNewGenerationChapter(ctx, novelID, chapterIndex)
 	}
-	if chapterID > 0 {
-		return nil, errors.New("chapter not found")
+	if err != nil {
+		return nil, err
 	}
-
-	return s.prepareNewGenerationChapter(
+	target := generationChapterTargetFromRow(row)
+	target.NovelID = novelID
+	target.NovelUpdatedAt, err = generationNovelUpdatedAt(ctx, txClient, novelID)
+	if err != nil {
+		return nil, err
+	}
+	packet, err := preparePreviousContinuity(
 		ctx,
 		novelID,
-		chapterIndex,
+		target.Order,
+		func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+			return lookupPreviousChapterForShare(ctx, txClient, novelID, order)
+		},
 	)
+	if err != nil {
+		return nil, err
+	}
+	target.PreviousContinuity = packet
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	committed = true
+	return target, nil
 }
 
 func (s *entGenerationChapterStore) prepareNewGenerationChapter(
@@ -192,11 +219,20 @@ func (s *entGenerationChapterStore) prepareNewGenerationChapter(
 	if err != nil {
 		return nil, err
 	}
+	if row == nil {
+		return nil, errors.New("generated chapter target is nil")
+	}
+	target := row
+	target.NovelID = novelID
+	target.NovelUpdatedAt, err = generationNovelUpdatedAt(ctx, txClient, novelID)
+	if err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	committed = true
-	return row, nil
+	return target, nil
 }
 
 func prepareNewGenerationChapter(
@@ -642,8 +678,40 @@ func (s *entGenerationChapterStore) Save(
 	if err := validateGenerationChapterSave(target, state); err != nil {
 		return err
 	}
+	if target.NovelID <= 0 || target.NovelUpdatedAt.IsZero() {
+		return errGenerationChapterChanged
+	}
 
-	_, err := s.client.Chapter.
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	txClient := tx.Client()
+	if err := lockGenerationNovel(ctx, txClient, target.NovelID); err != nil {
+		if ent.IsNotFound(err) {
+			return errGenerationChapterChanged
+		}
+		return err
+	}
+	novelUpdatedAt, err := generationNovelUpdatedAt(ctx, txClient, target.NovelID)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return errGenerationChapterChanged
+		}
+		return err
+	}
+	if err := validateGenerationNovelSource(target.NovelUpdatedAt, novelUpdatedAt); err != nil {
+		return err
+	}
+
+	_, err = txClient.Chapter.
 		UpdateOneID(target.ID).
 		Where(
 			chapter.TitleEQ(target.Title),
@@ -675,7 +743,14 @@ func (s *entGenerationChapterStore) Save(
 	if ent.IsNotFound(err) {
 		return errGenerationChapterChanged
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func validateGenerationChapterSave(
@@ -706,6 +781,29 @@ func validateGenerationChapterSave(
 		return fmt.Errorf("generated chapter continuity failed validation: %w", err)
 	}
 	return nil
+}
+
+func generationNovelSourceMatches(expected, actual time.Time) bool {
+	return !expected.IsZero() && expected.Equal(actual)
+}
+
+func validateGenerationNovelSource(expected, actual time.Time) error {
+	if !generationNovelSourceMatches(expected, actual) {
+		return errGenerationChapterChanged
+	}
+	return nil
+}
+
+func generationNovelUpdatedAt(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+) (time.Time, error) {
+	row, err := client.Novel.Query().Where(novel.ID(novelID)).Only(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return row.UpdatedAt, nil
 }
 
 func generationChapterTargetFromRow(row *ent.Chapter) *generationChapterTarget {
@@ -1846,20 +1944,29 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
+	persist := true
+	if persistStr == "0" || persistStr == "false" || persistStr == "no" {
+		persist = false
+	}
+
+	var initialNovelUpdatedAt time.Time
+	if persist && s.db != nil {
 		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
 		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
 		loadCancel()
-		if qErr == nil && row != nil {
-			if idea == "" {
-				idea = strings.TrimSpace(row.Idea)
-			}
-			if outline == "" {
-				outline = strings.TrimSpace(row.Outline)
-			}
-			if existingOutline == "" {
-				existingOutline = strings.TrimSpace(row.Outline)
-			}
+		if qErr != nil {
+			finishSync(qErr, nil)
+			return
+		}
+		initialNovelUpdatedAt = row.UpdatedAt
+		if idea == "" {
+			idea = strings.TrimSpace(row.Idea)
+		}
+		if outline == "" {
+			outline = strings.TrimSpace(row.Outline)
+		}
+		if existingOutline == "" {
+			existingOutline = strings.TrimSpace(row.Outline)
 		}
 	}
 
@@ -1869,11 +1976,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			nil,
 		)
 		return
-	}
-
-	persist := true
-	if persistStr == "0" || persistStr == "false" || persistStr == "no" {
-		persist = false
 	}
 
 	var chapterTarget *generationChapterTarget
@@ -1900,6 +2002,11 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		prepareCancel()
 		if err != nil {
 			finishSync(err, nil)
+			return
+		}
+		if !initialNovelUpdatedAt.IsZero() &&
+			!chapterTarget.NovelUpdatedAt.Equal(initialNovelUpdatedAt) {
+			finishSync(errGenerationChapterChanged, nil)
 			return
 		}
 	}

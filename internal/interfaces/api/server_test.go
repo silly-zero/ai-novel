@@ -43,13 +43,15 @@ func (s *generationChapterStoreFake) Prepare(
 		return s.prepare(ctx, novelID, chapterID, chapterIndex)
 	}
 	return &generationChapterTarget{
-		ID:        11,
-		Title:     "旧标题",
-		Content:   "旧正文",
-		WordCount: 3,
-		Order:     chapterIndex,
-		Status:    "Draft",
-		UpdatedAt: time.Unix(1, 0),
+		ID:             11,
+		Title:          "旧标题",
+		Content:        "旧正文",
+		WordCount:      3,
+		Order:          chapterIndex,
+		Status:         "Draft",
+		UpdatedAt:      time.Unix(1, 0),
+		NovelID:        7,
+		NovelUpdatedAt: time.Unix(2, 0),
 	}, nil
 }
 
@@ -1137,6 +1139,77 @@ func TestValidateGenerationChapterSavePreservesContentErrorPriority(t *testing.T
 	)
 	if err == nil || !strings.Contains(err.Error(), "content_too_short") || strings.Contains(err.Error(), "last_beat") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateGenerationNovelSource(t *testing.T) {
+	revision := time.Unix(2, 0)
+	if err := validateGenerationNovelSource(revision, revision); err != nil {
+		t.Fatalf("same revision error = %v", err)
+	}
+	if err := validateGenerationNovelSource(revision, time.Unix(3, 0)); !errors.Is(err, errGenerationChapterChanged) {
+		t.Fatalf("changed revision error = %v", err)
+	}
+	if err := validateGenerationNovelSource(time.Time{}, revision); !errors.Is(err, errGenerationChapterChanged) {
+		t.Fatalf("missing revision error = %v", err)
+	}
+}
+
+func TestGenerationNovelSourceMatches(t *testing.T) {
+	revision := time.Unix(2, 0)
+	for _, test := range []struct {
+		name     string
+		expected time.Time
+		actual   time.Time
+		want     bool
+	}{
+		{name: "same revision", expected: revision, actual: revision, want: true},
+		{name: "changed revision", expected: revision, actual: time.Unix(3, 0)},
+		{name: "missing expected revision", actual: revision},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := generationNovelSourceMatches(test.expected, test.actual); got != test.want {
+				t.Fatalf("generationNovelSourceMatches() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestHandleGenerateChapterPassesNovelSourceRevisionToSave(t *testing.T) {
+	wantNovelID := 7
+	wantRevision := time.Unix(2, 0)
+	var savedTarget *generationChapterTarget
+	store := &generationChapterStoreFake{
+		prepare: func(context.Context, int, int, int) (*generationChapterTarget, error) {
+			return &generationChapterTarget{
+				ID:             11,
+				Order:          1,
+				Status:         "Draft",
+				UpdatedAt:      time.Unix(1, 0),
+				NovelID:        wantNovelID,
+				NovelUpdatedAt: wantRevision,
+			}, nil
+		},
+		save: func(_ context.Context, target *generationChapterTarget, _ *agents.GenerationState) error {
+			savedTarget = target
+			return nil
+		},
+	}
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = validGeneratedContent()
+			state.IsApproved = true
+			return state, nil
+		},
+	}
+	server := newServer(engine, nil)
+	server.chapterStore = store
+	server.HandleGenerateChapter(
+		httptest.NewRecorder(),
+		generateRequestWithPersist(context.Background(), "7", 1, true),
+	)
+	if savedTarget == nil || savedTarget.NovelID != wantNovelID || !savedTarget.NovelUpdatedAt.Equal(wantRevision) {
+		t.Fatalf("saved target = %#v", savedTarget)
 	}
 }
 
