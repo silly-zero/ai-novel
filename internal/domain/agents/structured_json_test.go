@@ -336,10 +336,50 @@ func TestGenerateStructuredResponseStopsBeforeRepairWhenCancelled(t *testing.T) 
 	}
 }
 
-func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
+func TestLibrarianRetrievalPlanPromptExcludesFutureAndNegativeFields(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
 		`{"character_names":[],"world_settings":[],"search_queries":[]}`,
-		`结果：{"character_names":[" 林云 "],"world_settings":[],"search_queries":[" 青云山历史 "]}`,
+	}}
+	agent := NewLibrarianAgent(llm, nil, nil, nil, nil, LibrarianConfig{})
+	state := &GenerationState{
+		FullOutline:     "全书未来苏青",
+		ExistingOutline: "已有未来祭坛",
+		Outline:         "契约存在时不应发送的大纲",
+		ChapterContract: ChapterContract{
+			Goal:          "林云调查石门",
+			MustHappen:    []string{"抵达青云山"},
+			MustNotHappen: []string{"苏青进入祭坛"},
+			EndState:      "林云留在山门",
+		},
+		MainlineBeat: MainlineEventBeat{CurrentEvent: "检查门锁", NextEvent: "前往祭坛"},
+		PreviousContinuity: ContinuityPacket{
+			LastBeat:   "林云推开石门",
+			OpenLoops:  []string{"青云山为何封闭"},
+			NextAction: "检查门锁",
+		},
+		ManualContext: "山门正在戒严",
+		SceneCard:     "苏青站在祭坛前",
+		EditorNotes:   "让苏青提前登场",
+	}
+
+	if _, err := agent.makeRetrievalPlan(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	for _, included := range []string{"林云调查石门", "抵达青云山", "林云留在山门", "检查门锁", "林云推开石门", "青云山为何封闭", "山门正在戒严"} {
+		if !strings.Contains(llm.users[0], included) {
+			t.Fatalf("retrieval prompt missing %q: %s", included, llm.users[0])
+		}
+	}
+	for _, excluded := range []string{"全书未来苏青", "已有未来祭坛", "契约存在时不应发送的大纲", "苏青进入祭坛", "前往祭坛", "苏青站在祭坛前", "让苏青提前登场"} {
+		if strings.Contains(llm.users[0], excluded) {
+			t.Fatalf("retrieval prompt leaked %q: %s", excluded, llm.users[0])
+		}
+	}
+}
+
+func TestLibrarianStructuredPlanAcceptsEmptyQueries(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		`{"character_names":[" 林云 "],"world_settings":[],"search_queries":[]}`,
 	}}
 	agent := NewLibrarianAgent(llm, nil, nil, nil, nil, LibrarianConfig{})
 
@@ -347,7 +387,7 @@ func TestLibrarianStructuredPlanRepairsInvalidResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("makeRetrievalPlan returned error: %v", err)
 	}
-	if llm.calls != 2 || plan.CharacterNames[0] != "林云" || plan.SearchQueries[0] != "青云山历史" {
+	if llm.calls != 1 || len(plan.CharacterNames) != 1 || plan.CharacterNames[0] != "林云" || len(plan.SearchQueries) != 0 {
 		t.Fatalf("plan = %#v, calls = %d", plan, llm.calls)
 	}
 }
