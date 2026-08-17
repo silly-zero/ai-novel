@@ -21,9 +21,10 @@ type MemoryEntry struct {
 }
 
 type SearchOptions struct {
-	CandidateLimit int
-	ResultLimit    int
-	MinSimilarity  float32
+	CandidateLimit     int
+	ResultLimit        int
+	MinSimilarity      float32
+	BeforeChapterIndex int
 }
 
 type SearchResult struct {

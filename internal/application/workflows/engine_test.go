@@ -256,7 +256,8 @@ func TestPublishChapterGeneratedUsesCallerContext(t *testing.T) {
 			}
 			if generated.GenerationID != "generation-1" ||
 				generated.NovelID != "7" ||
-				generated.ChapterID != "11" || generated.Content != "正文" {
+				generated.ChapterID != "11" || generated.ChapterIndex != 4 ||
+				generated.Content != "正文" {
 				t.Fatalf("event = %#v", generated)
 			}
 			return nil
@@ -268,6 +269,7 @@ func TestPublishChapterGeneratedUsesCallerContext(t *testing.T) {
 		GenerationID: "generation-1",
 		NovelID:      "7",
 		ChapterID:    "11",
+		ChapterIndex: 4,
 		Draft:        "正文",
 	}); err != nil {
 		t.Fatalf("PublishChapterGenerated returned error: %v", err)

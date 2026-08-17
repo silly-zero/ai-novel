@@ -157,6 +157,7 @@ func (e *WorkflowEngine) PublishChapterGenerated(
 		GenerationID: state.GenerationID,
 		NovelID:      state.NovelID,
 		ChapterID:    state.ChapterID,
+		ChapterIndex: state.ChapterIndex,
 		Content:      state.Draft,
 		Timestamp:    time.Now(),
 	})

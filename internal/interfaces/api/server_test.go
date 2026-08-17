@@ -271,6 +271,41 @@ func TestGlobalModelCapacityRejectsExcessGenerationAndReleasesSlot(t *testing.T)
 	}
 }
 
+func TestGenerateAndPreviewRejectInvalidChapterIndex(t *testing.T) {
+	engine := &generationTestEngine{}
+	server := newServer(engine, nil)
+	tests := []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request)
+		path    string
+	}{
+		{
+			name:    "generate zero",
+			handler: server.HandleGenerateChapter,
+			path:    "/api/v1/novel/generate?novel_id=7&idea=test&persist=0&chapter_index=0",
+		},
+		{
+			name:    "generate malformed",
+			handler: server.HandleGenerateChapter,
+			path:    "/api/v1/novel/generate?novel_id=7&idea=test&persist=0&chapter_index=bad",
+		},
+		{
+			name:    "preview negative",
+			handler: server.HandlePreviewContext,
+			path:    "/api/v1/novel/preview-context?novel_id=7&idea=test&chapter_index=-1",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			test.handler(recorder, httptest.NewRequest(http.MethodGet, test.path, nil))
+			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "invalid chapter_index") {
+				t.Fatalf("response = %d, body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestPreviewUsesGlobalModelCapacity(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -1650,7 +1685,7 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 	waitForSignal(t, firstDone)
 	select {
 	case state := <-published:
-		if state.ChapterID != "11" || state.Draft != validGeneratedContent() {
+		if state.ChapterID != "11" || state.ChapterIndex != 1 || state.Draft != validGeneratedContent() {
 			t.Fatalf("published state = %#v", state)
 		}
 	case <-time.After(time.Second):

@@ -2,9 +2,11 @@ package vectorstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"sync"
 
@@ -56,11 +58,71 @@ func (s *MemoryVectorStore) Search(
 			return nil, err
 		}
 		entry := s.entries[index]
-		if entry != nil && entry.NovelID == novelID {
+		if entry != nil && entry.NovelID == novelID && memoryEntryWithinChapterBoundary(entry, options) {
 			candidates = append(candidates, entry)
 		}
 	}
 	return rankCandidates(ctx, queryVector, candidates, options)
+}
+
+func memoryEntryWithinChapterBoundary(entry *memory.MemoryEntry, options memory.SearchOptions) bool {
+	if options.BeforeChapterIndex <= 0 {
+		return true
+	}
+	if entry == nil || entry.Metadata == nil {
+		return false
+	}
+	chapterIndex, ok := memoryChapterIndex(entry.Metadata["chapter_index"])
+	return ok && chapterIndex < options.BeforeChapterIndex
+}
+
+func memoryChapterIndex(value any) (int, bool) {
+	maxInt := int(^uint(0) >> 1)
+	const maxExactJSONInteger int64 = 1<<53 - 1
+	maxChapterIndex := int64(maxInt)
+	if maxChapterIndex > maxExactJSONInteger {
+		maxChapterIndex = maxExactJSONInteger
+	}
+	switch value := value.(type) {
+	case int:
+		return value, value > 0 && int64(value) <= maxChapterIndex
+	case int8:
+		return int(value), value > 0
+	case int16:
+		return int(value), value > 0
+	case int32:
+		return int(value), value > 0 && int64(value) <= maxChapterIndex
+	case int64:
+		return int(value), value > 0 && value <= maxChapterIndex
+	case uint:
+		return int(value), value > 0 && uint64(value) <= uint64(maxChapterIndex)
+	case uint8:
+		return int(value), value > 0
+	case uint16:
+		return int(value), value > 0
+	case uint32:
+		return int(value), value > 0 && uint64(value) <= uint64(maxChapterIndex)
+	case uint64:
+		return int(value), value > 0 && value <= uint64(maxChapterIndex)
+	case float32:
+		index := int(value)
+		return index, value > 0 && float64(value) <= float64(maxChapterIndex) && float32(index) == value
+	case float64:
+		index := int(value)
+		return index, value > 0 && value <= float64(maxChapterIndex) && float64(index) == value
+	case json.Number:
+		if _, err := json.Marshal(value); err != nil {
+			return 0, false
+		}
+		parsed, ok := new(big.Rat).SetString(value.String())
+		if !ok || !parsed.IsInt() || parsed.Sign() <= 0 || !parsed.Num().IsInt64() {
+			return 0, false
+		}
+		index := parsed.Num().Int64()
+		return int(index), index <= maxChapterIndex
+	default:
+		return 0, false
+	}
 }
 
 func validateEntries(entries []*memory.MemoryEntry) error {

@@ -1910,10 +1910,14 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
 	chapterIDStr := r.URL.Query().Get("chapter_id")
 	persistStr := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("persist")))
-	chapterIndexStr := r.URL.Query().Get("chapter_index")
+	chapterIndexStr := strings.TrimSpace(r.URL.Query().Get("chapter_index"))
 	chapterIndex := 1
 	if chapterIndexStr != "" {
-		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
+		chapterIndex, err = parseIntParam(chapterIndexStr)
+		if err != nil {
+			http.Error(w, "invalid chapter_index", http.StatusBadRequest)
+			return
+		}
 	}
 
 	ctx := generationCtx
@@ -2226,10 +2230,15 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	outlineStart, _ := strconv.Atoi(r.URL.Query().Get("outline_start"))
 	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
 
-	chapterIndexStr := r.URL.Query().Get("chapter_index")
+	chapterIndexStr := strings.TrimSpace(r.URL.Query().Get("chapter_index"))
 	chapterIndex := 1
 	if chapterIndexStr != "" {
-		fmt.Sscanf(chapterIndexStr, "%d", &chapterIndex)
+		parsedChapterIndex, parseErr := parseIntParam(chapterIndexStr)
+		if parseErr != nil {
+			http.Error(w, "invalid chapter_index", http.StatusBadRequest)
+			return
+		}
+		chapterIndex = parsedChapterIndex
 	}
 
 	if strings.TrimSpace(novelID) == "" {

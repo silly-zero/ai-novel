@@ -31,6 +31,7 @@ type ChapterGeneratedEvent struct {
 	GenerationID string
 	NovelID      string
 	ChapterID    string
+	ChapterIndex int
 	Content      string
 	Timestamp    time.Time
 }

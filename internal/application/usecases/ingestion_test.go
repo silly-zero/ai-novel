@@ -71,6 +71,7 @@ func TestHandleChapterGeneratedStoresGenerationMetadata(t *testing.T) {
 			GenerationID: "generation-1",
 			NovelID:      "7",
 			ChapterID:    "11",
+			ChapterIndex: 4,
 			Content:      "正文",
 		},
 	)
@@ -82,7 +83,8 @@ func TestHandleChapterGeneratedStoresGenerationMetadata(t *testing.T) {
 	}
 	metadata := store.entries[0].Metadata
 	if metadata["generation_id"] != "generation-1" ||
-		metadata["chapter_id"] != "11" || metadata["type"] != "plot_summary" {
+		metadata["chapter_id"] != "11" || metadata["chapter_index"] != 4 ||
+		metadata["type"] != "plot_summary" {
 		t.Fatalf("metadata = %#v", metadata)
 	}
 }

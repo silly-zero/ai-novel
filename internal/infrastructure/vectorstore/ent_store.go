@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/memoryentry"
+	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/internal/domain/memory"
 )
 
@@ -17,6 +18,23 @@ type EntVectorStore struct {
 
 func NewEntVectorStore(client *ent.Client) *EntVectorStore {
 	return &EntVectorStore{client: client}
+}
+
+func chapterBoundaryPredicate(metadataColumn string, beforeChapterIndex int) *sql.Predicate {
+	value := fmt.Sprintf(
+		"CASE WHEN jsonb_typeof(%s->'chapter_index') = 'number' THEN (%s->>'chapter_index')::numeric ELSE NULL END",
+		metadataColumn,
+		metadataColumn,
+	)
+	return sql.P(func(builder *sql.Builder) {
+		builder.WriteString(fmt.Sprintf(
+			"%s BETWEEN 1 AND 9007199254740991 AND %s = trunc(%s) AND %s < ",
+			value,
+			value,
+			value,
+			value,
+		)).Arg(beforeChapterIndex)
+	})
 }
 
 func (s *EntVectorStore) Add(ctx context.Context, entries []*memory.MemoryEntry) error {
@@ -50,27 +68,41 @@ func (s *EntVectorStore) Search(
 	if err := validateSearch(queryVector, options); err != nil {
 		return nil, err
 	}
-	rows, err := s.client.MemoryEntry.Query().
+	query := s.client.MemoryEntry.Query().
 		Where(memoryentry.NovelID(novelID)).
 		Order(
 			memoryentry.ByCreatedAt(sql.OrderDesc()),
 			memoryentry.ByID(sql.OrderDesc()),
-		).
-		Limit(options.CandidateLimit).
-		All(ctx)
+		)
+	if options.BeforeChapterIndex > 0 {
+		query.Where(predicate.MemoryEntry(func(selector *sql.Selector) {
+			selector.Where(chapterBoundaryPredicate(
+				selector.C(memoryentry.FieldMetadata),
+				options.BeforeChapterIndex,
+			))
+		}))
+	}
+	rows, err := query.Limit(options.CandidateLimit).All(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query memory entries: %w", err)
 	}
 
-	candidates := make([]*memory.MemoryEntry, 0, len(rows))
+	candidates := make([]*memory.MemoryEntry, 0, min(len(rows), options.CandidateLimit))
 	for _, row := range rows {
-		candidates = append(candidates, &memory.MemoryEntry{
+		entry := &memory.MemoryEntry{
 			ID:        fmt.Sprintf("%d", row.ID),
 			NovelID:   row.NovelID,
 			Content:   row.Content,
 			Metadata:  row.Metadata,
 			Embedding: row.Embedding,
-		})
+		}
+		if !memoryEntryWithinChapterBoundary(entry, options) {
+			continue
+		}
+		candidates = append(candidates, entry)
+		if len(candidates) == options.CandidateLimit {
+			break
+		}
 	}
 	return rankCandidates(ctx, queryVector, candidates, options)
 }

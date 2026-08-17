@@ -240,8 +240,13 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 			return state, fmt.Errorf("librarian embed queries: got %d vectors for %d queries", len(queryVectors), len(queries))
 		}
 
+		searchOptions := l.config.SearchOptions
+		searchOptions.BeforeChapterIndex = 0
+		if state.ChapterIndex > 0 {
+			searchOptions.BeforeChapterIndex = state.ChapterIndex
+		}
 		for index, queryVector := range queryVectors {
-			results, searchErr := l.vectorStore.Search(ctx, state.NovelID, queryVector, l.config.SearchOptions)
+			results, searchErr := l.vectorStore.Search(ctx, state.NovelID, queryVector, searchOptions)
 			if searchErr != nil {
 				return state, fmt.Errorf("librarian search query %d: %w", index, searchErr)
 			}

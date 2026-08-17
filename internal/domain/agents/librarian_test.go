@@ -153,6 +153,47 @@ func librarianTestConfig() LibrarianConfig {
 	}
 }
 
+func TestLibrarianBoundsMemorySearchBeforeCurrentChapter(t *testing.T) {
+	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{}}}
+	agent := NewLibrarianAgent(
+		librarianLLMFake{response: `{"character_names":[],"world_settings":[],"search_queries":[]}`},
+		&librarianEmbedderFake{vectors: [][]float32{{1}}},
+		store,
+		nil,
+		nil,
+		librarianTestConfig(),
+	)
+	state := &GenerationState{NovelID: "novel", ChapterIndex: 4, Outline: "本章线索"}
+
+	if _, err := agent.Run(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.calls) != 1 || store.calls[0].options.BeforeChapterIndex != 4 {
+		t.Fatalf("search calls = %#v, want boundary before chapter 4", store.calls)
+	}
+}
+
+func TestLibrarianLeavesMemorySearchUnboundedWithoutChapterIndex(t *testing.T) {
+	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{}}}
+	config := librarianTestConfig()
+	config.SearchOptions.BeforeChapterIndex = 99
+	agent := NewLibrarianAgent(
+		librarianLLMFake{response: `{"character_names":[],"world_settings":[],"search_queries":["查询"]}`},
+		&librarianEmbedderFake{vectors: [][]float32{{1}}},
+		store,
+		nil,
+		nil,
+		config,
+	)
+
+	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.calls) != 1 || store.calls[0].options.BeforeChapterIndex != 0 {
+		t.Fatalf("search calls = %#v, want unbounded search", store.calls)
+	}
+}
+
 func TestLibrarianRebuildsExistingContext(t *testing.T) {
 	embedder := &librarianEmbedderFake{vectors: [][]float32{{1}}}
 	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{

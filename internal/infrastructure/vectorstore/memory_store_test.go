@@ -2,12 +2,156 @@ package vectorstore
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"testing"
+
+	"entgo.io/ent/dialect"
+	"entgo.io/ent/dialect/sql"
 
 	"github.com/ai-novel/studio/internal/domain/memory"
 )
+
+func TestChapterBoundaryPredicateBuildsSafePostgresExpression(t *testing.T) {
+	query, args := sql.Dialect(dialect.Postgres).
+		Select("*").
+		From(sql.Table("memory_entries")).
+		Where(chapterBoundaryPredicate("metadata", 4)).
+		Query()
+	for _, fragment := range []string{
+		"CASE WHEN jsonb_typeof(metadata->'chapter_index') = 'number'",
+		"::numeric ELSE NULL END",
+		"BETWEEN 1 AND 9007199254740991",
+		"= trunc(",
+		"< $1",
+	} {
+		if !strings.Contains(query, fragment) {
+			t.Fatalf("query missing %q: %s", fragment, query)
+		}
+	}
+	if len(args) != 1 || args[0] != 4 {
+		t.Fatalf("args = %#v, want [4]", args)
+	}
+}
+
+func TestMemoryVectorStoreSearchFiltersChapterBoundaryBeforeCandidateLimit(t *testing.T) {
+	store := NewMemoryVectorStore()
+	entries := []*memory.MemoryEntry{
+		{ID: "eligible", NovelID: "novel", Metadata: map[string]any{"chapter_index": 2}, Embedding: []float32{1, 0}},
+		{ID: "missing", NovelID: "novel", Metadata: map[string]any{}, Embedding: []float32{1, 0}},
+		{ID: "invalid", NovelID: "novel", Metadata: map[string]any{"chapter_index": "3"}, Embedding: []float32{1, 0}},
+		{ID: "current", NovelID: "novel", Metadata: map[string]any{"chapter_index": 4}, Embedding: []float32{1, 0}},
+		{ID: "future", NovelID: "novel", Metadata: map[string]any{"chapter_index": float64(5)}, Embedding: []float32{1, 0}},
+	}
+	if err := store.Add(context.Background(), entries); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := store.Search(context.Background(), "novel", []float32{1, 0}, memory.SearchOptions{
+		CandidateLimit:     1,
+		ResultLimit:        1,
+		MinSimilarity:      0,
+		BeforeChapterIndex: 4,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Entry.ID != "eligible" {
+		t.Fatalf("results = %#v, want eligible prior chapter", results)
+	}
+}
+
+func TestMemoryVectorStoreSearchExcludesAllMemoriesBeforeFirstChapter(t *testing.T) {
+	store := NewMemoryVectorStore()
+	if err := store.Add(context.Background(), []*memory.MemoryEntry{
+		{ID: "chapter-1", NovelID: "novel", Metadata: map[string]any{"chapter_index": 1}, Embedding: []float32{1, 0}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := store.Search(context.Background(), "novel", []float32{1, 0}, memory.SearchOptions{
+		CandidateLimit:     1,
+		ResultLimit:        1,
+		MinSimilarity:      0,
+		BeforeChapterIndex: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("results = %#v, want none before first chapter", results)
+	}
+}
+
+func TestMemoryChapterIndexAcceptsSupportedIntegerRepresentations(t *testing.T) {
+	for _, value := range []any{
+		int(2),
+		int64(2),
+		uint64(2),
+		float32(2),
+		float64(2),
+		json.Number("2"),
+		json.Number("2.0"),
+		json.Number("2e0"),
+	} {
+		if index, ok := memoryChapterIndex(value); !ok || index != 2 {
+			t.Fatalf("memoryChapterIndex(%#v) = (%d, %v), want (2, true)", value, index, ok)
+		}
+	}
+}
+
+func TestMemoryChapterIndexRejectsOverflowAndInexactValues(t *testing.T) {
+	values := []any{
+		uint64(^uint64(0)),
+		uint64(1 << 53),
+		int64(1 << 53),
+		float64(1 << 53),
+		float64(1.5),
+		float32(1.5),
+		json.Number("1.5"),
+		json.Number("2.0000000000000001"),
+		json.Number("9007199254740990.5"),
+		json.Number("9007199254740992"),
+		json.Number("2/1"),
+		json.Number("0x2"),
+		json.Number("+2"),
+		int64(-1),
+		"2",
+		nil,
+	}
+	if ^uint(0)>>63 == 1 {
+		largeInt := int64(1 << 53)
+		values = append(values, int(largeInt))
+	}
+	for _, value := range values {
+		if index, ok := memoryChapterIndex(value); ok {
+			t.Fatalf("memoryChapterIndex(%#v) = (%d, true), want invalid", value, index)
+		}
+	}
+}
+
+func TestMemoryVectorStoreSearchLeavesChapterFilteringDisabledByDefault(t *testing.T) {
+	store := NewMemoryVectorStore()
+	if err := store.Add(context.Background(), []*memory.MemoryEntry{
+		{ID: "legacy", NovelID: "novel", Embedding: []float32{1, 0}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := store.Search(context.Background(), "novel", []float32{1, 0}, memory.SearchOptions{
+		CandidateLimit: 1,
+		ResultLimit:    1,
+		MinSimilarity:  0,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].Entry.ID != "legacy" {
+		t.Fatalf("results = %#v, want legacy entry in unbounded search", results)
+	}
+}
 
 func TestMemoryVectorStoreSearchAppliesLatestCandidateWindowAndLimits(t *testing.T) {
 	store := NewMemoryVectorStore()
