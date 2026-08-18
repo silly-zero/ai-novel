@@ -8,9 +8,13 @@ import (
 	"github.com/ai-novel/studio/internal/domain/events"
 )
 
+type characterStateAgent interface {
+	Run(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+}
+
 // CharacterUseCase 负责处理人物档案的维护逻辑
 type CharacterUseCase struct {
-	agent *agents.CharacterAgent
+	agent characterStateAgent
 }
 
 func NewCharacterUseCase(agent *agents.CharacterAgent) *CharacterUseCase {
@@ -37,6 +41,7 @@ func (uc *CharacterUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		GenerationID: e.GenerationID,
 		NovelID:      e.NovelID,
 		ChapterID:    e.ChapterID,
+		ChapterIndex: e.ChapterIndex,
 		Draft:        e.Content,
 	}
 

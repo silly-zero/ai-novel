@@ -7,11 +7,13 @@ import (
 
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/character"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
 	"github.com/ai-novel/studio/ent/schema"
 	"github.com/ai-novel/studio/ent/worldsetting"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -44,16 +46,44 @@ func init() {
 	chapter.UpdateDefaultUpdatedAt = chapterDescUpdatedAt.UpdateDefault.(func() time.Time)
 	characterFields := schema.Character{}.Fields()
 	_ = characterFields
+	// characterDescStateVersioned is the schema descriptor for state_versioned field.
+	characterDescStateVersioned := characterFields[8].Descriptor()
+	// character.DefaultStateVersioned holds the default value on creation for the state_versioned field.
+	character.DefaultStateVersioned = characterDescStateVersioned.Default.(bool)
 	// characterDescCreatedAt is the schema descriptor for created_at field.
-	characterDescCreatedAt := characterFields[8].Descriptor()
+	characterDescCreatedAt := characterFields[9].Descriptor()
 	// character.DefaultCreatedAt holds the default value on creation for the created_at field.
 	character.DefaultCreatedAt = characterDescCreatedAt.Default.(func() time.Time)
 	// characterDescUpdatedAt is the schema descriptor for updated_at field.
-	characterDescUpdatedAt := characterFields[9].Descriptor()
+	characterDescUpdatedAt := characterFields[10].Descriptor()
 	// character.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	character.DefaultUpdatedAt = characterDescUpdatedAt.Default.(func() time.Time)
 	// character.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	character.UpdateDefaultUpdatedAt = characterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	characterstateversionFields := schema.CharacterStateVersion{}.Fields()
+	_ = characterstateversionFields
+	// characterstateversionDescCharacterID is the schema descriptor for character_id field.
+	characterstateversionDescCharacterID := characterstateversionFields[0].Descriptor()
+	// characterstateversion.CharacterIDValidator is a validator for the "character_id" field. It is called by the builders before save.
+	characterstateversion.CharacterIDValidator = characterstateversionDescCharacterID.Validators[0].(func(int) error)
+	// characterstateversionDescChapterID is the schema descriptor for chapter_id field.
+	characterstateversionDescChapterID := characterstateversionFields[1].Descriptor()
+	// characterstateversion.ChapterIDValidator is a validator for the "chapter_id" field. It is called by the builders before save.
+	characterstateversion.ChapterIDValidator = characterstateversionDescChapterID.Validators[0].(func(int) error)
+	// characterstateversionDescChapterIndex is the schema descriptor for chapter_index field.
+	characterstateversionDescChapterIndex := characterstateversionFields[2].Descriptor()
+	// characterstateversion.ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
+	characterstateversion.ChapterIndexValidator = characterstateversionDescChapterIndex.Validators[0].(func(int) error)
+	// characterstateversionDescCreatedAt is the schema descriptor for created_at field.
+	characterstateversionDescCreatedAt := characterstateversionFields[5].Descriptor()
+	// characterstateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	characterstateversion.DefaultCreatedAt = characterstateversionDescCreatedAt.Default.(func() time.Time)
+	// characterstateversionDescUpdatedAt is the schema descriptor for updated_at field.
+	characterstateversionDescUpdatedAt := characterstateversionFields[6].Descriptor()
+	// characterstateversion.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	characterstateversion.DefaultUpdatedAt = characterstateversionDescUpdatedAt.Default.(func() time.Time)
+	// characterstateversion.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	characterstateversion.UpdateDefaultUpdatedAt = characterstateversionDescUpdatedAt.UpdateDefault.(func() time.Time)
 	memoryentryFields := schema.MemoryEntry{}.Fields()
 	_ = memoryentryFields
 	// memoryentryDescCreatedAt is the schema descriptor for created_at field.
@@ -94,14 +124,42 @@ func init() {
 	worldsettingDescCurrentState := worldsettingFields[4].Descriptor()
 	// worldsetting.DefaultCurrentState holds the default value on creation for the current_state field.
 	worldsetting.DefaultCurrentState = worldsettingDescCurrentState.Default.(string)
+	// worldsettingDescStateVersioned is the schema descriptor for state_versioned field.
+	worldsettingDescStateVersioned := worldsettingFields[5].Descriptor()
+	// worldsetting.DefaultStateVersioned holds the default value on creation for the state_versioned field.
+	worldsetting.DefaultStateVersioned = worldsettingDescStateVersioned.Default.(bool)
 	// worldsettingDescCreatedAt is the schema descriptor for created_at field.
-	worldsettingDescCreatedAt := worldsettingFields[6].Descriptor()
+	worldsettingDescCreatedAt := worldsettingFields[7].Descriptor()
 	// worldsetting.DefaultCreatedAt holds the default value on creation for the created_at field.
 	worldsetting.DefaultCreatedAt = worldsettingDescCreatedAt.Default.(func() time.Time)
 	// worldsettingDescUpdatedAt is the schema descriptor for updated_at field.
-	worldsettingDescUpdatedAt := worldsettingFields[7].Descriptor()
+	worldsettingDescUpdatedAt := worldsettingFields[8].Descriptor()
 	// worldsetting.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	worldsetting.DefaultUpdatedAt = worldsettingDescUpdatedAt.Default.(func() time.Time)
 	// worldsetting.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	worldsetting.UpdateDefaultUpdatedAt = worldsettingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	worldstateversionFields := schema.WorldStateVersion{}.Fields()
+	_ = worldstateversionFields
+	// worldstateversionDescWorldSettingID is the schema descriptor for world_setting_id field.
+	worldstateversionDescWorldSettingID := worldstateversionFields[0].Descriptor()
+	// worldstateversion.WorldSettingIDValidator is a validator for the "world_setting_id" field. It is called by the builders before save.
+	worldstateversion.WorldSettingIDValidator = worldstateversionDescWorldSettingID.Validators[0].(func(int) error)
+	// worldstateversionDescChapterID is the schema descriptor for chapter_id field.
+	worldstateversionDescChapterID := worldstateversionFields[1].Descriptor()
+	// worldstateversion.ChapterIDValidator is a validator for the "chapter_id" field. It is called by the builders before save.
+	worldstateversion.ChapterIDValidator = worldstateversionDescChapterID.Validators[0].(func(int) error)
+	// worldstateversionDescChapterIndex is the schema descriptor for chapter_index field.
+	worldstateversionDescChapterIndex := worldstateversionFields[2].Descriptor()
+	// worldstateversion.ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
+	worldstateversion.ChapterIndexValidator = worldstateversionDescChapterIndex.Validators[0].(func(int) error)
+	// worldstateversionDescCreatedAt is the schema descriptor for created_at field.
+	worldstateversionDescCreatedAt := worldstateversionFields[5].Descriptor()
+	// worldstateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	worldstateversion.DefaultCreatedAt = worldstateversionDescCreatedAt.Default.(func() time.Time)
+	// worldstateversionDescUpdatedAt is the schema descriptor for updated_at field.
+	worldstateversionDescUpdatedAt := worldstateversionFields[6].Descriptor()
+	// worldstateversion.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	worldstateversion.DefaultUpdatedAt = worldstateversionDescUpdatedAt.Default.(func() time.Time)
+	// worldstateversion.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	worldstateversion.UpdateDefaultUpdatedAt = worldstateversionDescUpdatedAt.UpdateDefault.(func() time.Time)
 }

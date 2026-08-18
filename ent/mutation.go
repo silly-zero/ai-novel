@@ -13,11 +13,13 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/character"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/ent/relationship"
 	"github.com/ai-novel/studio/ent/worldsetting"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 const (
@@ -29,39 +31,47 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeChapter      = "Chapter"
-	TypeCharacter    = "Character"
-	TypeMemoryEntry  = "MemoryEntry"
-	TypeNovel        = "Novel"
-	TypeRelationship = "Relationship"
-	TypeWorldSetting = "WorldSetting"
+	TypeChapter               = "Chapter"
+	TypeCharacter             = "Character"
+	TypeCharacterStateVersion = "CharacterStateVersion"
+	TypeMemoryEntry           = "MemoryEntry"
+	TypeNovel                 = "Novel"
+	TypeRelationship          = "Relationship"
+	TypeWorldSetting          = "WorldSetting"
+	TypeWorldStateVersion     = "WorldStateVersion"
 )
 
 // ChapterMutation represents an operation that mutates the Chapter nodes in the graph.
 type ChapterMutation struct {
 	config
-	op               Op
-	typ              string
-	id               *int
-	title            *string
-	content          *string
-	word_count       *int
-	addword_count    *int
-	_order           *int
-	add_order        *int
-	status           *string
-	last_beat        *string
-	open_loops       *[]string
-	appendopen_loops []string
-	next_action      *string
-	created_at       *time.Time
-	updated_at       *time.Time
-	clearedFields    map[string]struct{}
-	novel            *int
-	clearednovel     bool
-	done             bool
-	oldValue         func(context.Context) (*Chapter, error)
-	predicates       []predicate.Chapter
+	op                              Op
+	typ                             string
+	id                              *int
+	title                           *string
+	content                         *string
+	word_count                      *int
+	addword_count                   *int
+	_order                          *int
+	add_order                       *int
+	status                          *string
+	last_beat                       *string
+	open_loops                      *[]string
+	appendopen_loops                []string
+	next_action                     *string
+	created_at                      *time.Time
+	updated_at                      *time.Time
+	clearedFields                   map[string]struct{}
+	novel                           *int
+	clearednovel                    bool
+	character_state_versions        map[int]struct{}
+	removedcharacter_state_versions map[int]struct{}
+	clearedcharacter_state_versions bool
+	world_state_versions            map[int]struct{}
+	removedworld_state_versions     map[int]struct{}
+	clearedworld_state_versions     bool
+	done                            bool
+	oldValue                        func(context.Context) (*Chapter, error)
+	predicates                      []predicate.Chapter
 }
 
 var _ ent.Mutation = (*ChapterMutation)(nil)
@@ -630,6 +640,114 @@ func (m *ChapterMutation) ResetNovel() {
 	m.clearednovel = false
 }
 
+// AddCharacterStateVersionIDs adds the "character_state_versions" edge to the CharacterStateVersion entity by ids.
+func (m *ChapterMutation) AddCharacterStateVersionIDs(ids ...int) {
+	if m.character_state_versions == nil {
+		m.character_state_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.character_state_versions[ids[i]] = struct{}{}
+	}
+}
+
+// ClearCharacterStateVersions clears the "character_state_versions" edge to the CharacterStateVersion entity.
+func (m *ChapterMutation) ClearCharacterStateVersions() {
+	m.clearedcharacter_state_versions = true
+}
+
+// CharacterStateVersionsCleared reports if the "character_state_versions" edge to the CharacterStateVersion entity was cleared.
+func (m *ChapterMutation) CharacterStateVersionsCleared() bool {
+	return m.clearedcharacter_state_versions
+}
+
+// RemoveCharacterStateVersionIDs removes the "character_state_versions" edge to the CharacterStateVersion entity by IDs.
+func (m *ChapterMutation) RemoveCharacterStateVersionIDs(ids ...int) {
+	if m.removedcharacter_state_versions == nil {
+		m.removedcharacter_state_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.character_state_versions, ids[i])
+		m.removedcharacter_state_versions[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedCharacterStateVersions returns the removed IDs of the "character_state_versions" edge to the CharacterStateVersion entity.
+func (m *ChapterMutation) RemovedCharacterStateVersionsIDs() (ids []int) {
+	for id := range m.removedcharacter_state_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// CharacterStateVersionsIDs returns the "character_state_versions" edge IDs in the mutation.
+func (m *ChapterMutation) CharacterStateVersionsIDs() (ids []int) {
+	for id := range m.character_state_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetCharacterStateVersions resets all changes to the "character_state_versions" edge.
+func (m *ChapterMutation) ResetCharacterStateVersions() {
+	m.character_state_versions = nil
+	m.clearedcharacter_state_versions = false
+	m.removedcharacter_state_versions = nil
+}
+
+// AddWorldStateVersionIDs adds the "world_state_versions" edge to the WorldStateVersion entity by ids.
+func (m *ChapterMutation) AddWorldStateVersionIDs(ids ...int) {
+	if m.world_state_versions == nil {
+		m.world_state_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.world_state_versions[ids[i]] = struct{}{}
+	}
+}
+
+// ClearWorldStateVersions clears the "world_state_versions" edge to the WorldStateVersion entity.
+func (m *ChapterMutation) ClearWorldStateVersions() {
+	m.clearedworld_state_versions = true
+}
+
+// WorldStateVersionsCleared reports if the "world_state_versions" edge to the WorldStateVersion entity was cleared.
+func (m *ChapterMutation) WorldStateVersionsCleared() bool {
+	return m.clearedworld_state_versions
+}
+
+// RemoveWorldStateVersionIDs removes the "world_state_versions" edge to the WorldStateVersion entity by IDs.
+func (m *ChapterMutation) RemoveWorldStateVersionIDs(ids ...int) {
+	if m.removedworld_state_versions == nil {
+		m.removedworld_state_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.world_state_versions, ids[i])
+		m.removedworld_state_versions[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedWorldStateVersions returns the removed IDs of the "world_state_versions" edge to the WorldStateVersion entity.
+func (m *ChapterMutation) RemovedWorldStateVersionsIDs() (ids []int) {
+	for id := range m.removedworld_state_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// WorldStateVersionsIDs returns the "world_state_versions" edge IDs in the mutation.
+func (m *ChapterMutation) WorldStateVersionsIDs() (ids []int) {
+	for id := range m.world_state_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetWorldStateVersions resets all changes to the "world_state_versions" edge.
+func (m *ChapterMutation) ResetWorldStateVersions() {
+	m.world_state_versions = nil
+	m.clearedworld_state_versions = false
+	m.removedworld_state_versions = nil
+}
+
 // Where appends a list predicates to the ChapterMutation builder.
 func (m *ChapterMutation) Where(ps ...predicate.Chapter) {
 	m.predicates = append(m.predicates, ps...)
@@ -952,9 +1070,15 @@ func (m *ChapterMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ChapterMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 3)
 	if m.novel != nil {
 		edges = append(edges, chapter.EdgeNovel)
+	}
+	if m.character_state_versions != nil {
+		edges = append(edges, chapter.EdgeCharacterStateVersions)
+	}
+	if m.world_state_versions != nil {
+		edges = append(edges, chapter.EdgeWorldStateVersions)
 	}
 	return edges
 }
@@ -967,27 +1091,65 @@ func (m *ChapterMutation) AddedIDs(name string) []ent.Value {
 		if id := m.novel; id != nil {
 			return []ent.Value{*id}
 		}
+	case chapter.EdgeCharacterStateVersions:
+		ids := make([]ent.Value, 0, len(m.character_state_versions))
+		for id := range m.character_state_versions {
+			ids = append(ids, id)
+		}
+		return ids
+	case chapter.EdgeWorldStateVersions:
+		ids := make([]ent.Value, 0, len(m.world_state_versions))
+		for id := range m.world_state_versions {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ChapterMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 3)
+	if m.removedcharacter_state_versions != nil {
+		edges = append(edges, chapter.EdgeCharacterStateVersions)
+	}
+	if m.removedworld_state_versions != nil {
+		edges = append(edges, chapter.EdgeWorldStateVersions)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *ChapterMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case chapter.EdgeCharacterStateVersions:
+		ids := make([]ent.Value, 0, len(m.removedcharacter_state_versions))
+		for id := range m.removedcharacter_state_versions {
+			ids = append(ids, id)
+		}
+		return ids
+	case chapter.EdgeWorldStateVersions:
+		ids := make([]ent.Value, 0, len(m.removedworld_state_versions))
+		for id := range m.removedworld_state_versions {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ChapterMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 3)
 	if m.clearednovel {
 		edges = append(edges, chapter.EdgeNovel)
+	}
+	if m.clearedcharacter_state_versions {
+		edges = append(edges, chapter.EdgeCharacterStateVersions)
+	}
+	if m.clearedworld_state_versions {
+		edges = append(edges, chapter.EdgeWorldStateVersions)
 	}
 	return edges
 }
@@ -998,6 +1160,10 @@ func (m *ChapterMutation) EdgeCleared(name string) bool {
 	switch name {
 	case chapter.EdgeNovel:
 		return m.clearednovel
+	case chapter.EdgeCharacterStateVersions:
+		return m.clearedcharacter_state_versions
+	case chapter.EdgeWorldStateVersions:
+		return m.clearedworld_state_versions
 	}
 	return false
 }
@@ -1020,6 +1186,12 @@ func (m *ChapterMutation) ResetEdge(name string) error {
 	case chapter.EdgeNovel:
 		m.ResetNovel()
 		return nil
+	case chapter.EdgeCharacterStateVersions:
+		m.ResetCharacterStateVersions()
+		return nil
+	case chapter.EdgeWorldStateVersions:
+		m.ResetWorldStateVersions()
+		return nil
 	}
 	return fmt.Errorf("unknown Chapter edge %s", name)
 }
@@ -1027,27 +1199,31 @@ func (m *ChapterMutation) ResetEdge(name string) error {
 // CharacterMutation represents an operation that mutates the Character nodes in the graph.
 type CharacterMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int
-	novel_id             *string
-	name                 *string
-	gender               *string
-	age                  *int
-	addage               *int
-	appearance           *string
-	personality          *string
-	background           *string
-	current_status       *string
-	created_at           *time.Time
-	updated_at           *time.Time
-	clearedFields        map[string]struct{}
-	relationships        map[int]struct{}
-	removedrelationships map[int]struct{}
-	clearedrelationships bool
-	done                 bool
-	oldValue             func(context.Context) (*Character, error)
-	predicates           []predicate.Character
+	op                    Op
+	typ                   string
+	id                    *int
+	novel_id              *string
+	name                  *string
+	gender                *string
+	age                   *int
+	addage                *int
+	appearance            *string
+	personality           *string
+	background            *string
+	current_status        *string
+	state_versioned       *bool
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	relationships         map[int]struct{}
+	removedrelationships  map[int]struct{}
+	clearedrelationships  bool
+	state_versions        map[int]struct{}
+	removedstate_versions map[int]struct{}
+	clearedstate_versions bool
+	done                  bool
+	oldValue              func(context.Context) (*Character, error)
+	predicates            []predicate.Character
 }
 
 var _ ent.Mutation = (*CharacterMutation)(nil)
@@ -1535,6 +1711,42 @@ func (m *CharacterMutation) ResetCurrentStatus() {
 	delete(m.clearedFields, character.FieldCurrentStatus)
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (m *CharacterMutation) SetStateVersioned(b bool) {
+	m.state_versioned = &b
+}
+
+// StateVersioned returns the value of the "state_versioned" field in the mutation.
+func (m *CharacterMutation) StateVersioned() (r bool, exists bool) {
+	v := m.state_versioned
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStateVersioned returns the old "state_versioned" field's value of the Character entity.
+// If the Character object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterMutation) OldStateVersioned(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStateVersioned is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStateVersioned requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStateVersioned: %w", err)
+	}
+	return oldValue.StateVersioned, nil
+}
+
+// ResetStateVersioned resets all changes to the "state_versioned" field.
+func (m *CharacterMutation) ResetStateVersioned() {
+	m.state_versioned = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *CharacterMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -1661,6 +1873,60 @@ func (m *CharacterMutation) ResetRelationships() {
 	m.removedrelationships = nil
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the CharacterStateVersion entity by ids.
+func (m *CharacterMutation) AddStateVersionIDs(ids ...int) {
+	if m.state_versions == nil {
+		m.state_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.state_versions[ids[i]] = struct{}{}
+	}
+}
+
+// ClearStateVersions clears the "state_versions" edge to the CharacterStateVersion entity.
+func (m *CharacterMutation) ClearStateVersions() {
+	m.clearedstate_versions = true
+}
+
+// StateVersionsCleared reports if the "state_versions" edge to the CharacterStateVersion entity was cleared.
+func (m *CharacterMutation) StateVersionsCleared() bool {
+	return m.clearedstate_versions
+}
+
+// RemoveStateVersionIDs removes the "state_versions" edge to the CharacterStateVersion entity by IDs.
+func (m *CharacterMutation) RemoveStateVersionIDs(ids ...int) {
+	if m.removedstate_versions == nil {
+		m.removedstate_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.state_versions, ids[i])
+		m.removedstate_versions[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedStateVersions returns the removed IDs of the "state_versions" edge to the CharacterStateVersion entity.
+func (m *CharacterMutation) RemovedStateVersionsIDs() (ids []int) {
+	for id := range m.removedstate_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// StateVersionsIDs returns the "state_versions" edge IDs in the mutation.
+func (m *CharacterMutation) StateVersionsIDs() (ids []int) {
+	for id := range m.state_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetStateVersions resets all changes to the "state_versions" edge.
+func (m *CharacterMutation) ResetStateVersions() {
+	m.state_versions = nil
+	m.clearedstate_versions = false
+	m.removedstate_versions = nil
+}
+
 // Where appends a list predicates to the CharacterMutation builder.
 func (m *CharacterMutation) Where(ps ...predicate.Character) {
 	m.predicates = append(m.predicates, ps...)
@@ -1695,7 +1961,7 @@ func (m *CharacterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CharacterMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 11)
 	if m.novel_id != nil {
 		fields = append(fields, character.FieldNovelID)
 	}
@@ -1719,6 +1985,9 @@ func (m *CharacterMutation) Fields() []string {
 	}
 	if m.current_status != nil {
 		fields = append(fields, character.FieldCurrentStatus)
+	}
+	if m.state_versioned != nil {
+		fields = append(fields, character.FieldStateVersioned)
 	}
 	if m.created_at != nil {
 		fields = append(fields, character.FieldCreatedAt)
@@ -1750,6 +2019,8 @@ func (m *CharacterMutation) Field(name string) (ent.Value, bool) {
 		return m.Background()
 	case character.FieldCurrentStatus:
 		return m.CurrentStatus()
+	case character.FieldStateVersioned:
+		return m.StateVersioned()
 	case character.FieldCreatedAt:
 		return m.CreatedAt()
 	case character.FieldUpdatedAt:
@@ -1779,6 +2050,8 @@ func (m *CharacterMutation) OldField(ctx context.Context, name string) (ent.Valu
 		return m.OldBackground(ctx)
 	case character.FieldCurrentStatus:
 		return m.OldCurrentStatus(ctx)
+	case character.FieldStateVersioned:
+		return m.OldStateVersioned(ctx)
 	case character.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case character.FieldUpdatedAt:
@@ -1847,6 +2120,13 @@ func (m *CharacterMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCurrentStatus(v)
+		return nil
+	case character.FieldStateVersioned:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStateVersioned(v)
 		return nil
 	case character.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -1989,6 +2269,9 @@ func (m *CharacterMutation) ResetField(name string) error {
 	case character.FieldCurrentStatus:
 		m.ResetCurrentStatus()
 		return nil
+	case character.FieldStateVersioned:
+		m.ResetStateVersioned()
+		return nil
 	case character.FieldCreatedAt:
 		m.ResetCreatedAt()
 		return nil
@@ -2001,9 +2284,12 @@ func (m *CharacterMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *CharacterMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.relationships != nil {
 		edges = append(edges, character.EdgeRelationships)
+	}
+	if m.state_versions != nil {
+		edges = append(edges, character.EdgeStateVersions)
 	}
 	return edges
 }
@@ -2018,15 +2304,24 @@ func (m *CharacterMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case character.EdgeStateVersions:
+		ids := make([]ent.Value, 0, len(m.state_versions))
+		for id := range m.state_versions {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *CharacterMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.removedrelationships != nil {
 		edges = append(edges, character.EdgeRelationships)
+	}
+	if m.removedstate_versions != nil {
+		edges = append(edges, character.EdgeStateVersions)
 	}
 	return edges
 }
@@ -2041,15 +2336,24 @@ func (m *CharacterMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case character.EdgeStateVersions:
+		ids := make([]ent.Value, 0, len(m.removedstate_versions))
+		for id := range m.removedstate_versions {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *CharacterMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.clearedrelationships {
 		edges = append(edges, character.EdgeRelationships)
+	}
+	if m.clearedstate_versions {
+		edges = append(edges, character.EdgeStateVersions)
 	}
 	return edges
 }
@@ -2060,6 +2364,8 @@ func (m *CharacterMutation) EdgeCleared(name string) bool {
 	switch name {
 	case character.EdgeRelationships:
 		return m.clearedrelationships
+	case character.EdgeStateVersions:
+		return m.clearedstate_versions
 	}
 	return false
 }
@@ -2079,8 +2385,797 @@ func (m *CharacterMutation) ResetEdge(name string) error {
 	case character.EdgeRelationships:
 		m.ResetRelationships()
 		return nil
+	case character.EdgeStateVersions:
+		m.ResetStateVersions()
+		return nil
 	}
 	return fmt.Errorf("unknown Character edge %s", name)
+}
+
+// CharacterStateVersionMutation represents an operation that mutates the CharacterStateVersion nodes in the graph.
+type CharacterStateVersionMutation struct {
+	config
+	op               Op
+	typ              string
+	id               *int
+	chapter_index    *int
+	addchapter_index *int
+	generation_id    *string
+	current_status   *string
+	created_at       *time.Time
+	updated_at       *time.Time
+	clearedFields    map[string]struct{}
+	chapter          *int
+	clearedchapter   bool
+	character        *int
+	clearedcharacter bool
+	done             bool
+	oldValue         func(context.Context) (*CharacterStateVersion, error)
+	predicates       []predicate.CharacterStateVersion
+}
+
+var _ ent.Mutation = (*CharacterStateVersionMutation)(nil)
+
+// characterstateversionOption allows management of the mutation configuration using functional options.
+type characterstateversionOption func(*CharacterStateVersionMutation)
+
+// newCharacterStateVersionMutation creates new mutation for the CharacterStateVersion entity.
+func newCharacterStateVersionMutation(c config, op Op, opts ...characterstateversionOption) *CharacterStateVersionMutation {
+	m := &CharacterStateVersionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeCharacterStateVersion,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withCharacterStateVersionID sets the ID field of the mutation.
+func withCharacterStateVersionID(id int) characterstateversionOption {
+	return func(m *CharacterStateVersionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *CharacterStateVersion
+		)
+		m.oldValue = func(ctx context.Context) (*CharacterStateVersion, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().CharacterStateVersion.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withCharacterStateVersion sets the old CharacterStateVersion of the mutation.
+func withCharacterStateVersion(node *CharacterStateVersion) characterstateversionOption {
+	return func(m *CharacterStateVersionMutation) {
+		m.oldValue = func(context.Context) (*CharacterStateVersion, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m CharacterStateVersionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m CharacterStateVersionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *CharacterStateVersionMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *CharacterStateVersionMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().CharacterStateVersion.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCharacterID sets the "character_id" field.
+func (m *CharacterStateVersionMutation) SetCharacterID(i int) {
+	m.character = &i
+}
+
+// CharacterID returns the value of the "character_id" field in the mutation.
+func (m *CharacterStateVersionMutation) CharacterID() (r int, exists bool) {
+	v := m.character
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCharacterID returns the old "character_id" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldCharacterID(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCharacterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCharacterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCharacterID: %w", err)
+	}
+	return oldValue.CharacterID, nil
+}
+
+// ResetCharacterID resets all changes to the "character_id" field.
+func (m *CharacterStateVersionMutation) ResetCharacterID() {
+	m.character = nil
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (m *CharacterStateVersionMutation) SetChapterID(i int) {
+	m.chapter = &i
+}
+
+// ChapterID returns the value of the "chapter_id" field in the mutation.
+func (m *CharacterStateVersionMutation) ChapterID() (r int, exists bool) {
+	v := m.chapter
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChapterID returns the old "chapter_id" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldChapterID(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChapterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChapterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChapterID: %w", err)
+	}
+	return oldValue.ChapterID, nil
+}
+
+// ResetChapterID resets all changes to the "chapter_id" field.
+func (m *CharacterStateVersionMutation) ResetChapterID() {
+	m.chapter = nil
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (m *CharacterStateVersionMutation) SetChapterIndex(i int) {
+	m.chapter_index = &i
+	m.addchapter_index = nil
+}
+
+// ChapterIndex returns the value of the "chapter_index" field in the mutation.
+func (m *CharacterStateVersionMutation) ChapterIndex() (r int, exists bool) {
+	v := m.chapter_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChapterIndex returns the old "chapter_index" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldChapterIndex(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChapterIndex is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChapterIndex requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChapterIndex: %w", err)
+	}
+	return oldValue.ChapterIndex, nil
+}
+
+// AddChapterIndex adds i to the "chapter_index" field.
+func (m *CharacterStateVersionMutation) AddChapterIndex(i int) {
+	if m.addchapter_index != nil {
+		*m.addchapter_index += i
+	} else {
+		m.addchapter_index = &i
+	}
+}
+
+// AddedChapterIndex returns the value that was added to the "chapter_index" field in this mutation.
+func (m *CharacterStateVersionMutation) AddedChapterIndex() (r int, exists bool) {
+	v := m.addchapter_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChapterIndex resets all changes to the "chapter_index" field.
+func (m *CharacterStateVersionMutation) ResetChapterIndex() {
+	m.chapter_index = nil
+	m.addchapter_index = nil
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (m *CharacterStateVersionMutation) SetGenerationID(s string) {
+	m.generation_id = &s
+}
+
+// GenerationID returns the value of the "generation_id" field in the mutation.
+func (m *CharacterStateVersionMutation) GenerationID() (r string, exists bool) {
+	v := m.generation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGenerationID returns the old "generation_id" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldGenerationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGenerationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGenerationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGenerationID: %w", err)
+	}
+	return oldValue.GenerationID, nil
+}
+
+// ResetGenerationID resets all changes to the "generation_id" field.
+func (m *CharacterStateVersionMutation) ResetGenerationID() {
+	m.generation_id = nil
+}
+
+// SetCurrentStatus sets the "current_status" field.
+func (m *CharacterStateVersionMutation) SetCurrentStatus(s string) {
+	m.current_status = &s
+}
+
+// CurrentStatus returns the value of the "current_status" field in the mutation.
+func (m *CharacterStateVersionMutation) CurrentStatus() (r string, exists bool) {
+	v := m.current_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentStatus returns the old "current_status" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldCurrentStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentStatus: %w", err)
+	}
+	return oldValue.CurrentStatus, nil
+}
+
+// ResetCurrentStatus resets all changes to the "current_status" field.
+func (m *CharacterStateVersionMutation) ResetCurrentStatus() {
+	m.current_status = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *CharacterStateVersionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *CharacterStateVersionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *CharacterStateVersionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *CharacterStateVersionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *CharacterStateVersionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *CharacterStateVersionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearChapter clears the "chapter" edge to the Chapter entity.
+func (m *CharacterStateVersionMutation) ClearChapter() {
+	m.clearedchapter = true
+	m.clearedFields[characterstateversion.FieldChapterID] = struct{}{}
+}
+
+// ChapterCleared reports if the "chapter" edge to the Chapter entity was cleared.
+func (m *CharacterStateVersionMutation) ChapterCleared() bool {
+	return m.clearedchapter
+}
+
+// ChapterIDs returns the "chapter" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ChapterID instead. It exists only for internal usage by the builders.
+func (m *CharacterStateVersionMutation) ChapterIDs() (ids []int) {
+	if id := m.chapter; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetChapter resets all changes to the "chapter" edge.
+func (m *CharacterStateVersionMutation) ResetChapter() {
+	m.chapter = nil
+	m.clearedchapter = false
+}
+
+// ClearCharacter clears the "character" edge to the Character entity.
+func (m *CharacterStateVersionMutation) ClearCharacter() {
+	m.clearedcharacter = true
+	m.clearedFields[characterstateversion.FieldCharacterID] = struct{}{}
+}
+
+// CharacterCleared reports if the "character" edge to the Character entity was cleared.
+func (m *CharacterStateVersionMutation) CharacterCleared() bool {
+	return m.clearedcharacter
+}
+
+// CharacterIDs returns the "character" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// CharacterID instead. It exists only for internal usage by the builders.
+func (m *CharacterStateVersionMutation) CharacterIDs() (ids []int) {
+	if id := m.character; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetCharacter resets all changes to the "character" edge.
+func (m *CharacterStateVersionMutation) ResetCharacter() {
+	m.character = nil
+	m.clearedcharacter = false
+}
+
+// Where appends a list predicates to the CharacterStateVersionMutation builder.
+func (m *CharacterStateVersionMutation) Where(ps ...predicate.CharacterStateVersion) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the CharacterStateVersionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *CharacterStateVersionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.CharacterStateVersion, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *CharacterStateVersionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *CharacterStateVersionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (CharacterStateVersion).
+func (m *CharacterStateVersionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *CharacterStateVersionMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.character != nil {
+		fields = append(fields, characterstateversion.FieldCharacterID)
+	}
+	if m.chapter != nil {
+		fields = append(fields, characterstateversion.FieldChapterID)
+	}
+	if m.chapter_index != nil {
+		fields = append(fields, characterstateversion.FieldChapterIndex)
+	}
+	if m.generation_id != nil {
+		fields = append(fields, characterstateversion.FieldGenerationID)
+	}
+	if m.current_status != nil {
+		fields = append(fields, characterstateversion.FieldCurrentStatus)
+	}
+	if m.created_at != nil {
+		fields = append(fields, characterstateversion.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, characterstateversion.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *CharacterStateVersionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case characterstateversion.FieldCharacterID:
+		return m.CharacterID()
+	case characterstateversion.FieldChapterID:
+		return m.ChapterID()
+	case characterstateversion.FieldChapterIndex:
+		return m.ChapterIndex()
+	case characterstateversion.FieldGenerationID:
+		return m.GenerationID()
+	case characterstateversion.FieldCurrentStatus:
+		return m.CurrentStatus()
+	case characterstateversion.FieldCreatedAt:
+		return m.CreatedAt()
+	case characterstateversion.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *CharacterStateVersionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case characterstateversion.FieldCharacterID:
+		return m.OldCharacterID(ctx)
+	case characterstateversion.FieldChapterID:
+		return m.OldChapterID(ctx)
+	case characterstateversion.FieldChapterIndex:
+		return m.OldChapterIndex(ctx)
+	case characterstateversion.FieldGenerationID:
+		return m.OldGenerationID(ctx)
+	case characterstateversion.FieldCurrentStatus:
+		return m.OldCurrentStatus(ctx)
+	case characterstateversion.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case characterstateversion.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown CharacterStateVersion field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CharacterStateVersionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case characterstateversion.FieldCharacterID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCharacterID(v)
+		return nil
+	case characterstateversion.FieldChapterID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChapterID(v)
+		return nil
+	case characterstateversion.FieldChapterIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChapterIndex(v)
+		return nil
+	case characterstateversion.FieldGenerationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGenerationID(v)
+		return nil
+	case characterstateversion.FieldCurrentStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentStatus(v)
+		return nil
+	case characterstateversion.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case characterstateversion.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CharacterStateVersion field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *CharacterStateVersionMutation) AddedFields() []string {
+	var fields []string
+	if m.addchapter_index != nil {
+		fields = append(fields, characterstateversion.FieldChapterIndex)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *CharacterStateVersionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case characterstateversion.FieldChapterIndex:
+		return m.AddedChapterIndex()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *CharacterStateVersionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case characterstateversion.FieldChapterIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChapterIndex(v)
+		return nil
+	}
+	return fmt.Errorf("unknown CharacterStateVersion numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *CharacterStateVersionMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *CharacterStateVersionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *CharacterStateVersionMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown CharacterStateVersion nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *CharacterStateVersionMutation) ResetField(name string) error {
+	switch name {
+	case characterstateversion.FieldCharacterID:
+		m.ResetCharacterID()
+		return nil
+	case characterstateversion.FieldChapterID:
+		m.ResetChapterID()
+		return nil
+	case characterstateversion.FieldChapterIndex:
+		m.ResetChapterIndex()
+		return nil
+	case characterstateversion.FieldGenerationID:
+		m.ResetGenerationID()
+		return nil
+	case characterstateversion.FieldCurrentStatus:
+		m.ResetCurrentStatus()
+		return nil
+	case characterstateversion.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case characterstateversion.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown CharacterStateVersion field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *CharacterStateVersionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.chapter != nil {
+		edges = append(edges, characterstateversion.EdgeChapter)
+	}
+	if m.character != nil {
+		edges = append(edges, characterstateversion.EdgeCharacter)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *CharacterStateVersionMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case characterstateversion.EdgeChapter:
+		if id := m.chapter; id != nil {
+			return []ent.Value{*id}
+		}
+	case characterstateversion.EdgeCharacter:
+		if id := m.character; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *CharacterStateVersionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *CharacterStateVersionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *CharacterStateVersionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedchapter {
+		edges = append(edges, characterstateversion.EdgeChapter)
+	}
+	if m.clearedcharacter {
+		edges = append(edges, characterstateversion.EdgeCharacter)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *CharacterStateVersionMutation) EdgeCleared(name string) bool {
+	switch name {
+	case characterstateversion.EdgeChapter:
+		return m.clearedchapter
+	case characterstateversion.EdgeCharacter:
+		return m.clearedcharacter
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *CharacterStateVersionMutation) ClearEdge(name string) error {
+	switch name {
+	case characterstateversion.EdgeChapter:
+		m.ClearChapter()
+		return nil
+	case characterstateversion.EdgeCharacter:
+		m.ClearCharacter()
+		return nil
+	}
+	return fmt.Errorf("unknown CharacterStateVersion unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *CharacterStateVersionMutation) ResetEdge(name string) error {
+	switch name {
+	case characterstateversion.EdgeChapter:
+		m.ResetChapter()
+		return nil
+	case characterstateversion.EdgeCharacter:
+		m.ResetCharacter()
+		return nil
+	}
+	return fmt.Errorf("unknown CharacterStateVersion edge %s", name)
 }
 
 // MemoryEntryMutation represents an operation that mutates the MemoryEntry nodes in the graph.
@@ -4227,21 +5322,25 @@ func (m *RelationshipMutation) ResetEdge(name string) error {
 // WorldSettingMutation represents an operation that mutates the WorldSetting nodes in the graph.
 type WorldSettingMutation struct {
 	config
-	op            Op
-	typ           string
-	id            *int
-	novel_id      *string
-	category      *string
-	name          *string
-	description   *string
-	current_state *string
-	metadata      *map[string]interface{}
-	created_at    *time.Time
-	updated_at    *time.Time
-	clearedFields map[string]struct{}
-	done          bool
-	oldValue      func(context.Context) (*WorldSetting, error)
-	predicates    []predicate.WorldSetting
+	op                    Op
+	typ                   string
+	id                    *int
+	novel_id              *string
+	category              *string
+	name                  *string
+	description           *string
+	current_state         *string
+	state_versioned       *bool
+	metadata              *map[string]interface{}
+	created_at            *time.Time
+	updated_at            *time.Time
+	clearedFields         map[string]struct{}
+	state_versions        map[int]struct{}
+	removedstate_versions map[int]struct{}
+	clearedstate_versions bool
+	done                  bool
+	oldValue              func(context.Context) (*WorldSetting, error)
+	predicates            []predicate.WorldSetting
 }
 
 var _ ent.Mutation = (*WorldSettingMutation)(nil)
@@ -4522,6 +5621,42 @@ func (m *WorldSettingMutation) ResetCurrentState() {
 	m.current_state = nil
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (m *WorldSettingMutation) SetStateVersioned(b bool) {
+	m.state_versioned = &b
+}
+
+// StateVersioned returns the value of the "state_versioned" field in the mutation.
+func (m *WorldSettingMutation) StateVersioned() (r bool, exists bool) {
+	v := m.state_versioned
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStateVersioned returns the old "state_versioned" field's value of the WorldSetting entity.
+// If the WorldSetting object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldSettingMutation) OldStateVersioned(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStateVersioned is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStateVersioned requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStateVersioned: %w", err)
+	}
+	return oldValue.StateVersioned, nil
+}
+
+// ResetStateVersioned resets all changes to the "state_versioned" field.
+func (m *WorldSettingMutation) ResetStateVersioned() {
+	m.state_versioned = nil
+}
+
 // SetMetadata sets the "metadata" field.
 func (m *WorldSettingMutation) SetMetadata(value map[string]interface{}) {
 	m.metadata = &value
@@ -4643,6 +5778,60 @@ func (m *WorldSettingMutation) ResetUpdatedAt() {
 	m.updated_at = nil
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the WorldStateVersion entity by ids.
+func (m *WorldSettingMutation) AddStateVersionIDs(ids ...int) {
+	if m.state_versions == nil {
+		m.state_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.state_versions[ids[i]] = struct{}{}
+	}
+}
+
+// ClearStateVersions clears the "state_versions" edge to the WorldStateVersion entity.
+func (m *WorldSettingMutation) ClearStateVersions() {
+	m.clearedstate_versions = true
+}
+
+// StateVersionsCleared reports if the "state_versions" edge to the WorldStateVersion entity was cleared.
+func (m *WorldSettingMutation) StateVersionsCleared() bool {
+	return m.clearedstate_versions
+}
+
+// RemoveStateVersionIDs removes the "state_versions" edge to the WorldStateVersion entity by IDs.
+func (m *WorldSettingMutation) RemoveStateVersionIDs(ids ...int) {
+	if m.removedstate_versions == nil {
+		m.removedstate_versions = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.state_versions, ids[i])
+		m.removedstate_versions[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedStateVersions returns the removed IDs of the "state_versions" edge to the WorldStateVersion entity.
+func (m *WorldSettingMutation) RemovedStateVersionsIDs() (ids []int) {
+	for id := range m.removedstate_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// StateVersionsIDs returns the "state_versions" edge IDs in the mutation.
+func (m *WorldSettingMutation) StateVersionsIDs() (ids []int) {
+	for id := range m.state_versions {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetStateVersions resets all changes to the "state_versions" edge.
+func (m *WorldSettingMutation) ResetStateVersions() {
+	m.state_versions = nil
+	m.clearedstate_versions = false
+	m.removedstate_versions = nil
+}
+
 // Where appends a list predicates to the WorldSettingMutation builder.
 func (m *WorldSettingMutation) Where(ps ...predicate.WorldSetting) {
 	m.predicates = append(m.predicates, ps...)
@@ -4677,7 +5866,7 @@ func (m *WorldSettingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorldSettingMutation) Fields() []string {
-	fields := make([]string, 0, 8)
+	fields := make([]string, 0, 9)
 	if m.novel_id != nil {
 		fields = append(fields, worldsetting.FieldNovelID)
 	}
@@ -4692,6 +5881,9 @@ func (m *WorldSettingMutation) Fields() []string {
 	}
 	if m.current_state != nil {
 		fields = append(fields, worldsetting.FieldCurrentState)
+	}
+	if m.state_versioned != nil {
+		fields = append(fields, worldsetting.FieldStateVersioned)
 	}
 	if m.metadata != nil {
 		fields = append(fields, worldsetting.FieldMetadata)
@@ -4720,6 +5912,8 @@ func (m *WorldSettingMutation) Field(name string) (ent.Value, bool) {
 		return m.Description()
 	case worldsetting.FieldCurrentState:
 		return m.CurrentState()
+	case worldsetting.FieldStateVersioned:
+		return m.StateVersioned()
 	case worldsetting.FieldMetadata:
 		return m.Metadata()
 	case worldsetting.FieldCreatedAt:
@@ -4745,6 +5939,8 @@ func (m *WorldSettingMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldDescription(ctx)
 	case worldsetting.FieldCurrentState:
 		return m.OldCurrentState(ctx)
+	case worldsetting.FieldStateVersioned:
+		return m.OldStateVersioned(ctx)
 	case worldsetting.FieldMetadata:
 		return m.OldMetadata(ctx)
 	case worldsetting.FieldCreatedAt:
@@ -4794,6 +5990,13 @@ func (m *WorldSettingMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCurrentState(v)
+		return nil
+	case worldsetting.FieldStateVersioned:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStateVersioned(v)
 		return nil
 	case worldsetting.FieldMetadata:
 		v, ok := value.(map[string]interface{})
@@ -4889,6 +6092,9 @@ func (m *WorldSettingMutation) ResetField(name string) error {
 	case worldsetting.FieldCurrentState:
 		m.ResetCurrentState()
 		return nil
+	case worldsetting.FieldStateVersioned:
+		m.ResetStateVersioned()
+		return nil
 	case worldsetting.FieldMetadata:
 		m.ResetMetadata()
 		return nil
@@ -4904,48 +6110,870 @@ func (m *WorldSettingMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *WorldSettingMutation) AddedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.state_versions != nil {
+		edges = append(edges, worldsetting.EdgeStateVersions)
+	}
 	return edges
 }
 
 // AddedIDs returns all IDs (to other nodes) that were added for the given edge
 // name in this mutation.
 func (m *WorldSettingMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case worldsetting.EdgeStateVersions:
+		ids := make([]ent.Value, 0, len(m.state_versions))
+		for id := range m.state_versions {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *WorldSettingMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.removedstate_versions != nil {
+		edges = append(edges, worldsetting.EdgeStateVersions)
+	}
 	return edges
 }
 
 // RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
 // the given name in this mutation.
 func (m *WorldSettingMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case worldsetting.EdgeStateVersions:
+		ids := make([]ent.Value, 0, len(m.removedstate_versions))
+		for id := range m.removedstate_versions {
+			ids = append(ids, id)
+		}
+		return ids
+	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *WorldSettingMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 0)
+	edges := make([]string, 0, 1)
+	if m.clearedstate_versions {
+		edges = append(edges, worldsetting.EdgeStateVersions)
+	}
 	return edges
 }
 
 // EdgeCleared returns a boolean which indicates if the edge with the given name
 // was cleared in this mutation.
 func (m *WorldSettingMutation) EdgeCleared(name string) bool {
+	switch name {
+	case worldsetting.EdgeStateVersions:
+		return m.clearedstate_versions
+	}
 	return false
 }
 
 // ClearEdge clears the value of the edge with the given name. It returns an error
 // if that edge is not defined in the schema.
 func (m *WorldSettingMutation) ClearEdge(name string) error {
+	switch name {
+	}
 	return fmt.Errorf("unknown WorldSetting unique edge %s", name)
 }
 
 // ResetEdge resets all changes to the edge with the given name in this mutation.
 // It returns an error if the edge is not defined in the schema.
 func (m *WorldSettingMutation) ResetEdge(name string) error {
+	switch name {
+	case worldsetting.EdgeStateVersions:
+		m.ResetStateVersions()
+		return nil
+	}
 	return fmt.Errorf("unknown WorldSetting edge %s", name)
+}
+
+// WorldStateVersionMutation represents an operation that mutates the WorldStateVersion nodes in the graph.
+type WorldStateVersionMutation struct {
+	config
+	op                   Op
+	typ                  string
+	id                   *int
+	chapter_index        *int
+	addchapter_index     *int
+	generation_id        *string
+	current_state        *string
+	created_at           *time.Time
+	updated_at           *time.Time
+	clearedFields        map[string]struct{}
+	chapter              *int
+	clearedchapter       bool
+	world_setting        *int
+	clearedworld_setting bool
+	done                 bool
+	oldValue             func(context.Context) (*WorldStateVersion, error)
+	predicates           []predicate.WorldStateVersion
+}
+
+var _ ent.Mutation = (*WorldStateVersionMutation)(nil)
+
+// worldstateversionOption allows management of the mutation configuration using functional options.
+type worldstateversionOption func(*WorldStateVersionMutation)
+
+// newWorldStateVersionMutation creates new mutation for the WorldStateVersion entity.
+func newWorldStateVersionMutation(c config, op Op, opts ...worldstateversionOption) *WorldStateVersionMutation {
+	m := &WorldStateVersionMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeWorldStateVersion,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withWorldStateVersionID sets the ID field of the mutation.
+func withWorldStateVersionID(id int) worldstateversionOption {
+	return func(m *WorldStateVersionMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *WorldStateVersion
+		)
+		m.oldValue = func(ctx context.Context) (*WorldStateVersion, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().WorldStateVersion.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withWorldStateVersion sets the old WorldStateVersion of the mutation.
+func withWorldStateVersion(node *WorldStateVersion) worldstateversionOption {
+	return func(m *WorldStateVersionMutation) {
+		m.oldValue = func(context.Context) (*WorldStateVersion, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m WorldStateVersionMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m WorldStateVersionMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *WorldStateVersionMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *WorldStateVersionMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().WorldStateVersion.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetWorldSettingID sets the "world_setting_id" field.
+func (m *WorldStateVersionMutation) SetWorldSettingID(i int) {
+	m.world_setting = &i
+}
+
+// WorldSettingID returns the value of the "world_setting_id" field in the mutation.
+func (m *WorldStateVersionMutation) WorldSettingID() (r int, exists bool) {
+	v := m.world_setting
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldWorldSettingID returns the old "world_setting_id" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldWorldSettingID(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldWorldSettingID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldWorldSettingID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldWorldSettingID: %w", err)
+	}
+	return oldValue.WorldSettingID, nil
+}
+
+// ResetWorldSettingID resets all changes to the "world_setting_id" field.
+func (m *WorldStateVersionMutation) ResetWorldSettingID() {
+	m.world_setting = nil
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (m *WorldStateVersionMutation) SetChapterID(i int) {
+	m.chapter = &i
+}
+
+// ChapterID returns the value of the "chapter_id" field in the mutation.
+func (m *WorldStateVersionMutation) ChapterID() (r int, exists bool) {
+	v := m.chapter
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChapterID returns the old "chapter_id" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldChapterID(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChapterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChapterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChapterID: %w", err)
+	}
+	return oldValue.ChapterID, nil
+}
+
+// ResetChapterID resets all changes to the "chapter_id" field.
+func (m *WorldStateVersionMutation) ResetChapterID() {
+	m.chapter = nil
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (m *WorldStateVersionMutation) SetChapterIndex(i int) {
+	m.chapter_index = &i
+	m.addchapter_index = nil
+}
+
+// ChapterIndex returns the value of the "chapter_index" field in the mutation.
+func (m *WorldStateVersionMutation) ChapterIndex() (r int, exists bool) {
+	v := m.chapter_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChapterIndex returns the old "chapter_index" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldChapterIndex(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChapterIndex is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChapterIndex requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChapterIndex: %w", err)
+	}
+	return oldValue.ChapterIndex, nil
+}
+
+// AddChapterIndex adds i to the "chapter_index" field.
+func (m *WorldStateVersionMutation) AddChapterIndex(i int) {
+	if m.addchapter_index != nil {
+		*m.addchapter_index += i
+	} else {
+		m.addchapter_index = &i
+	}
+}
+
+// AddedChapterIndex returns the value that was added to the "chapter_index" field in this mutation.
+func (m *WorldStateVersionMutation) AddedChapterIndex() (r int, exists bool) {
+	v := m.addchapter_index
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetChapterIndex resets all changes to the "chapter_index" field.
+func (m *WorldStateVersionMutation) ResetChapterIndex() {
+	m.chapter_index = nil
+	m.addchapter_index = nil
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (m *WorldStateVersionMutation) SetGenerationID(s string) {
+	m.generation_id = &s
+}
+
+// GenerationID returns the value of the "generation_id" field in the mutation.
+func (m *WorldStateVersionMutation) GenerationID() (r string, exists bool) {
+	v := m.generation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGenerationID returns the old "generation_id" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldGenerationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGenerationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGenerationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGenerationID: %w", err)
+	}
+	return oldValue.GenerationID, nil
+}
+
+// ResetGenerationID resets all changes to the "generation_id" field.
+func (m *WorldStateVersionMutation) ResetGenerationID() {
+	m.generation_id = nil
+}
+
+// SetCurrentState sets the "current_state" field.
+func (m *WorldStateVersionMutation) SetCurrentState(s string) {
+	m.current_state = &s
+}
+
+// CurrentState returns the value of the "current_state" field in the mutation.
+func (m *WorldStateVersionMutation) CurrentState() (r string, exists bool) {
+	v := m.current_state
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCurrentState returns the old "current_state" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldCurrentState(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCurrentState is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCurrentState requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCurrentState: %w", err)
+	}
+	return oldValue.CurrentState, nil
+}
+
+// ResetCurrentState resets all changes to the "current_state" field.
+func (m *WorldStateVersionMutation) ResetCurrentState() {
+	m.current_state = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *WorldStateVersionMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *WorldStateVersionMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *WorldStateVersionMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *WorldStateVersionMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *WorldStateVersionMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *WorldStateVersionMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearChapter clears the "chapter" edge to the Chapter entity.
+func (m *WorldStateVersionMutation) ClearChapter() {
+	m.clearedchapter = true
+	m.clearedFields[worldstateversion.FieldChapterID] = struct{}{}
+}
+
+// ChapterCleared reports if the "chapter" edge to the Chapter entity was cleared.
+func (m *WorldStateVersionMutation) ChapterCleared() bool {
+	return m.clearedchapter
+}
+
+// ChapterIDs returns the "chapter" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ChapterID instead. It exists only for internal usage by the builders.
+func (m *WorldStateVersionMutation) ChapterIDs() (ids []int) {
+	if id := m.chapter; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetChapter resets all changes to the "chapter" edge.
+func (m *WorldStateVersionMutation) ResetChapter() {
+	m.chapter = nil
+	m.clearedchapter = false
+}
+
+// ClearWorldSetting clears the "world_setting" edge to the WorldSetting entity.
+func (m *WorldStateVersionMutation) ClearWorldSetting() {
+	m.clearedworld_setting = true
+	m.clearedFields[worldstateversion.FieldWorldSettingID] = struct{}{}
+}
+
+// WorldSettingCleared reports if the "world_setting" edge to the WorldSetting entity was cleared.
+func (m *WorldStateVersionMutation) WorldSettingCleared() bool {
+	return m.clearedworld_setting
+}
+
+// WorldSettingIDs returns the "world_setting" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// WorldSettingID instead. It exists only for internal usage by the builders.
+func (m *WorldStateVersionMutation) WorldSettingIDs() (ids []int) {
+	if id := m.world_setting; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetWorldSetting resets all changes to the "world_setting" edge.
+func (m *WorldStateVersionMutation) ResetWorldSetting() {
+	m.world_setting = nil
+	m.clearedworld_setting = false
+}
+
+// Where appends a list predicates to the WorldStateVersionMutation builder.
+func (m *WorldStateVersionMutation) Where(ps ...predicate.WorldStateVersion) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the WorldStateVersionMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *WorldStateVersionMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.WorldStateVersion, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *WorldStateVersionMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *WorldStateVersionMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (WorldStateVersion).
+func (m *WorldStateVersionMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *WorldStateVersionMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.world_setting != nil {
+		fields = append(fields, worldstateversion.FieldWorldSettingID)
+	}
+	if m.chapter != nil {
+		fields = append(fields, worldstateversion.FieldChapterID)
+	}
+	if m.chapter_index != nil {
+		fields = append(fields, worldstateversion.FieldChapterIndex)
+	}
+	if m.generation_id != nil {
+		fields = append(fields, worldstateversion.FieldGenerationID)
+	}
+	if m.current_state != nil {
+		fields = append(fields, worldstateversion.FieldCurrentState)
+	}
+	if m.created_at != nil {
+		fields = append(fields, worldstateversion.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, worldstateversion.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *WorldStateVersionMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case worldstateversion.FieldWorldSettingID:
+		return m.WorldSettingID()
+	case worldstateversion.FieldChapterID:
+		return m.ChapterID()
+	case worldstateversion.FieldChapterIndex:
+		return m.ChapterIndex()
+	case worldstateversion.FieldGenerationID:
+		return m.GenerationID()
+	case worldstateversion.FieldCurrentState:
+		return m.CurrentState()
+	case worldstateversion.FieldCreatedAt:
+		return m.CreatedAt()
+	case worldstateversion.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *WorldStateVersionMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case worldstateversion.FieldWorldSettingID:
+		return m.OldWorldSettingID(ctx)
+	case worldstateversion.FieldChapterID:
+		return m.OldChapterID(ctx)
+	case worldstateversion.FieldChapterIndex:
+		return m.OldChapterIndex(ctx)
+	case worldstateversion.FieldGenerationID:
+		return m.OldGenerationID(ctx)
+	case worldstateversion.FieldCurrentState:
+		return m.OldCurrentState(ctx)
+	case worldstateversion.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case worldstateversion.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown WorldStateVersion field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *WorldStateVersionMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case worldstateversion.FieldWorldSettingID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetWorldSettingID(v)
+		return nil
+	case worldstateversion.FieldChapterID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChapterID(v)
+		return nil
+	case worldstateversion.FieldChapterIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChapterIndex(v)
+		return nil
+	case worldstateversion.FieldGenerationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGenerationID(v)
+		return nil
+	case worldstateversion.FieldCurrentState:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCurrentState(v)
+		return nil
+	case worldstateversion.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case worldstateversion.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown WorldStateVersion field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *WorldStateVersionMutation) AddedFields() []string {
+	var fields []string
+	if m.addchapter_index != nil {
+		fields = append(fields, worldstateversion.FieldChapterIndex)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *WorldStateVersionMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case worldstateversion.FieldChapterIndex:
+		return m.AddedChapterIndex()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *WorldStateVersionMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case worldstateversion.FieldChapterIndex:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddChapterIndex(v)
+		return nil
+	}
+	return fmt.Errorf("unknown WorldStateVersion numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *WorldStateVersionMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *WorldStateVersionMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *WorldStateVersionMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown WorldStateVersion nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *WorldStateVersionMutation) ResetField(name string) error {
+	switch name {
+	case worldstateversion.FieldWorldSettingID:
+		m.ResetWorldSettingID()
+		return nil
+	case worldstateversion.FieldChapterID:
+		m.ResetChapterID()
+		return nil
+	case worldstateversion.FieldChapterIndex:
+		m.ResetChapterIndex()
+		return nil
+	case worldstateversion.FieldGenerationID:
+		m.ResetGenerationID()
+		return nil
+	case worldstateversion.FieldCurrentState:
+		m.ResetCurrentState()
+		return nil
+	case worldstateversion.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case worldstateversion.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown WorldStateVersion field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *WorldStateVersionMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.chapter != nil {
+		edges = append(edges, worldstateversion.EdgeChapter)
+	}
+	if m.world_setting != nil {
+		edges = append(edges, worldstateversion.EdgeWorldSetting)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *WorldStateVersionMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case worldstateversion.EdgeChapter:
+		if id := m.chapter; id != nil {
+			return []ent.Value{*id}
+		}
+	case worldstateversion.EdgeWorldSetting:
+		if id := m.world_setting; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *WorldStateVersionMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *WorldStateVersionMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *WorldStateVersionMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.clearedchapter {
+		edges = append(edges, worldstateversion.EdgeChapter)
+	}
+	if m.clearedworld_setting {
+		edges = append(edges, worldstateversion.EdgeWorldSetting)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *WorldStateVersionMutation) EdgeCleared(name string) bool {
+	switch name {
+	case worldstateversion.EdgeChapter:
+		return m.clearedchapter
+	case worldstateversion.EdgeWorldSetting:
+		return m.clearedworld_setting
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *WorldStateVersionMutation) ClearEdge(name string) error {
+	switch name {
+	case worldstateversion.EdgeChapter:
+		m.ClearChapter()
+		return nil
+	case worldstateversion.EdgeWorldSetting:
+		m.ClearWorldSetting()
+		return nil
+	}
+	return fmt.Errorf("unknown WorldStateVersion unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *WorldStateVersionMutation) ResetEdge(name string) error {
+	switch name {
+	case worldstateversion.EdgeChapter:
+		m.ResetChapter()
+		return nil
+	case worldstateversion.EdgeWorldSetting:
+		m.ResetWorldSetting()
+		return nil
+	}
+	return fmt.Errorf("unknown WorldStateVersion edge %s", name)
 }

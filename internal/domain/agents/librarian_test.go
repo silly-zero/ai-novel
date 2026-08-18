@@ -22,11 +22,8 @@ type librarianCharacterRepositoryFake struct {
 	findCalls            int
 	relationshipCalls    int
 	listNovelIDs         []string
+	listChapterIndexes   []int
 	relationshipNovelIDs []string
-}
-
-func (*librarianCharacterRepositoryFake) SaveCharacter(context.Context, *domain.Character) error {
-	return nil
 }
 
 func (*librarianCharacterRepositoryFake) GetCharacter(context.Context, string) (*domain.Character, error) {
@@ -44,6 +41,23 @@ func (r *librarianCharacterRepositoryFake) ListCharacters(_ context.Context, nov
 	return r.characters, r.listErr
 }
 
+func (r *librarianCharacterRepositoryFake) ListCharactersBeforeChapter(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) ([]*domain.Character, error) {
+	r.listChapterIndexes = append(r.listChapterIndexes, chapterIndex)
+	return r.ListCharacters(ctx, novelID)
+}
+
+func (r *librarianCharacterRepositoryFake) ReplaceChapterCharacters(
+	context.Context,
+	domain.ChapterStateRef,
+	[]*domain.Character,
+) ([]*domain.Character, error) {
+	return nil, nil
+}
+
 func (*librarianCharacterRepositoryFake) SaveRelationship(context.Context, *domain.Relationship) error {
 	return nil
 }
@@ -55,15 +69,12 @@ func (r *librarianCharacterRepositoryFake) ListRelationships(_ context.Context, 
 }
 
 type librarianWorldRepositoryFake struct {
-	settings     []*domain.WorldSetting
-	listErr      error
-	listCalls    int
-	findCalls    int
-	listNovelIDs []string
-}
-
-func (*librarianWorldRepositoryFake) SaveSetting(context.Context, *domain.WorldSetting) error {
-	return nil
+	settings           []*domain.WorldSetting
+	listErr            error
+	listCalls          int
+	findCalls          int
+	listNovelIDs       []string
+	listChapterIndexes []int
 }
 
 func (r *librarianWorldRepositoryFake) FindByName(context.Context, string, string) (*domain.WorldSetting, error) {
@@ -79,6 +90,23 @@ func (r *librarianWorldRepositoryFake) ListAll(_ context.Context, novelID string
 	r.listCalls++
 	r.listNovelIDs = append(r.listNovelIDs, novelID)
 	return r.settings, r.listErr
+}
+
+func (r *librarianWorldRepositoryFake) ListWorldSettingsBeforeChapter(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) ([]*domain.WorldSetting, error) {
+	r.listChapterIndexes = append(r.listChapterIndexes, chapterIndex)
+	return r.ListAll(ctx, novelID)
+}
+
+func (r *librarianWorldRepositoryFake) ReplaceChapterWorldSettings(
+	context.Context,
+	domain.ChapterStateRef,
+	[]*domain.WorldSetting,
+) ([]*domain.WorldSetting, error) {
+	return nil, nil
 }
 
 type librarianLLMFake struct {
@@ -173,24 +201,18 @@ func TestLibrarianBoundsMemorySearchBeforeCurrentChapter(t *testing.T) {
 	}
 }
 
-func TestLibrarianLeavesMemorySearchUnboundedWithoutChapterIndex(t *testing.T) {
-	store := &librarianVectorStoreFake{results: [][]memory.SearchResult{{}}}
-	config := librarianTestConfig()
-	config.SearchOptions.BeforeChapterIndex = 99
+func TestLibrarianRejectsMissingChapterIndex(t *testing.T) {
 	agent := NewLibrarianAgent(
 		librarianLLMFake{response: `{"character_names":[],"world_settings":[],"search_queries":["查询"]}`},
 		&librarianEmbedderFake{vectors: [][]float32{{1}}},
-		store,
+		&librarianVectorStoreFake{results: [][]memory.SearchResult{{}}},
 		nil,
 		nil,
-		config,
+		librarianTestConfig(),
 	)
 
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"}); err != nil {
-		t.Fatal(err)
-	}
-	if len(store.calls) != 1 || store.calls[0].options.BeforeChapterIndex != 0 {
-		t.Fatalf("search calls = %#v, want unbounded search", store.calls)
+	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"}); err == nil || !strings.Contains(err.Error(), "chapter index must be positive") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -209,6 +231,7 @@ func TestLibrarianRebuildsExistingContext(t *testing.T) {
 	)
 	state := &GenerationState{
 		NovelID:          "novel",
+		ChapterIndex:     4,
 		Context:          "旧背景",
 		CanonConstraints: []CanonConstraint{{Kind: "old"}},
 	}
@@ -230,6 +253,7 @@ func TestLibrarianRebuildsExistingContext(t *testing.T) {
 
 func TestLibrarianFallbackClearsDerivedState(t *testing.T) {
 	state := &GenerationState{
+		ChapterIndex:     4,
 		Context:          "旧背景",
 		CanonConstraints: []CanonConstraint{{Kind: "old"}},
 	}
@@ -253,7 +277,8 @@ func TestLibrarianPrioritizesDeterministicQuery(t *testing.T) {
 		LibrarianConfig{MaxQueries: 1, MaxContextMemories: 2},
 	)
 	state := &GenerationState{
-		NovelID: "novel",
+		NovelID:      "novel",
+		ChapterIndex: 4,
 		ChapterContract: ChapterContract{
 			Goal:       "调查血书",
 			MustHappen: []string{"林云进入密室"},
@@ -279,7 +304,7 @@ func TestLibrarianUsesLLMQueriesWhenDeterministicQueryIsEmpty(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"}); err != nil {
+	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(embedder.inputs, [][]string{{"查询一", "查询二"}}) {
@@ -298,7 +323,7 @@ func TestLibrarianSkipsVectorRetrievalWithoutQueries(t *testing.T) {
 		nil,
 		librarianTestConfig(),
 	)
-	state := &GenerationState{NovelID: "novel", Context: "旧背景"}
+	state := &GenerationState{NovelID: "novel", ChapterIndex: 4, Context: "旧背景"}
 
 	result, err := agent.Run(context.Background(), state)
 	if err != nil {
@@ -339,7 +364,7 @@ func TestLibrarianBatchesQueriesAndGloballyRanksMemories(t *testing.T) {
 		nil,
 		librarianTestConfig(),
 	)
-	state := &GenerationState{NovelID: "novel-1", Outline: "outline"}
+	state := &GenerationState{NovelID: "novel-1", ChapterIndex: 4, Outline: "outline"}
 
 	result, err := agent.Run(context.Background(), state)
 	if err != nil {
@@ -351,8 +376,10 @@ func TestLibrarianBatchesQueriesAndGloballyRanksMemories(t *testing.T) {
 	if len(store.calls) != 2 {
 		t.Fatalf("search calls = %d, want 2", len(store.calls))
 	}
+	wantOptions := librarianTestConfig().SearchOptions
+	wantOptions.BeforeChapterIndex = 4
 	for _, call := range store.calls {
-		if call.novelID != "novel-1" || call.options != librarianTestConfig().SearchOptions {
+		if call.novelID != "novel-1" || call.options != wantOptions {
 			t.Fatalf("search call = %#v", call)
 		}
 	}
@@ -379,7 +406,7 @@ func TestLibrarianOmitsMemorySectionWithoutRelevantResults(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,7 +443,7 @@ func TestLibrarianInjectsStaticAndDynamicLedgerState(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,6 +456,9 @@ func TestLibrarianInjectsStaticAndDynamicLedgerState(t *testing.T) {
 			worldRepo.listCalls,
 			worldRepo.findCalls,
 		)
+	}
+	if !reflect.DeepEqual(characterRepo.listChapterIndexes, []int{4}) || !reflect.DeepEqual(worldRepo.listChapterIndexes, []int{4}) {
+		t.Fatalf("ledger chapter boundaries: characters=%#v world=%#v", characterRepo.listChapterIndexes, worldRepo.listChapterIndexes)
 	}
 	for _, value := range []string{
 		"静态档案(性别:男, 年龄:20, 外貌:黑衣, 性格:谨慎, 背景:边城出身)",
@@ -613,7 +643,8 @@ func TestLibrarianAddsEntitiesOmittedByRetrievalPlan(t *testing.T) {
 		librarianTestConfig(),
 	)
 	state := &GenerationState{
-		NovelID: "novel",
+		NovelID:      "novel",
+		ChapterIndex: 4,
 		ChapterContract: ChapterContract{
 			Goal:       "林云调查异变",
 			MustHappen: []string{"林云抵达青云山"},
@@ -657,6 +688,7 @@ func TestLibrarianDoesNotAddEntitiesFromFutureOrNegativeFields(t *testing.T) {
 	)
 	state := &GenerationState{
 		NovelID:         "novel",
+		ChapterIndex:    4,
 		FullOutline:     "苏青前往祭坛",
 		ExistingOutline: "祭坛揭示真相",
 		Outline:         "苏青发现祭坛",
@@ -693,7 +725,8 @@ func TestLibrarianMergesLLMAndDeterministicEntitiesInStableOrder(t *testing.T) {
 		librarianTestConfig(),
 	)
 	state := &GenerationState{
-		NovelID: "novel",
+		NovelID:      "novel",
+		ChapterIndex: 4,
 		ChapterContract: ChapterContract{
 			Goal:       "林云前往青云山",
 			MustHappen: []string{"苏青留在边城"},
@@ -747,7 +780,8 @@ func TestLibrarianOutputIsStableAcrossRepositoryOrder(t *testing.T) {
 			librarianTestConfig(),
 		)
 		result, err := agent.Run(context.Background(), &GenerationState{
-			NovelID: "novel",
+			NovelID:      "novel",
+			ChapterIndex: 4,
 			ChapterContract: ChapterContract{
 				Goal: "林云、苏青从边城前往青云山",
 			},
@@ -781,7 +815,7 @@ func TestLibrarianAllowsExactLLMSingleRuneAndRejectsAmbiguousName(t *testing.T) 
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -803,7 +837,7 @@ func TestLibrarianRejectsAmbiguousWorldSettingName(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -830,7 +864,7 @@ func TestLibrarianKeepsBaseCardsWhenRelationshipEnumerationFails(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -861,7 +895,7 @@ func TestLibrarianDeduplicatesDeterministicAndLLMQueries(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", Outline: "调查血书"}); err != nil {
+	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4, Outline: "调查血书"}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(embedder.inputs, [][]string{{"调查血书", "其他查询"}}) {
@@ -895,7 +929,7 @@ func TestLibrarianDoesNotCountSeedAgainstNeighborCardLimit(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -938,7 +972,7 @@ func TestLibrarianDeduplicatesRelationshipsBeforeLimit(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -973,7 +1007,7 @@ func TestLibrarianFreezesDistinctRelationshipConstraintsOnce(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1063,7 @@ func TestLibrarianIgnoresRelationshipEndpointsOutsideCanonicalCatalog(t *testing
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1059,7 +1093,7 @@ func TestLibrarianIgnoresAmbiguousCanonicalRelationshipNeighbor(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1092,7 +1126,7 @@ func TestLibrarianIncludesWorldCurrentState(t *testing.T) {
 		librarianTestConfig(),
 	)
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel"})
+	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1139,6 +1173,7 @@ func TestLibrarianPreservesDerivedStateWhenCatalogEnumerationFails(t *testing.T)
 			)
 			state := &GenerationState{
 				NovelID:          "novel",
+				ChapterIndex:     4,
 				Context:          "旧背景",
 				CanonConstraints: []CanonConstraint{{Kind: "old"}},
 			}
@@ -1194,6 +1229,7 @@ func TestLibrarianPropagatesRetrievalFailures(t *testing.T) {
 			)
 			state := &GenerationState{
 				NovelID:          "novel",
+				ChapterIndex:     4,
 				Context:          "旧背景",
 				CanonConstraints: []CanonConstraint{{Kind: "old"}},
 			}

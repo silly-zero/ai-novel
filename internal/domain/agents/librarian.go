@@ -72,18 +72,20 @@ type worldCatalog struct {
 }
 
 func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
+	if state.ChapterIndex <= 0 {
+		return state, fmt.Errorf("librarian chapter index must be positive")
+	}
 	// 1. 如果没有基础组件，退回到简单模式
 	if l.embedder == nil || l.vectorStore == nil || l.llm == nil {
 		state.Context = "（暂无背景资料，请根据大纲自由发挥）"
 		state.CanonConstraints = nil
 		return state, nil
 	}
-
-	characterCatalog, err := l.loadCharacterCatalog(ctx, state.NovelID)
+	characterCatalog, err := l.loadCharacterCatalog(ctx, state.NovelID, state.ChapterIndex)
 	if err != nil {
 		return state, err
 	}
-	worldCatalog, err := l.loadWorldCatalog(ctx, state.NovelID)
+	worldCatalog, err := l.loadWorldCatalog(ctx, state.NovelID, state.ChapterIndex)
 	if err != nil {
 		return state, err
 	}
@@ -241,10 +243,7 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		}
 
 		searchOptions := l.config.SearchOptions
-		searchOptions.BeforeChapterIndex = 0
-		if state.ChapterIndex > 0 {
-			searchOptions.BeforeChapterIndex = state.ChapterIndex
-		}
+		searchOptions.BeforeChapterIndex = state.ChapterIndex
 		for index, queryVector := range queryVectors {
 			results, searchErr := l.vectorStore.Search(ctx, state.NovelID, queryVector, searchOptions)
 			if searchErr != nil {
@@ -299,7 +298,11 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	return state, nil
 }
 
-func (l *LibrarianAgent) loadCharacterCatalog(ctx context.Context, novelID string) (characterCatalog, error) {
+func (l *LibrarianAgent) loadCharacterCatalog(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) (characterCatalog, error) {
 	catalog := characterCatalog{
 		byName:   make(map[string]*domain.Character),
 		byID:     make(map[string]*domain.Character),
@@ -308,7 +311,7 @@ func (l *LibrarianAgent) loadCharacterCatalog(ctx context.Context, novelID strin
 	if l.charRepo == nil {
 		return catalog, nil
 	}
-	characters, err := l.charRepo.ListCharacters(ctx, novelID)
+	characters, err := l.charRepo.ListCharactersBeforeChapter(ctx, novelID, chapterIndex)
 	if err != nil {
 		return catalog, fmt.Errorf("librarian list characters: %w", err)
 	}
@@ -342,7 +345,11 @@ func (l *LibrarianAgent) loadCharacterCatalog(ctx context.Context, novelID strin
 	return catalog, nil
 }
 
-func (l *LibrarianAgent) loadWorldCatalog(ctx context.Context, novelID string) (worldCatalog, error) {
+func (l *LibrarianAgent) loadWorldCatalog(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) (worldCatalog, error) {
 	catalog := worldCatalog{
 		byName:   make(map[string]*domain.WorldSetting),
 		allNames: make(map[string]struct{}),
@@ -350,7 +357,7 @@ func (l *LibrarianAgent) loadWorldCatalog(ctx context.Context, novelID string) (
 	if l.worldRepo == nil {
 		return catalog, nil
 	}
-	settings, err := l.worldRepo.ListAll(ctx, novelID)
+	settings, err := l.worldRepo.ListWorldSettingsBeforeChapter(ctx, novelID, chapterIndex)
 	if err != nil {
 		return catalog, fmt.Errorf("librarian list world settings: %w", err)
 	}

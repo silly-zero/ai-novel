@@ -11,7 +11,9 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // ChapterCreate is the builder for creating a Chapter entity.
@@ -130,6 +132,36 @@ func (_c *ChapterCreate) SetNovelID(id int) *ChapterCreate {
 // SetNovel sets the "novel" edge to the Novel entity.
 func (_c *ChapterCreate) SetNovel(v *Novel) *ChapterCreate {
 	return _c.SetNovelID(v.ID)
+}
+
+// AddCharacterStateVersionIDs adds the "character_state_versions" edge to the CharacterStateVersion entity by IDs.
+func (_c *ChapterCreate) AddCharacterStateVersionIDs(ids ...int) *ChapterCreate {
+	_c.mutation.AddCharacterStateVersionIDs(ids...)
+	return _c
+}
+
+// AddCharacterStateVersions adds the "character_state_versions" edges to the CharacterStateVersion entity.
+func (_c *ChapterCreate) AddCharacterStateVersions(v ...*CharacterStateVersion) *ChapterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddCharacterStateVersionIDs(ids...)
+}
+
+// AddWorldStateVersionIDs adds the "world_state_versions" edge to the WorldStateVersion entity by IDs.
+func (_c *ChapterCreate) AddWorldStateVersionIDs(ids ...int) *ChapterCreate {
+	_c.mutation.AddWorldStateVersionIDs(ids...)
+	return _c
+}
+
+// AddWorldStateVersions adds the "world_state_versions" edges to the WorldStateVersion entity.
+func (_c *ChapterCreate) AddWorldStateVersions(v ...*WorldStateVersion) *ChapterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddWorldStateVersionIDs(ids...)
 }
 
 // Mutation returns the ChapterMutation object of the builder.
@@ -302,6 +334,38 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.novel_chapters = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.CharacterStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.WorldStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

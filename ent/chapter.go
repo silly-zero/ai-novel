@@ -50,9 +50,13 @@ type Chapter struct {
 type ChapterEdges struct {
 	// Novel holds the value of the novel edge.
 	Novel *Novel `json:"novel,omitempty"`
+	// CharacterStateVersions holds the value of the character_state_versions edge.
+	CharacterStateVersions []*CharacterStateVersion `json:"character_state_versions,omitempty"`
+	// WorldStateVersions holds the value of the world_state_versions edge.
+	WorldStateVersions []*WorldStateVersion `json:"world_state_versions,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [3]bool
 }
 
 // NovelOrErr returns the Novel value or an error if the edge
@@ -64,6 +68,24 @@ func (e ChapterEdges) NovelOrErr() (*Novel, error) {
 		return nil, &NotFoundError{label: novel.Label}
 	}
 	return nil, &NotLoadedError{edge: "novel"}
+}
+
+// CharacterStateVersionsOrErr returns the CharacterStateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e ChapterEdges) CharacterStateVersionsOrErr() ([]*CharacterStateVersion, error) {
+	if e.loadedTypes[1] {
+		return e.CharacterStateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "character_state_versions"}
+}
+
+// WorldStateVersionsOrErr returns the WorldStateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e ChapterEdges) WorldStateVersionsOrErr() ([]*WorldStateVersion, error) {
+	if e.loadedTypes[2] {
+		return e.WorldStateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "world_state_versions"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -187,6 +209,16 @@ func (_m *Chapter) Value(name string) (ent.Value, error) {
 // QueryNovel queries the "novel" edge of the Chapter entity.
 func (_m *Chapter) QueryNovel() *NovelQuery {
 	return NewChapterClient(_m.config).QueryNovel(_m)
+}
+
+// QueryCharacterStateVersions queries the "character_state_versions" edge of the Chapter entity.
+func (_m *Chapter) QueryCharacterStateVersions() *CharacterStateVersionQuery {
+	return NewChapterClient(_m.config).QueryCharacterStateVersions(_m)
+}
+
+// QueryWorldStateVersions queries the "world_state_versions" edge of the Chapter entity.
+func (_m *Chapter) QueryWorldStateVersions() *WorldStateVersionQuery {
+	return NewChapterClient(_m.config).QueryWorldStateVersions(_m)
 }
 
 // Update returns a builder for updating this Chapter.

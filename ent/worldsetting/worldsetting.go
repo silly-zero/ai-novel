@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 )
 
 const (
@@ -23,14 +24,25 @@ const (
 	FieldDescription = "description"
 	// FieldCurrentState holds the string denoting the current_state field in the database.
 	FieldCurrentState = "current_state"
+	// FieldStateVersioned holds the string denoting the state_versioned field in the database.
+	FieldStateVersioned = "state_versioned"
 	// FieldMetadata holds the string denoting the metadata field in the database.
 	FieldMetadata = "metadata"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
+	// EdgeStateVersions holds the string denoting the state_versions edge name in mutations.
+	EdgeStateVersions = "state_versions"
 	// Table holds the table name of the worldsetting in the database.
 	Table = "world_settings"
+	// StateVersionsTable is the table that holds the state_versions relation/edge.
+	StateVersionsTable = "world_state_versions"
+	// StateVersionsInverseTable is the table name for the WorldStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "worldstateversion" package.
+	StateVersionsInverseTable = "world_state_versions"
+	// StateVersionsColumn is the table column denoting the state_versions relation/edge.
+	StateVersionsColumn = "world_setting_id"
 )
 
 // Columns holds all SQL columns for worldsetting fields.
@@ -41,6 +53,7 @@ var Columns = []string{
 	FieldName,
 	FieldDescription,
 	FieldCurrentState,
+	FieldStateVersioned,
 	FieldMetadata,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -59,6 +72,8 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultCurrentState holds the default value on creation for the "current_state" field.
 	DefaultCurrentState string
+	// DefaultStateVersioned holds the default value on creation for the "state_versioned" field.
+	DefaultStateVersioned bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -100,6 +115,11 @@ func ByCurrentState(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCurrentState, opts...).ToFunc()
 }
 
+// ByStateVersioned orders the results by the state_versioned field.
+func ByStateVersioned(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStateVersioned, opts...).ToFunc()
+}
+
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
@@ -108,4 +128,25 @@ func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByUpdatedAt orders the results by the updated_at field.
 func ByUpdatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldUpdatedAt, opts...).ToFunc()
+}
+
+// ByStateVersionsCount orders the results by state_versions count.
+func ByStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newStateVersionsStep(), opts...)
+	}
+}
+
+// ByStateVersions orders the results by state_versions terms.
+func ByStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+func newStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(StateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, StateVersionsTable, StateVersionsColumn),
+	)
 }

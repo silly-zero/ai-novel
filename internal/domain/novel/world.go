@@ -20,8 +20,9 @@ type WorldSetting struct {
 
 // WorldRepository 世界观持久化接口
 type WorldRepository interface {
-	SaveSetting(ctx context.Context, s *WorldSetting) error
 	FindByName(ctx context.Context, novelID, name string) (*WorldSetting, error)
 	ListByCategory(ctx context.Context, novelID, category string) ([]*WorldSetting, error)
 	ListAll(ctx context.Context, novelID string) ([]*WorldSetting, error)
+	ListWorldSettingsBeforeChapter(ctx context.Context, novelID string, chapterIndex int) ([]*WorldSetting, error)
+	ReplaceChapterWorldSettings(ctx context.Context, ref ChapterStateRef, settings []*WorldSetting) ([]*WorldSetting, error)
 }

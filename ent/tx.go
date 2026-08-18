@@ -16,6 +16,8 @@ type Tx struct {
 	Chapter *ChapterClient
 	// Character is the client for interacting with the Character builders.
 	Character *CharacterClient
+	// CharacterStateVersion is the client for interacting with the CharacterStateVersion builders.
+	CharacterStateVersion *CharacterStateVersionClient
 	// MemoryEntry is the client for interacting with the MemoryEntry builders.
 	MemoryEntry *MemoryEntryClient
 	// Novel is the client for interacting with the Novel builders.
@@ -24,6 +26,8 @@ type Tx struct {
 	Relationship *RelationshipClient
 	// WorldSetting is the client for interacting with the WorldSetting builders.
 	WorldSetting *WorldSettingClient
+	// WorldStateVersion is the client for interacting with the WorldStateVersion builders.
+	WorldStateVersion *WorldStateVersionClient
 
 	// lazily loaded.
 	client     *Client
@@ -157,10 +161,12 @@ func (tx *Tx) Client() *Client {
 func (tx *Tx) init() {
 	tx.Chapter = NewChapterClient(tx.config)
 	tx.Character = NewCharacterClient(tx.config)
+	tx.CharacterStateVersion = NewCharacterStateVersionClient(tx.config)
 	tx.MemoryEntry = NewMemoryEntryClient(tx.config)
 	tx.Novel = NewNovelClient(tx.config)
 	tx.Relationship = NewRelationshipClient(tx.config)
 	tx.WorldSetting = NewWorldSettingClient(tx.config)
+	tx.WorldStateVersion = NewWorldStateVersionClient(tx.config)
 }
 
 // txDriver wraps the given dialect.Tx with a nop dialect.Driver implementation.

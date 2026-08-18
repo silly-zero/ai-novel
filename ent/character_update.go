@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/character"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/ent/relationship"
 )
@@ -184,6 +185,20 @@ func (_u *CharacterUpdate) ClearCurrentStatus() *CharacterUpdate {
 	return _u
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_u *CharacterUpdate) SetStateVersioned(v bool) *CharacterUpdate {
+	_u.mutation.SetStateVersioned(v)
+	return _u
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_u *CharacterUpdate) SetNillableStateVersioned(v *bool) *CharacterUpdate {
+	if v != nil {
+		_u.SetStateVersioned(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CharacterUpdate) SetCreatedAt(v time.Time) *CharacterUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -219,6 +234,21 @@ func (_u *CharacterUpdate) AddRelationships(v ...*Relationship) *CharacterUpdate
 	return _u.AddRelationshipIDs(ids...)
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the CharacterStateVersion entity by IDs.
+func (_u *CharacterUpdate) AddStateVersionIDs(ids ...int) *CharacterUpdate {
+	_u.mutation.AddStateVersionIDs(ids...)
+	return _u
+}
+
+// AddStateVersions adds the "state_versions" edges to the CharacterStateVersion entity.
+func (_u *CharacterUpdate) AddStateVersions(v ...*CharacterStateVersion) *CharacterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddStateVersionIDs(ids...)
+}
+
 // Mutation returns the CharacterMutation object of the builder.
 func (_u *CharacterUpdate) Mutation() *CharacterMutation {
 	return _u.mutation
@@ -243,6 +273,27 @@ func (_u *CharacterUpdate) RemoveRelationships(v ...*Relationship) *CharacterUpd
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveRelationshipIDs(ids...)
+}
+
+// ClearStateVersions clears all "state_versions" edges to the CharacterStateVersion entity.
+func (_u *CharacterUpdate) ClearStateVersions() *CharacterUpdate {
+	_u.mutation.ClearStateVersions()
+	return _u
+}
+
+// RemoveStateVersionIDs removes the "state_versions" edge to CharacterStateVersion entities by IDs.
+func (_u *CharacterUpdate) RemoveStateVersionIDs(ids ...int) *CharacterUpdate {
+	_u.mutation.RemoveStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveStateVersions removes "state_versions" edges to CharacterStateVersion entities.
+func (_u *CharacterUpdate) RemoveStateVersions(v ...*CharacterStateVersion) *CharacterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveStateVersionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -335,6 +386,9 @@ func (_u *CharacterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.CurrentStatusCleared() {
 		_spec.ClearField(character.FieldCurrentStatus, field.TypeString)
 	}
+	if value, ok := _u.mutation.StateVersioned(); ok {
+		_spec.SetField(character.FieldStateVersioned, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(character.FieldCreatedAt, field.TypeTime, value)
 	}
@@ -379,6 +433,51 @@ func (_u *CharacterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(relationship.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.StateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -561,6 +660,20 @@ func (_u *CharacterUpdateOne) ClearCurrentStatus() *CharacterUpdateOne {
 	return _u
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_u *CharacterUpdateOne) SetStateVersioned(v bool) *CharacterUpdateOne {
+	_u.mutation.SetStateVersioned(v)
+	return _u
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_u *CharacterUpdateOne) SetNillableStateVersioned(v *bool) *CharacterUpdateOne {
+	if v != nil {
+		_u.SetStateVersioned(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CharacterUpdateOne) SetCreatedAt(v time.Time) *CharacterUpdateOne {
 	_u.mutation.SetCreatedAt(v)
@@ -596,6 +709,21 @@ func (_u *CharacterUpdateOne) AddRelationships(v ...*Relationship) *CharacterUpd
 	return _u.AddRelationshipIDs(ids...)
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the CharacterStateVersion entity by IDs.
+func (_u *CharacterUpdateOne) AddStateVersionIDs(ids ...int) *CharacterUpdateOne {
+	_u.mutation.AddStateVersionIDs(ids...)
+	return _u
+}
+
+// AddStateVersions adds the "state_versions" edges to the CharacterStateVersion entity.
+func (_u *CharacterUpdateOne) AddStateVersions(v ...*CharacterStateVersion) *CharacterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddStateVersionIDs(ids...)
+}
+
 // Mutation returns the CharacterMutation object of the builder.
 func (_u *CharacterUpdateOne) Mutation() *CharacterMutation {
 	return _u.mutation
@@ -620,6 +748,27 @@ func (_u *CharacterUpdateOne) RemoveRelationships(v ...*Relationship) *Character
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveRelationshipIDs(ids...)
+}
+
+// ClearStateVersions clears all "state_versions" edges to the CharacterStateVersion entity.
+func (_u *CharacterUpdateOne) ClearStateVersions() *CharacterUpdateOne {
+	_u.mutation.ClearStateVersions()
+	return _u
+}
+
+// RemoveStateVersionIDs removes the "state_versions" edge to CharacterStateVersion entities by IDs.
+func (_u *CharacterUpdateOne) RemoveStateVersionIDs(ids ...int) *CharacterUpdateOne {
+	_u.mutation.RemoveStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveStateVersions removes "state_versions" edges to CharacterStateVersion entities.
+func (_u *CharacterUpdateOne) RemoveStateVersions(v ...*CharacterStateVersion) *CharacterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveStateVersionIDs(ids...)
 }
 
 // Where appends a list predicates to the CharacterUpdate builder.
@@ -742,6 +891,9 @@ func (_u *CharacterUpdateOne) sqlSave(ctx context.Context) (_node *Character, er
 	if _u.mutation.CurrentStatusCleared() {
 		_spec.ClearField(character.FieldCurrentStatus, field.TypeString)
 	}
+	if value, ok := _u.mutation.StateVersioned(); ok {
+		_spec.SetField(character.FieldStateVersioned, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(character.FieldCreatedAt, field.TypeTime, value)
 	}
@@ -786,6 +938,51 @@ func (_u *CharacterUpdateOne) sqlSave(ctx context.Context) (_node *Character, er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(relationship.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.StateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

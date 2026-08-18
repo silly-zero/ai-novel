@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/worldsetting"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // WorldSettingCreate is the builder for creating a WorldSetting entity.
@@ -58,6 +59,20 @@ func (_c *WorldSettingCreate) SetNillableCurrentState(v *string) *WorldSettingCr
 	return _c
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_c *WorldSettingCreate) SetStateVersioned(v bool) *WorldSettingCreate {
+	_c.mutation.SetStateVersioned(v)
+	return _c
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_c *WorldSettingCreate) SetNillableStateVersioned(v *bool) *WorldSettingCreate {
+	if v != nil {
+		_c.SetStateVersioned(*v)
+	}
+	return _c
+}
+
 // SetMetadata sets the "metadata" field.
 func (_c *WorldSettingCreate) SetMetadata(v map[string]interface{}) *WorldSettingCreate {
 	_c.mutation.SetMetadata(v)
@@ -90,6 +105,21 @@ func (_c *WorldSettingCreate) SetNillableUpdatedAt(v *time.Time) *WorldSettingCr
 		_c.SetUpdatedAt(*v)
 	}
 	return _c
+}
+
+// AddStateVersionIDs adds the "state_versions" edge to the WorldStateVersion entity by IDs.
+func (_c *WorldSettingCreate) AddStateVersionIDs(ids ...int) *WorldSettingCreate {
+	_c.mutation.AddStateVersionIDs(ids...)
+	return _c
+}
+
+// AddStateVersions adds the "state_versions" edges to the WorldStateVersion entity.
+func (_c *WorldSettingCreate) AddStateVersions(v ...*WorldStateVersion) *WorldSettingCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddStateVersionIDs(ids...)
 }
 
 // Mutation returns the WorldSettingMutation object of the builder.
@@ -131,6 +161,10 @@ func (_c *WorldSettingCreate) defaults() {
 		v := worldsetting.DefaultCurrentState
 		_c.mutation.SetCurrentState(v)
 	}
+	if _, ok := _c.mutation.StateVersioned(); !ok {
+		v := worldsetting.DefaultStateVersioned
+		_c.mutation.SetStateVersioned(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := worldsetting.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -157,6 +191,9 @@ func (_c *WorldSettingCreate) check() error {
 	}
 	if _, ok := _c.mutation.CurrentState(); !ok {
 		return &ValidationError{Name: "current_state", err: errors.New(`ent: missing required field "WorldSetting.current_state"`)}
+	}
+	if _, ok := _c.mutation.StateVersioned(); !ok {
+		return &ValidationError{Name: "state_versioned", err: errors.New(`ent: missing required field "WorldSetting.state_versioned"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorldSetting.created_at"`)}
@@ -210,6 +247,10 @@ func (_c *WorldSettingCreate) createSpec() (*WorldSetting, *sqlgraph.CreateSpec)
 		_spec.SetField(worldsetting.FieldCurrentState, field.TypeString, value)
 		_node.CurrentState = value
 	}
+	if value, ok := _c.mutation.StateVersioned(); ok {
+		_spec.SetField(worldsetting.FieldStateVersioned, field.TypeBool, value)
+		_node.StateVersioned = value
+	}
 	if value, ok := _c.mutation.Metadata(); ok {
 		_spec.SetField(worldsetting.FieldMetadata, field.TypeJSON, value)
 		_node.Metadata = value
@@ -221,6 +262,22 @@ func (_c *WorldSettingCreate) createSpec() (*WorldSetting, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.UpdatedAt(); ok {
 		_spec.SetField(worldsetting.FieldUpdatedAt, field.TypeTime, value)
 		_node.UpdatedAt = value
+	}
+	if nodes := _c.mutation.StateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
 }

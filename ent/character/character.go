@@ -30,12 +30,16 @@ const (
 	FieldBackground = "background"
 	// FieldCurrentStatus holds the string denoting the current_status field in the database.
 	FieldCurrentStatus = "current_status"
+	// FieldStateVersioned holds the string denoting the state_versioned field in the database.
+	FieldStateVersioned = "state_versioned"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
 	FieldUpdatedAt = "updated_at"
 	// EdgeRelationships holds the string denoting the relationships edge name in mutations.
 	EdgeRelationships = "relationships"
+	// EdgeStateVersions holds the string denoting the state_versions edge name in mutations.
+	EdgeStateVersions = "state_versions"
 	// Table holds the table name of the character in the database.
 	Table = "characters"
 	// RelationshipsTable is the table that holds the relationships relation/edge.
@@ -45,6 +49,13 @@ const (
 	RelationshipsInverseTable = "relationships"
 	// RelationshipsColumn is the table column denoting the relationships relation/edge.
 	RelationshipsColumn = "character_relationships"
+	// StateVersionsTable is the table that holds the state_versions relation/edge.
+	StateVersionsTable = "character_state_versions"
+	// StateVersionsInverseTable is the table name for the CharacterStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "characterstateversion" package.
+	StateVersionsInverseTable = "character_state_versions"
+	// StateVersionsColumn is the table column denoting the state_versions relation/edge.
+	StateVersionsColumn = "character_id"
 )
 
 // Columns holds all SQL columns for character fields.
@@ -58,6 +69,7 @@ var Columns = []string{
 	FieldPersonality,
 	FieldBackground,
 	FieldCurrentStatus,
+	FieldStateVersioned,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -73,6 +85,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultStateVersioned holds the default value on creation for the "state_versioned" field.
+	DefaultStateVersioned bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -129,6 +143,11 @@ func ByCurrentStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCurrentStatus, opts...).ToFunc()
 }
 
+// ByStateVersioned orders the results by the state_versioned field.
+func ByStateVersioned(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStateVersioned, opts...).ToFunc()
+}
+
 // ByCreatedAt orders the results by the created_at field.
 func ByCreatedAt(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedAt, opts...).ToFunc()
@@ -152,10 +171,31 @@ func ByRelationships(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newRelationshipsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByStateVersionsCount orders the results by state_versions count.
+func ByStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newStateVersionsStep(), opts...)
+	}
+}
+
+// ByStateVersions orders the results by state_versions terms.
+func ByStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newRelationshipsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RelationshipsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, RelationshipsTable, RelationshipsColumn),
+	)
+}
+func newStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(StateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, StateVersionsTable, StateVersionsColumn),
 	)
 }

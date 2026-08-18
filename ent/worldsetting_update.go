@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/ent/worldsetting"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // WorldSettingUpdate is the builder for updating WorldSetting entities.
@@ -98,6 +99,20 @@ func (_u *WorldSettingUpdate) SetNillableCurrentState(v *string) *WorldSettingUp
 	return _u
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_u *WorldSettingUpdate) SetStateVersioned(v bool) *WorldSettingUpdate {
+	_u.mutation.SetStateVersioned(v)
+	return _u
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_u *WorldSettingUpdate) SetNillableStateVersioned(v *bool) *WorldSettingUpdate {
+	if v != nil {
+		_u.SetStateVersioned(*v)
+	}
+	return _u
+}
+
 // SetMetadata sets the "metadata" field.
 func (_u *WorldSettingUpdate) SetMetadata(v map[string]interface{}) *WorldSettingUpdate {
 	_u.mutation.SetMetadata(v)
@@ -130,9 +145,45 @@ func (_u *WorldSettingUpdate) SetUpdatedAt(v time.Time) *WorldSettingUpdate {
 	return _u
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the WorldStateVersion entity by IDs.
+func (_u *WorldSettingUpdate) AddStateVersionIDs(ids ...int) *WorldSettingUpdate {
+	_u.mutation.AddStateVersionIDs(ids...)
+	return _u
+}
+
+// AddStateVersions adds the "state_versions" edges to the WorldStateVersion entity.
+func (_u *WorldSettingUpdate) AddStateVersions(v ...*WorldStateVersion) *WorldSettingUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddStateVersionIDs(ids...)
+}
+
 // Mutation returns the WorldSettingMutation object of the builder.
 func (_u *WorldSettingUpdate) Mutation() *WorldSettingMutation {
 	return _u.mutation
+}
+
+// ClearStateVersions clears all "state_versions" edges to the WorldStateVersion entity.
+func (_u *WorldSettingUpdate) ClearStateVersions() *WorldSettingUpdate {
+	_u.mutation.ClearStateVersions()
+	return _u
+}
+
+// RemoveStateVersionIDs removes the "state_versions" edge to WorldStateVersion entities by IDs.
+func (_u *WorldSettingUpdate) RemoveStateVersionIDs(ids ...int) *WorldSettingUpdate {
+	_u.mutation.RemoveStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveStateVersions removes "state_versions" edges to WorldStateVersion entities.
+func (_u *WorldSettingUpdate) RemoveStateVersions(v ...*WorldStateVersion) *WorldSettingUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveStateVersionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -195,6 +246,9 @@ func (_u *WorldSettingUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.CurrentState(); ok {
 		_spec.SetField(worldsetting.FieldCurrentState, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.StateVersioned(); ok {
+		_spec.SetField(worldsetting.FieldStateVersioned, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(worldsetting.FieldMetadata, field.TypeJSON, value)
 	}
@@ -206,6 +260,51 @@ func (_u *WorldSettingUpdate) sqlSave(ctx context.Context) (_node int, err error
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(worldsetting.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.StateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
@@ -297,6 +396,20 @@ func (_u *WorldSettingUpdateOne) SetNillableCurrentState(v *string) *WorldSettin
 	return _u
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_u *WorldSettingUpdateOne) SetStateVersioned(v bool) *WorldSettingUpdateOne {
+	_u.mutation.SetStateVersioned(v)
+	return _u
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_u *WorldSettingUpdateOne) SetNillableStateVersioned(v *bool) *WorldSettingUpdateOne {
+	if v != nil {
+		_u.SetStateVersioned(*v)
+	}
+	return _u
+}
+
 // SetMetadata sets the "metadata" field.
 func (_u *WorldSettingUpdateOne) SetMetadata(v map[string]interface{}) *WorldSettingUpdateOne {
 	_u.mutation.SetMetadata(v)
@@ -329,9 +442,45 @@ func (_u *WorldSettingUpdateOne) SetUpdatedAt(v time.Time) *WorldSettingUpdateOn
 	return _u
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the WorldStateVersion entity by IDs.
+func (_u *WorldSettingUpdateOne) AddStateVersionIDs(ids ...int) *WorldSettingUpdateOne {
+	_u.mutation.AddStateVersionIDs(ids...)
+	return _u
+}
+
+// AddStateVersions adds the "state_versions" edges to the WorldStateVersion entity.
+func (_u *WorldSettingUpdateOne) AddStateVersions(v ...*WorldStateVersion) *WorldSettingUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddStateVersionIDs(ids...)
+}
+
 // Mutation returns the WorldSettingMutation object of the builder.
 func (_u *WorldSettingUpdateOne) Mutation() *WorldSettingMutation {
 	return _u.mutation
+}
+
+// ClearStateVersions clears all "state_versions" edges to the WorldStateVersion entity.
+func (_u *WorldSettingUpdateOne) ClearStateVersions() *WorldSettingUpdateOne {
+	_u.mutation.ClearStateVersions()
+	return _u
+}
+
+// RemoveStateVersionIDs removes the "state_versions" edge to WorldStateVersion entities by IDs.
+func (_u *WorldSettingUpdateOne) RemoveStateVersionIDs(ids ...int) *WorldSettingUpdateOne {
+	_u.mutation.RemoveStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveStateVersions removes "state_versions" edges to WorldStateVersion entities.
+func (_u *WorldSettingUpdateOne) RemoveStateVersions(v ...*WorldStateVersion) *WorldSettingUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveStateVersionIDs(ids...)
 }
 
 // Where appends a list predicates to the WorldSettingUpdate builder.
@@ -424,6 +573,9 @@ func (_u *WorldSettingUpdateOne) sqlSave(ctx context.Context) (_node *WorldSetti
 	if value, ok := _u.mutation.CurrentState(); ok {
 		_spec.SetField(worldsetting.FieldCurrentState, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.StateVersioned(); ok {
+		_spec.SetField(worldsetting.FieldStateVersioned, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.Metadata(); ok {
 		_spec.SetField(worldsetting.FieldMetadata, field.TypeJSON, value)
 	}
@@ -435,6 +587,51 @@ func (_u *WorldSettingUpdateOne) sqlSave(ctx context.Context) (_node *WorldSetti
 	}
 	if value, ok := _u.mutation.UpdatedAt(); ok {
 		_spec.SetField(worldsetting.FieldUpdatedAt, field.TypeTime, value)
+	}
+	if _u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.StateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.StateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   worldsetting.StateVersionsTable,
+			Columns: []string{worldsetting.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
 	_node = &WorldSetting{config: _u.config}
 	_spec.Assign = _node.assignValues

@@ -36,6 +36,10 @@ const (
 	FieldUpdatedAt = "updated_at"
 	// EdgeNovel holds the string denoting the novel edge name in mutations.
 	EdgeNovel = "novel"
+	// EdgeCharacterStateVersions holds the string denoting the character_state_versions edge name in mutations.
+	EdgeCharacterStateVersions = "character_state_versions"
+	// EdgeWorldStateVersions holds the string denoting the world_state_versions edge name in mutations.
+	EdgeWorldStateVersions = "world_state_versions"
 	// Table holds the table name of the chapter in the database.
 	Table = "chapters"
 	// NovelTable is the table that holds the novel relation/edge.
@@ -45,6 +49,20 @@ const (
 	NovelInverseTable = "novels"
 	// NovelColumn is the table column denoting the novel relation/edge.
 	NovelColumn = "novel_chapters"
+	// CharacterStateVersionsTable is the table that holds the character_state_versions relation/edge.
+	CharacterStateVersionsTable = "character_state_versions"
+	// CharacterStateVersionsInverseTable is the table name for the CharacterStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "characterstateversion" package.
+	CharacterStateVersionsInverseTable = "character_state_versions"
+	// CharacterStateVersionsColumn is the table column denoting the character_state_versions relation/edge.
+	CharacterStateVersionsColumn = "chapter_id"
+	// WorldStateVersionsTable is the table that holds the world_state_versions relation/edge.
+	WorldStateVersionsTable = "world_state_versions"
+	// WorldStateVersionsInverseTable is the table name for the WorldStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "worldstateversion" package.
+	WorldStateVersionsInverseTable = "world_state_versions"
+	// WorldStateVersionsColumn is the table column denoting the world_state_versions relation/edge.
+	WorldStateVersionsColumn = "chapter_id"
 )
 
 // Columns holds all SQL columns for chapter fields.
@@ -157,10 +175,52 @@ func ByNovelField(field string, opts ...sql.OrderTermOption) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newNovelStep(), sql.OrderByField(field, opts...))
 	}
 }
+
+// ByCharacterStateVersionsCount orders the results by character_state_versions count.
+func ByCharacterStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCharacterStateVersionsStep(), opts...)
+	}
+}
+
+// ByCharacterStateVersions orders the results by character_state_versions terms.
+func ByCharacterStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCharacterStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByWorldStateVersionsCount orders the results by world_state_versions count.
+func ByWorldStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newWorldStateVersionsStep(), opts...)
+	}
+}
+
+// ByWorldStateVersions orders the results by world_state_versions terms.
+func ByWorldStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newWorldStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newNovelStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(NovelInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.M2O, true, NovelTable, NovelColumn),
+	)
+}
+func newCharacterStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CharacterStateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CharacterStateVersionsTable, CharacterStateVersionsColumn),
+	)
+}
+func newWorldStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(WorldStateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, WorldStateVersionsTable, WorldStateVersionsColumn),
 	)
 }

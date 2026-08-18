@@ -154,8 +154,18 @@ type CharacterExtraction struct {
 }
 
 func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
-	// 1. 获取当前章节的所有角色档案 (用于提供给 LLM 参考)
-	existingChars, err := a.repo.ListCharacters(ctx, state.NovelID)
+	ref := domain.ChapterStateRef{
+		NovelID:      state.NovelID,
+		ChapterID:    state.ChapterID,
+		ChapterIndex: state.ChapterIndex,
+		GenerationID: state.GenerationID,
+	}
+	ref.Normalize()
+	if err := ref.Validate(); err != nil {
+		return state, fmt.Errorf("character chapter state: %w", err)
+	}
+	// 1. 获取当前章节之前的所有角色档案 (用于提供给 LLM 参考)
+	existingChars, err := a.repo.ListCharactersBeforeChapter(ctx, ref.NovelID, ref.ChapterIndex)
 	if err != nil {
 		return state, fmt.Errorf("list existing characters: %w", err)
 	}
@@ -214,40 +224,25 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		return state, err
 	}
 
-	nameToChar := make(map[string]*domain.Character)
-
-	for _, up := range extracted.Characters {
-		// 查找或创建
-		char, err := a.repo.FindByName(ctx, state.NovelID, up.Name)
-		if err != nil {
-			char = &domain.Character{
-				NovelID: state.NovelID,
-				Name:    up.Name,
-			}
-		}
-
-		// 静态档案只补数据库中的空缺，当前状态始终替换为本章结束快照。
-		if strings.TrimSpace(char.Gender) == "" {
-			char.Gender = up.Gender
-		}
-		if char.Age == 0 {
-			char.Age = up.Age
-		}
-		if strings.TrimSpace(char.Appearance) == "" {
-			char.Appearance = up.Appearance
-		}
-		if strings.TrimSpace(char.Personality) == "" {
-			char.Personality = up.Personality
-		}
-		if strings.TrimSpace(char.Background) == "" {
-			char.Background = up.Background
-		}
-		char.CurrentStatus = up.CurrentStatus
-
-		if err := a.repo.SaveCharacter(ctx, char); err != nil {
-			return state, fmt.Errorf("save character %q: %w", up.Name, err)
-		}
-		nameToChar[char.Name] = char
+	characterSnapshots := make([]*domain.Character, 0, len(extracted.Characters))
+	for _, update := range extracted.Characters {
+		characterSnapshots = append(characterSnapshots, &domain.Character{
+			Name:          update.Name,
+			Gender:        update.Gender,
+			Age:           update.Age,
+			Appearance:    update.Appearance,
+			Personality:   update.Personality,
+			Background:    update.Background,
+			CurrentStatus: update.CurrentStatus,
+		})
+	}
+	canonicalCharacters, err := a.repo.ReplaceChapterCharacters(ctx, ref, characterSnapshots)
+	if err != nil {
+		return state, fmt.Errorf("replace chapter character states: %w", err)
+	}
+	nameToChar := make(map[string]*domain.Character, len(canonicalCharacters))
+	for _, character := range canonicalCharacters {
+		nameToChar[character.Name] = character
 	}
 
 	for _, rel := range extracted.Relationships {
@@ -257,26 +252,28 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 
 		sourceChar := nameToChar[rel.Source]
 		if sourceChar == nil {
-			c, err := a.repo.FindByName(ctx, state.NovelID, rel.Source)
-			if err == nil {
-				sourceChar = c
+			c, err := a.repo.FindByName(ctx, ref.NovelID, rel.Source)
+			if err != nil {
+				return state, fmt.Errorf("resolve relationship source %q: %w", rel.Source, err)
 			}
+			sourceChar = c
 		}
 
 		targetChar := nameToChar[rel.Target]
 		if targetChar == nil {
-			c, err := a.repo.FindByName(ctx, state.NovelID, rel.Target)
-			if err == nil {
-				targetChar = c
+			c, err := a.repo.FindByName(ctx, ref.NovelID, rel.Target)
+			if err != nil {
+				return state, fmt.Errorf("resolve relationship target %q: %w", rel.Target, err)
 			}
+			targetChar = c
 		}
 
 		if sourceChar == nil || targetChar == nil {
-			continue
+			return state, fmt.Errorf("relationship %q -> %q has unresolved endpoint", rel.Source, rel.Target)
 		}
 
 		if err := a.repo.SaveRelationship(ctx, &domain.Relationship{
-			NovelID:         state.NovelID,
+			NovelID:         ref.NovelID,
 			SourceCharacter: sourceChar,
 			TargetCharacter: targetChar,
 			RelationType:    rel.RelationType,

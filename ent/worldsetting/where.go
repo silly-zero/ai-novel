@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/ai-novel/studio/ent/predicate"
 )
 
@@ -77,6 +78,11 @@ func Description(v string) predicate.WorldSetting {
 // CurrentState applies equality check predicate on the "current_state" field. It's identical to CurrentStateEQ.
 func CurrentState(v string) predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldEQ(FieldCurrentState, v))
+}
+
+// StateVersioned applies equality check predicate on the "state_versioned" field. It's identical to StateVersionedEQ.
+func StateVersioned(v bool) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldEQ(FieldStateVersioned, v))
 }
 
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
@@ -414,6 +420,16 @@ func CurrentStateContainsFold(v string) predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldContainsFold(FieldCurrentState, v))
 }
 
+// StateVersionedEQ applies the EQ predicate on the "state_versioned" field.
+func StateVersionedEQ(v bool) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldEQ(FieldStateVersioned, v))
+}
+
+// StateVersionedNEQ applies the NEQ predicate on the "state_versioned" field.
+func StateVersionedNEQ(v bool) predicate.WorldSetting {
+	return predicate.WorldSetting(sql.FieldNEQ(FieldStateVersioned, v))
+}
+
 // MetadataIsNil applies the IsNil predicate on the "metadata" field.
 func MetadataIsNil() predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldIsNull(FieldMetadata))
@@ -502,6 +518,29 @@ func UpdatedAtLT(v time.Time) predicate.WorldSetting {
 // UpdatedAtLTE applies the LTE predicate on the "updated_at" field.
 func UpdatedAtLTE(v time.Time) predicate.WorldSetting {
 	return predicate.WorldSetting(sql.FieldLTE(FieldUpdatedAt, v))
+}
+
+// HasStateVersions applies the HasEdge predicate on the "state_versions" edge.
+func HasStateVersions() predicate.WorldSetting {
+	return predicate.WorldSetting(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, StateVersionsTable, StateVersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasStateVersionsWith applies the HasEdge predicate on the "state_versions" edge with a given conditions (other predicates).
+func HasStateVersionsWith(preds ...predicate.WorldStateVersion) predicate.WorldSetting {
+	return predicate.WorldSetting(func(s *sql.Selector) {
+		step := newStateVersionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
 }
 
 // And groups predicates with the AND operator between them.

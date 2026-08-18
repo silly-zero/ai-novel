@@ -95,6 +95,11 @@ func CurrentStatus(v string) predicate.Character {
 	return predicate.Character(sql.FieldEQ(FieldCurrentStatus, v))
 }
 
+// StateVersioned applies equality check predicate on the "state_versioned" field. It's identical to StateVersionedEQ.
+func StateVersioned(v bool) predicate.Character {
+	return predicate.Character(sql.FieldEQ(FieldStateVersioned, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Character {
 	return predicate.Character(sql.FieldEQ(FieldCreatedAt, v))
@@ -660,6 +665,16 @@ func CurrentStatusContainsFold(v string) predicate.Character {
 	return predicate.Character(sql.FieldContainsFold(FieldCurrentStatus, v))
 }
 
+// StateVersionedEQ applies the EQ predicate on the "state_versioned" field.
+func StateVersionedEQ(v bool) predicate.Character {
+	return predicate.Character(sql.FieldEQ(FieldStateVersioned, v))
+}
+
+// StateVersionedNEQ applies the NEQ predicate on the "state_versioned" field.
+func StateVersionedNEQ(v bool) predicate.Character {
+	return predicate.Character(sql.FieldNEQ(FieldStateVersioned, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Character {
 	return predicate.Character(sql.FieldEQ(FieldCreatedAt, v))
@@ -755,6 +770,29 @@ func HasRelationships() predicate.Character {
 func HasRelationshipsWith(preds ...predicate.Relationship) predicate.Character {
 	return predicate.Character(func(s *sql.Selector) {
 		step := newRelationshipsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasStateVersions applies the HasEdge predicate on the "state_versions" edge.
+func HasStateVersions() predicate.Character {
+	return predicate.Character(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, StateVersionsTable, StateVersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasStateVersionsWith applies the HasEdge predicate on the "state_versions" edge with a given conditions (other predicates).
+func HasStateVersionsWith(preds ...predicate.CharacterStateVersion) predicate.Character {
+	return predicate.Character(func(s *sql.Selector) {
+		step := newStateVersionsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

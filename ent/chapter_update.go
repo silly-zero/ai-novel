@@ -13,8 +13,10 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // ChapterUpdate is the builder for updating Chapter entities.
@@ -191,6 +193,36 @@ func (_u *ChapterUpdate) SetNovel(v *Novel) *ChapterUpdate {
 	return _u.SetNovelID(v.ID)
 }
 
+// AddCharacterStateVersionIDs adds the "character_state_versions" edge to the CharacterStateVersion entity by IDs.
+func (_u *ChapterUpdate) AddCharacterStateVersionIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.AddCharacterStateVersionIDs(ids...)
+	return _u
+}
+
+// AddCharacterStateVersions adds the "character_state_versions" edges to the CharacterStateVersion entity.
+func (_u *ChapterUpdate) AddCharacterStateVersions(v ...*CharacterStateVersion) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCharacterStateVersionIDs(ids...)
+}
+
+// AddWorldStateVersionIDs adds the "world_state_versions" edge to the WorldStateVersion entity by IDs.
+func (_u *ChapterUpdate) AddWorldStateVersionIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.AddWorldStateVersionIDs(ids...)
+	return _u
+}
+
+// AddWorldStateVersions adds the "world_state_versions" edges to the WorldStateVersion entity.
+func (_u *ChapterUpdate) AddWorldStateVersions(v ...*WorldStateVersion) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddWorldStateVersionIDs(ids...)
+}
+
 // Mutation returns the ChapterMutation object of the builder.
 func (_u *ChapterUpdate) Mutation() *ChapterMutation {
 	return _u.mutation
@@ -200,6 +232,48 @@ func (_u *ChapterUpdate) Mutation() *ChapterMutation {
 func (_u *ChapterUpdate) ClearNovel() *ChapterUpdate {
 	_u.mutation.ClearNovel()
 	return _u
+}
+
+// ClearCharacterStateVersions clears all "character_state_versions" edges to the CharacterStateVersion entity.
+func (_u *ChapterUpdate) ClearCharacterStateVersions() *ChapterUpdate {
+	_u.mutation.ClearCharacterStateVersions()
+	return _u
+}
+
+// RemoveCharacterStateVersionIDs removes the "character_state_versions" edge to CharacterStateVersion entities by IDs.
+func (_u *ChapterUpdate) RemoveCharacterStateVersionIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.RemoveCharacterStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveCharacterStateVersions removes "character_state_versions" edges to CharacterStateVersion entities.
+func (_u *ChapterUpdate) RemoveCharacterStateVersions(v ...*CharacterStateVersion) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCharacterStateVersionIDs(ids...)
+}
+
+// ClearWorldStateVersions clears all "world_state_versions" edges to the WorldStateVersion entity.
+func (_u *ChapterUpdate) ClearWorldStateVersions() *ChapterUpdate {
+	_u.mutation.ClearWorldStateVersions()
+	return _u
+}
+
+// RemoveWorldStateVersionIDs removes the "world_state_versions" edge to WorldStateVersion entities by IDs.
+func (_u *ChapterUpdate) RemoveWorldStateVersionIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.RemoveWorldStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveWorldStateVersions removes "world_state_versions" edges to WorldStateVersion entities.
+func (_u *ChapterUpdate) RemoveWorldStateVersions(v ...*WorldStateVersion) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveWorldStateVersionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -324,6 +398,96 @@ func (_u *ChapterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(novel.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CharacterStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCharacterStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.CharacterStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CharacterStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.WorldStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedWorldStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.WorldStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.WorldStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {
@@ -512,6 +676,36 @@ func (_u *ChapterUpdateOne) SetNovel(v *Novel) *ChapterUpdateOne {
 	return _u.SetNovelID(v.ID)
 }
 
+// AddCharacterStateVersionIDs adds the "character_state_versions" edge to the CharacterStateVersion entity by IDs.
+func (_u *ChapterUpdateOne) AddCharacterStateVersionIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.AddCharacterStateVersionIDs(ids...)
+	return _u
+}
+
+// AddCharacterStateVersions adds the "character_state_versions" edges to the CharacterStateVersion entity.
+func (_u *ChapterUpdateOne) AddCharacterStateVersions(v ...*CharacterStateVersion) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddCharacterStateVersionIDs(ids...)
+}
+
+// AddWorldStateVersionIDs adds the "world_state_versions" edge to the WorldStateVersion entity by IDs.
+func (_u *ChapterUpdateOne) AddWorldStateVersionIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.AddWorldStateVersionIDs(ids...)
+	return _u
+}
+
+// AddWorldStateVersions adds the "world_state_versions" edges to the WorldStateVersion entity.
+func (_u *ChapterUpdateOne) AddWorldStateVersions(v ...*WorldStateVersion) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddWorldStateVersionIDs(ids...)
+}
+
 // Mutation returns the ChapterMutation object of the builder.
 func (_u *ChapterUpdateOne) Mutation() *ChapterMutation {
 	return _u.mutation
@@ -521,6 +715,48 @@ func (_u *ChapterUpdateOne) Mutation() *ChapterMutation {
 func (_u *ChapterUpdateOne) ClearNovel() *ChapterUpdateOne {
 	_u.mutation.ClearNovel()
 	return _u
+}
+
+// ClearCharacterStateVersions clears all "character_state_versions" edges to the CharacterStateVersion entity.
+func (_u *ChapterUpdateOne) ClearCharacterStateVersions() *ChapterUpdateOne {
+	_u.mutation.ClearCharacterStateVersions()
+	return _u
+}
+
+// RemoveCharacterStateVersionIDs removes the "character_state_versions" edge to CharacterStateVersion entities by IDs.
+func (_u *ChapterUpdateOne) RemoveCharacterStateVersionIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.RemoveCharacterStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveCharacterStateVersions removes "character_state_versions" edges to CharacterStateVersion entities.
+func (_u *ChapterUpdateOne) RemoveCharacterStateVersions(v ...*CharacterStateVersion) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveCharacterStateVersionIDs(ids...)
+}
+
+// ClearWorldStateVersions clears all "world_state_versions" edges to the WorldStateVersion entity.
+func (_u *ChapterUpdateOne) ClearWorldStateVersions() *ChapterUpdateOne {
+	_u.mutation.ClearWorldStateVersions()
+	return _u
+}
+
+// RemoveWorldStateVersionIDs removes the "world_state_versions" edge to WorldStateVersion entities by IDs.
+func (_u *ChapterUpdateOne) RemoveWorldStateVersionIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.RemoveWorldStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveWorldStateVersions removes "world_state_versions" edges to WorldStateVersion entities.
+func (_u *ChapterUpdateOne) RemoveWorldStateVersions(v ...*WorldStateVersion) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveWorldStateVersionIDs(ids...)
 }
 
 // Where appends a list predicates to the ChapterUpdate builder.
@@ -675,6 +911,96 @@ func (_u *ChapterUpdateOne) sqlSave(ctx context.Context) (_node *Chapter, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(novel.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CharacterStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedCharacterStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.CharacterStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CharacterStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.CharacterStateVersionsTable,
+			Columns: []string{chapter.CharacterStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.WorldStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedWorldStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.WorldStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.WorldStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.WorldStateVersionsTable,
+			Columns: []string{chapter.WorldStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

@@ -12,6 +12,9 @@ type Chapter func(*sql.Selector)
 // Character is the predicate function for character builders.
 type Character func(*sql.Selector)
 
+// CharacterStateVersion is the predicate function for characterstateversion builders.
+type CharacterStateVersion func(*sql.Selector)
+
 // MemoryEntry is the predicate function for memoryentry builders.
 type MemoryEntry func(*sql.Selector)
 
@@ -23,3 +26,6 @@ type Relationship func(*sql.Selector)
 
 // WorldSetting is the predicate function for worldsetting builders.
 type WorldSetting func(*sql.Selector)
+
+// WorldStateVersion is the predicate function for worldstateversion builders.
+type WorldStateVersion func(*sql.Selector)

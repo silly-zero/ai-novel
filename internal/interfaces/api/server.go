@@ -16,8 +16,10 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/go-chi/chi/v5"
@@ -600,6 +602,18 @@ func updateChapterWithIntegrity(
 	}
 	if req.Order != nil {
 		update.SetOrder(*req.Order)
+		if _, err := txClient.CharacterStateVersion.Update().
+			Where(characterstateversion.ChapterID(chapterID)).
+			SetChapterIndex(*req.Order).
+			Save(ctx); err != nil {
+			return nil, err
+		}
+		if _, err := txClient.WorldStateVersion.Update().
+			Where(worldstateversion.ChapterID(chapterID)).
+			SetChapterIndex(*req.Order).
+			Save(ctx); err != nil {
+			return nil, err
+		}
 	}
 	if req.Status != nil {
 		update.SetStatus(strings.TrimSpace(*req.Status))
@@ -660,8 +674,74 @@ func deleteChapterWithIntegrity(
 	if err := requireNoChapterSuccessor(ctx, novelRow.ID, row.Order, lookup); err != nil {
 		return err
 	}
+	characterVersions, err := txClient.CharacterStateVersion.Query().
+		Where(characterstateversion.ChapterID(chapterID)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	characterIDs := make(map[int]struct{}, len(characterVersions))
+	for _, version := range characterVersions {
+		characterIDs[version.CharacterID] = struct{}{}
+	}
+	worldVersions, err := txClient.WorldStateVersion.Query().
+		Where(worldstateversion.ChapterID(chapterID)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	worldIDs := make(map[int]struct{}, len(worldVersions))
+	for _, version := range worldVersions {
+		worldIDs[version.WorldSettingID] = struct{}{}
+	}
+	if _, err := txClient.CharacterStateVersion.Delete().Where(
+		characterstateversion.ChapterID(chapterID),
+	).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := txClient.WorldStateVersion.Delete().Where(
+		worldstateversion.ChapterID(chapterID),
+	).Exec(ctx); err != nil {
+		return err
+	}
 	if err := txClient.Chapter.DeleteOneID(chapterID).Exec(ctx); err != nil {
 		return err
+	}
+	for id := range characterIDs {
+		latest, latestErr := txClient.CharacterStateVersion.Query().
+			Where(characterstateversion.CharacterID(id)).
+			Order(characterstateversion.ByChapterIndex(sql.OrderDesc()), characterstateversion.ByID(sql.OrderDesc())).
+			First(ctx)
+		status := ""
+		if latestErr == nil {
+			status = latest.CurrentStatus
+		} else if !ent.IsNotFound(latestErr) {
+			return latestErr
+		}
+		if err := txClient.Character.UpdateOneID(id).
+			SetCurrentStatus(status).
+			SetStateVersioned(true).
+			Exec(ctx); err != nil {
+			return err
+		}
+	}
+	for id := range worldIDs {
+		latest, latestErr := txClient.WorldStateVersion.Query().
+			Where(worldstateversion.WorldSettingID(id)).
+			Order(worldstateversion.ByChapterIndex(sql.OrderDesc()), worldstateversion.ByID(sql.OrderDesc())).
+			First(ctx)
+		state := ""
+		if latestErr == nil {
+			state = latest.CurrentState
+		} else if !ent.IsNotFound(latestErr) {
+			return latestErr
+		}
+		if err := txClient.WorldSetting.UpdateOneID(id).
+			SetCurrentState(state).
+			SetStateVersioned(true).
+			Exec(ctx); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err

@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/character"
+	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/relationship"
 )
 
@@ -117,6 +118,20 @@ func (_c *CharacterCreate) SetNillableCurrentStatus(v *string) *CharacterCreate 
 	return _c
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_c *CharacterCreate) SetStateVersioned(v bool) *CharacterCreate {
+	_c.mutation.SetStateVersioned(v)
+	return _c
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_c *CharacterCreate) SetNillableStateVersioned(v *bool) *CharacterCreate {
+	if v != nil {
+		_c.SetStateVersioned(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *CharacterCreate) SetCreatedAt(v time.Time) *CharacterCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -160,6 +175,21 @@ func (_c *CharacterCreate) AddRelationships(v ...*Relationship) *CharacterCreate
 	return _c.AddRelationshipIDs(ids...)
 }
 
+// AddStateVersionIDs adds the "state_versions" edge to the CharacterStateVersion entity by IDs.
+func (_c *CharacterCreate) AddStateVersionIDs(ids ...int) *CharacterCreate {
+	_c.mutation.AddStateVersionIDs(ids...)
+	return _c
+}
+
+// AddStateVersions adds the "state_versions" edges to the CharacterStateVersion entity.
+func (_c *CharacterCreate) AddStateVersions(v ...*CharacterStateVersion) *CharacterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddStateVersionIDs(ids...)
+}
+
 // Mutation returns the CharacterMutation object of the builder.
 func (_c *CharacterCreate) Mutation() *CharacterMutation {
 	return _c.mutation
@@ -195,6 +225,10 @@ func (_c *CharacterCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *CharacterCreate) defaults() {
+	if _, ok := _c.mutation.StateVersioned(); !ok {
+		v := character.DefaultStateVersioned
+		_c.mutation.SetStateVersioned(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := character.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -212,6 +246,9 @@ func (_c *CharacterCreate) check() error {
 	}
 	if _, ok := _c.mutation.Name(); !ok {
 		return &ValidationError{Name: "name", err: errors.New(`ent: missing required field "Character.name"`)}
+	}
+	if _, ok := _c.mutation.StateVersioned(); !ok {
+		return &ValidationError{Name: "state_versioned", err: errors.New(`ent: missing required field "Character.state_versioned"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Character.created_at"`)}
@@ -277,6 +314,10 @@ func (_c *CharacterCreate) createSpec() (*Character, *sqlgraph.CreateSpec) {
 		_spec.SetField(character.FieldCurrentStatus, field.TypeString, value)
 		_node.CurrentStatus = value
 	}
+	if value, ok := _c.mutation.StateVersioned(); ok {
+		_spec.SetField(character.FieldStateVersioned, field.TypeBool, value)
+		_node.StateVersioned = value
+	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(character.FieldCreatedAt, field.TypeTime, value)
 		_node.CreatedAt = value
@@ -294,6 +335,22 @@ func (_c *CharacterCreate) createSpec() (*Character, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(relationship.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.StateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.StateVersionsTable,
+			Columns: []string{character.StateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

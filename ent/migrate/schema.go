@@ -48,6 +48,7 @@ var (
 		{Name: "personality", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "background", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "current_status", Type: field.TypeString, Nullable: true, Size: 2147483647},
+		{Name: "state_versioned", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 	}
@@ -56,6 +57,54 @@ var (
 		Name:       "characters",
 		Columns:    CharactersColumns,
 		PrimaryKey: []*schema.Column{CharactersColumns[0]},
+	}
+	// CharacterStateVersionsColumns holds the columns for the "character_state_versions" table.
+	CharacterStateVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "chapter_index", Type: field.TypeInt},
+		{Name: "generation_id", Type: field.TypeString},
+		{Name: "current_status", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "chapter_id", Type: field.TypeInt},
+		{Name: "character_id", Type: field.TypeInt},
+	}
+	// CharacterStateVersionsTable holds the schema information for the "character_state_versions" table.
+	CharacterStateVersionsTable = &schema.Table{
+		Name:       "character_state_versions",
+		Columns:    CharacterStateVersionsColumns,
+		PrimaryKey: []*schema.Column{CharacterStateVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "character_state_versions_chapters_character_state_versions",
+				Columns:    []*schema.Column{CharacterStateVersionsColumns[6]},
+				RefColumns: []*schema.Column{ChaptersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "character_state_versions_characters_state_versions",
+				Columns:    []*schema.Column{CharacterStateVersionsColumns[7]},
+				RefColumns: []*schema.Column{CharactersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "characterstateversion_character_id_chapter_id",
+				Unique:  true,
+				Columns: []*schema.Column{CharacterStateVersionsColumns[7], CharacterStateVersionsColumns[6]},
+			},
+			{
+				Name:    "characterstateversion_character_id_chapter_index",
+				Unique:  false,
+				Columns: []*schema.Column{CharacterStateVersionsColumns[7], CharacterStateVersionsColumns[1]},
+			},
+			{
+				Name:    "characterstateversion_chapter_id",
+				Unique:  false,
+				Columns: []*schema.Column{CharacterStateVersionsColumns[6]},
+			},
+		},
 	}
 	// MemoryEntriesColumns holds the columns for the "memory_entries" table.
 	MemoryEntriesColumns = []*schema.Column{
@@ -129,6 +178,7 @@ var (
 		{Name: "name", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Size: 2147483647},
 		{Name: "current_state", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "state_versioned", Type: field.TypeBool, Default: false},
 		{Name: "metadata", Type: field.TypeJSON, Nullable: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -139,19 +189,73 @@ var (
 		Columns:    WorldSettingsColumns,
 		PrimaryKey: []*schema.Column{WorldSettingsColumns[0]},
 	}
+	// WorldStateVersionsColumns holds the columns for the "world_state_versions" table.
+	WorldStateVersionsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "chapter_index", Type: field.TypeInt},
+		{Name: "generation_id", Type: field.TypeString},
+		{Name: "current_state", Type: field.TypeString, Size: 2147483647},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "chapter_id", Type: field.TypeInt},
+		{Name: "world_setting_id", Type: field.TypeInt},
+	}
+	// WorldStateVersionsTable holds the schema information for the "world_state_versions" table.
+	WorldStateVersionsTable = &schema.Table{
+		Name:       "world_state_versions",
+		Columns:    WorldStateVersionsColumns,
+		PrimaryKey: []*schema.Column{WorldStateVersionsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "world_state_versions_chapters_world_state_versions",
+				Columns:    []*schema.Column{WorldStateVersionsColumns[6]},
+				RefColumns: []*schema.Column{ChaptersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+			{
+				Symbol:     "world_state_versions_world_settings_state_versions",
+				Columns:    []*schema.Column{WorldStateVersionsColumns[7]},
+				RefColumns: []*schema.Column{WorldSettingsColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "worldstateversion_world_setting_id_chapter_id",
+				Unique:  true,
+				Columns: []*schema.Column{WorldStateVersionsColumns[7], WorldStateVersionsColumns[6]},
+			},
+			{
+				Name:    "worldstateversion_world_setting_id_chapter_index",
+				Unique:  false,
+				Columns: []*schema.Column{WorldStateVersionsColumns[7], WorldStateVersionsColumns[1]},
+			},
+			{
+				Name:    "worldstateversion_chapter_id",
+				Unique:  false,
+				Columns: []*schema.Column{WorldStateVersionsColumns[6]},
+			},
+		},
+	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ChaptersTable,
 		CharactersTable,
+		CharacterStateVersionsTable,
 		MemoryEntriesTable,
 		NovelsTable,
 		RelationshipsTable,
 		WorldSettingsTable,
+		WorldStateVersionsTable,
 	}
 )
 
 func init() {
 	ChaptersTable.ForeignKeys[0].RefTable = NovelsTable
+	CharacterStateVersionsTable.ForeignKeys[0].RefTable = ChaptersTable
+	CharacterStateVersionsTable.ForeignKeys[1].RefTable = CharactersTable
 	RelationshipsTable.ForeignKeys[0].RefTable = CharactersTable
 	RelationshipsTable.ForeignKeys[1].RefTable = CharactersTable
+	WorldStateVersionsTable.ForeignKeys[0].RefTable = ChaptersTable
+	WorldStateVersionsTable.ForeignKeys[1].RefTable = WorldSettingsTable
 }

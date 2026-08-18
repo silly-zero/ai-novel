@@ -8,9 +8,13 @@ import (
 	"github.com/ai-novel/studio/internal/domain/events"
 )
 
+type worldStateAgent interface {
+	Run(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+}
+
 // WorldUseCase 负责处理世界观设定的维护逻辑
 type WorldUseCase struct {
-	agent *agents.WorldAgent
+	agent worldStateAgent
 }
 
 func NewWorldUseCase(agent *agents.WorldAgent) *WorldUseCase {
@@ -37,6 +41,7 @@ func (uc *WorldUseCase) HandleChapterGenerated(ctx context.Context, event events
 		GenerationID: e.GenerationID,
 		NovelID:      e.NovelID,
 		ChapterID:    e.ChapterID,
+		ChapterIndex: e.ChapterIndex,
 		Draft:        e.Content,
 	}
 

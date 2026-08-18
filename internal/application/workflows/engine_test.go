@@ -131,6 +131,7 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	engine := newReviewerLoopEngine(t, llm)
 	var retries []int
 	state := &agents.GenerationState{
+		ChapterIndex:    1,
 		ExistingOutline: "大纲",
 		Outline:         "本章大纲",
 		ChapterContract: agents.ChapterContract{
@@ -172,6 +173,7 @@ func TestRunChapterGenerationRetriesDeterministicFailuresWithoutReviewerLLM(t *t
 	engine := newReviewerLoopEngine(t, llm)
 	var retries []int
 	state := &agents.GenerationState{
+		ChapterIndex:    1,
 		ExistingOutline: "大纲",
 		Outline:         "本章大纲",
 		SceneCard:       "场景卡",
@@ -210,6 +212,7 @@ func TestRunChapterGenerationStopsRewritingAfterApproval(t *testing.T) {
 	engine := newReviewerLoopEngine(t, llm)
 	var retries int
 	state := &agents.GenerationState{
+		ChapterIndex:    1,
 		ExistingOutline: "大纲",
 		Outline:         "本章大纲",
 		ChapterContract: agents.ChapterContract{

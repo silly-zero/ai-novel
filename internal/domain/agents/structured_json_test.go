@@ -1322,7 +1322,7 @@ func TestCharacterAndWorldValidatorsRejectBeforePersistence(t *testing.T) {
 	}}
 	_, err := NewCharacterAgent(characterLLM, characterRepo).Run(
 		context.Background(),
-		&GenerationState{NovelID: "7"},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
 	)
 	if err == nil || characterRepo.saveCharacterCalls != 0 {
 		t.Fatalf("character error = %v, saves = %d", err, characterRepo.saveCharacterCalls)
@@ -1332,7 +1332,7 @@ func TestCharacterAndWorldValidatorsRejectBeforePersistence(t *testing.T) {
 	worldLLM := &queuedStructuredLLM{responses: []string{"null", "null"}}
 	_, err = NewWorldAgent(worldLLM, worldRepo).Run(
 		context.Background(),
-		&GenerationState{NovelID: "7"},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
 	)
 	if err == nil || worldRepo.saveCalls != 0 {
 		t.Fatalf("world error = %v, saves = %d", err, worldRepo.saveCalls)
@@ -1395,13 +1395,13 @@ func TestCharacterAgentKeepsLegacyArrayResponse(t *testing.T) {
 
 	_, err := NewCharacterAgent(llm, repo).Run(
 		context.Background(),
-		&GenerationState{NovelID: "7"},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
 	)
 	if err != nil {
 		t.Fatalf("CharacterAgent.Run returned error: %v", err)
 	}
-	if repo.saveCharacterCalls != 1 || repo.lastCharacterName != "林云" {
-		t.Fatalf("saves = %d, name = %q", repo.saveCharacterCalls, repo.lastCharacterName)
+	if repo.saveCharacterCalls != 1 || repo.savedCharacter == nil || repo.savedCharacter.Name != "林云" {
+		t.Fatalf("saves = %d, character = %#v", repo.saveCharacterCalls, repo.savedCharacter)
 	}
 }
 
@@ -1411,12 +1411,12 @@ func TestWorldAgentAcceptsEmptyArray(t *testing.T) {
 
 	_, err := NewWorldAgent(llm, repo).Run(
 		context.Background(),
-		&GenerationState{NovelID: "7"},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
 	)
 	if err != nil {
 		t.Fatalf("WorldAgent.Run returned error: %v", err)
 	}
-	if repo.saveCalls != 0 {
-		t.Fatalf("saves = %d", repo.saveCalls)
+	if repo.saveCalls != 1 {
+		t.Fatalf("replace calls = %d, want 1 to clear prior chapter states", repo.saveCalls)
 	}
 }

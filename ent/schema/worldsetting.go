@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 )
 
@@ -20,6 +21,7 @@ func (WorldSetting) Fields() []ent.Field {
 		field.String("name"),     // 设定名称，如“青阳镇”、“大荒囚天指”
 		field.Text("description"),
 		field.Text("current_state").Default(""),
+		field.Bool("state_versioned").Default(false),
 		field.JSON("metadata", map[string]interface{}{}).Optional(),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
@@ -28,5 +30,7 @@ func (WorldSetting) Fields() []ent.Field {
 
 // Edges of the WorldSetting.
 func (WorldSetting) Edges() []ent.Edge {
-	return nil
+	return []ent.Edge{
+		edge.To("state_versions", WorldStateVersion.Type),
+	}
 }

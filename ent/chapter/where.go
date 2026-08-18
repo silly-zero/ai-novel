@@ -618,6 +618,52 @@ func HasNovelWith(preds ...predicate.Novel) predicate.Chapter {
 	})
 }
 
+// HasCharacterStateVersions applies the HasEdge predicate on the "character_state_versions" edge.
+func HasCharacterStateVersions() predicate.Chapter {
+	return predicate.Chapter(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CharacterStateVersionsTable, CharacterStateVersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCharacterStateVersionsWith applies the HasEdge predicate on the "character_state_versions" edge with a given conditions (other predicates).
+func HasCharacterStateVersionsWith(preds ...predicate.CharacterStateVersion) predicate.Chapter {
+	return predicate.Chapter(func(s *sql.Selector) {
+		step := newCharacterStateVersionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasWorldStateVersions applies the HasEdge predicate on the "world_state_versions" edge.
+func HasWorldStateVersions() predicate.Chapter {
+	return predicate.Chapter(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, WorldStateVersionsTable, WorldStateVersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasWorldStateVersionsWith applies the HasEdge predicate on the "world_state_versions" edge with a given conditions (other predicates).
+func HasWorldStateVersionsWith(preds ...predicate.WorldStateVersion) predicate.Chapter {
+	return predicate.Chapter(func(s *sql.Selector) {
+		step := newWorldStateVersionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Chapter) predicate.Chapter {
 	return predicate.Chapter(sql.AndPredicates(predicates...))

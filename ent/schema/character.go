@@ -24,6 +24,7 @@ func (Character) Fields() []ent.Field {
 		field.Text("personality").Optional(),
 		field.Text("background").Optional(),
 		field.Text("current_status").Optional(),
+		field.Bool("state_versioned").Default(false),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}
@@ -33,5 +34,6 @@ func (Character) Fields() []ent.Field {
 func (Character) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("relationships", Relationship.Type),
+		edge.To("state_versions", CharacterStateVersion.Type),
 	}
 }

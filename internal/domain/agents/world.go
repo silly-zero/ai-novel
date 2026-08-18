@@ -88,8 +88,18 @@ type WorldSettingUpdate struct {
 }
 
 func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
-	// 1. 获取现有设定 (用于参考)
-	existingSettings, err := a.repo.ListAll(ctx, state.NovelID)
+	ref := domain.ChapterStateRef{
+		NovelID:      state.NovelID,
+		ChapterID:    state.ChapterID,
+		ChapterIndex: state.ChapterIndex,
+		GenerationID: state.GenerationID,
+	}
+	ref.Normalize()
+	if err := ref.Validate(); err != nil {
+		return state, fmt.Errorf("world chapter state: %w", err)
+	}
+	// 1. 获取当前章节之前的设定 (用于参考)
+	existingSettings, err := a.repo.ListWorldSettingsBeforeChapter(ctx, ref.NovelID, ref.ChapterIndex)
 	if err != nil {
 		return state, fmt.Errorf("list existing world settings: %w", err)
 	}
@@ -131,27 +141,17 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 		return state, err
 	}
 
-	for _, up := range updates {
-		setting, err := a.repo.FindByName(ctx, state.NovelID, up.Name)
-		if err != nil {
-			setting = &domain.WorldSetting{
-				NovelID: state.NovelID,
-				Name:    up.Name,
-			}
-		}
-
-		if strings.TrimSpace(setting.Category) == "" {
-			setting.Category = up.Category
-		}
-		if strings.TrimSpace(setting.Description) == "" {
-			setting.Description = up.Description
-		}
-		setting.CurrentState = up.CurrentState
-
-		if err := a.repo.SaveSetting(ctx, setting); err != nil {
-			return state, fmt.Errorf("save world setting %q: %w", up.Name, err)
-		}
+	settings := make([]*domain.WorldSetting, 0, len(updates))
+	for _, update := range updates {
+		settings = append(settings, &domain.WorldSetting{
+			Category:     update.Category,
+			Name:         update.Name,
+			Description:  update.Description,
+			CurrentState: update.CurrentState,
+		})
 	}
-
+	if _, err := a.repo.ReplaceChapterWorldSettings(ctx, ref, settings); err != nil {
+		return state, fmt.Errorf("replace chapter world states: %w", err)
+	}
 	return state, nil
 }

@@ -4,6 +4,7 @@ package ent
 
 import (
 	"context"
+	"database/sql/driver"
 	"fmt"
 	"math"
 
@@ -13,15 +14,17 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/ent/worldsetting"
+	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // WorldSettingQuery is the builder for querying WorldSetting entities.
 type WorldSettingQuery struct {
 	config
-	ctx        *QueryContext
-	order      []worldsetting.OrderOption
-	inters     []Interceptor
-	predicates []predicate.WorldSetting
+	ctx               *QueryContext
+	order             []worldsetting.OrderOption
+	inters            []Interceptor
+	predicates        []predicate.WorldSetting
+	withStateVersions *WorldStateVersionQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -56,6 +59,28 @@ func (_q *WorldSettingQuery) Unique(unique bool) *WorldSettingQuery {
 func (_q *WorldSettingQuery) Order(o ...worldsetting.OrderOption) *WorldSettingQuery {
 	_q.order = append(_q.order, o...)
 	return _q
+}
+
+// QueryStateVersions chains the current query on the "state_versions" edge.
+func (_q *WorldSettingQuery) QueryStateVersions() *WorldStateVersionQuery {
+	query := (&WorldStateVersionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(worldsetting.Table, worldsetting.FieldID, selector),
+			sqlgraph.To(worldstateversion.Table, worldstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, worldsetting.StateVersionsTable, worldsetting.StateVersionsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
 }
 
 // First returns the first WorldSetting entity from the query.
@@ -245,15 +270,27 @@ func (_q *WorldSettingQuery) Clone() *WorldSettingQuery {
 		return nil
 	}
 	return &WorldSettingQuery{
-		config:     _q.config,
-		ctx:        _q.ctx.Clone(),
-		order:      append([]worldsetting.OrderOption{}, _q.order...),
-		inters:     append([]Interceptor{}, _q.inters...),
-		predicates: append([]predicate.WorldSetting{}, _q.predicates...),
+		config:            _q.config,
+		ctx:               _q.ctx.Clone(),
+		order:             append([]worldsetting.OrderOption{}, _q.order...),
+		inters:            append([]Interceptor{}, _q.inters...),
+		predicates:        append([]predicate.WorldSetting{}, _q.predicates...),
+		withStateVersions: _q.withStateVersions.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
 	}
+}
+
+// WithStateVersions tells the query-builder to eager-load the nodes that are connected to
+// the "state_versions" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *WorldSettingQuery) WithStateVersions(opts ...func(*WorldStateVersionQuery)) *WorldSettingQuery {
+	query := (&WorldStateVersionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withStateVersions = query
+	return _q
 }
 
 // GroupBy is used to group vertices by one or more fields/columns.
@@ -332,8 +369,11 @@ func (_q *WorldSettingQuery) prepareQuery(ctx context.Context) error {
 
 func (_q *WorldSettingQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*WorldSetting, error) {
 	var (
-		nodes = []*WorldSetting{}
-		_spec = _q.querySpec()
+		nodes       = []*WorldSetting{}
+		_spec       = _q.querySpec()
+		loadedTypes = [1]bool{
+			_q.withStateVersions != nil,
+		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
 		return (*WorldSetting).scanValues(nil, columns)
@@ -341,6 +381,7 @@ func (_q *WorldSettingQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	_spec.Assign = func(columns []string, values []any) error {
 		node := &WorldSetting{config: _q.config}
 		nodes = append(nodes, node)
+		node.Edges.loadedTypes = loadedTypes
 		return node.assignValues(columns, values)
 	}
 	for i := range hooks {
@@ -352,7 +393,45 @@ func (_q *WorldSettingQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]
 	if len(nodes) == 0 {
 		return nodes, nil
 	}
+	if query := _q.withStateVersions; query != nil {
+		if err := _q.loadStateVersions(ctx, query, nodes,
+			func(n *WorldSetting) { n.Edges.StateVersions = []*WorldStateVersion{} },
+			func(n *WorldSetting, e *WorldStateVersion) { n.Edges.StateVersions = append(n.Edges.StateVersions, e) }); err != nil {
+			return nil, err
+		}
+	}
 	return nodes, nil
+}
+
+func (_q *WorldSettingQuery) loadStateVersions(ctx context.Context, query *WorldStateVersionQuery, nodes []*WorldSetting, init func(*WorldSetting), assign func(*WorldSetting, *WorldStateVersion)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*WorldSetting)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(worldstateversion.FieldWorldSettingID)
+	}
+	query.Where(predicate.WorldStateVersion(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(worldsetting.StateVersionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.WorldSettingID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "world_setting_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
 }
 
 func (_q *WorldSettingQuery) sqlCount(ctx context.Context) (int, error) {

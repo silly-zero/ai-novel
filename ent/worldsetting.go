@@ -28,13 +28,36 @@ type WorldSetting struct {
 	Description string `json:"description,omitempty"`
 	// CurrentState holds the value of the "current_state" field.
 	CurrentState string `json:"current_state,omitempty"`
+	// StateVersioned holds the value of the "state_versioned" field.
+	StateVersioned bool `json:"state_versioned,omitempty"`
 	// Metadata holds the value of the "metadata" field.
 	Metadata map[string]interface{} `json:"metadata,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
-	UpdatedAt    time.Time `json:"updated_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	// Edges holds the relations/edges for other nodes in the graph.
+	// The values are being populated by the WorldSettingQuery when eager-loading is set.
+	Edges        WorldSettingEdges `json:"edges"`
 	selectValues sql.SelectValues
+}
+
+// WorldSettingEdges holds the relations/edges for other nodes in the graph.
+type WorldSettingEdges struct {
+	// StateVersions holds the value of the state_versions edge.
+	StateVersions []*WorldStateVersion `json:"state_versions,omitempty"`
+	// loadedTypes holds the information for reporting if a
+	// type was loaded (or requested) in eager-loading or not.
+	loadedTypes [1]bool
+}
+
+// StateVersionsOrErr returns the StateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e WorldSettingEdges) StateVersionsOrErr() ([]*WorldStateVersion, error) {
+	if e.loadedTypes[0] {
+		return e.StateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "state_versions"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -44,6 +67,8 @@ func (*WorldSetting) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case worldsetting.FieldMetadata:
 			values[i] = new([]byte)
+		case worldsetting.FieldStateVersioned:
+			values[i] = new(sql.NullBool)
 		case worldsetting.FieldID:
 			values[i] = new(sql.NullInt64)
 		case worldsetting.FieldNovelID, worldsetting.FieldCategory, worldsetting.FieldName, worldsetting.FieldDescription, worldsetting.FieldCurrentState:
@@ -101,6 +126,12 @@ func (_m *WorldSetting) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CurrentState = value.String
 			}
+		case worldsetting.FieldStateVersioned:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field state_versioned", values[i])
+			} else if value.Valid {
+				_m.StateVersioned = value.Bool
+			}
 		case worldsetting.FieldMetadata:
 			if value, ok := values[i].(*[]byte); !ok {
 				return fmt.Errorf("unexpected type %T for field metadata", values[i])
@@ -132,6 +163,11 @@ func (_m *WorldSetting) assignValues(columns []string, values []any) error {
 // This includes values selected through modifiers, order, etc.
 func (_m *WorldSetting) Value(name string) (ent.Value, error) {
 	return _m.selectValues.Get(name)
+}
+
+// QueryStateVersions queries the "state_versions" edge of the WorldSetting entity.
+func (_m *WorldSetting) QueryStateVersions() *WorldStateVersionQuery {
+	return NewWorldSettingClient(_m.config).QueryStateVersions(_m)
 }
 
 // Update returns a builder for updating this WorldSetting.
@@ -171,6 +207,9 @@ func (_m *WorldSetting) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("current_state=")
 	builder.WriteString(_m.CurrentState)
+	builder.WriteString(", ")
+	builder.WriteString("state_versioned=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StateVersioned))
 	builder.WriteString(", ")
 	builder.WriteString("metadata=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Metadata))

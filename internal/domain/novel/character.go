@@ -32,10 +32,11 @@ type Relationship struct {
 
 // CharacterRepository 角色持久化接口
 type CharacterRepository interface {
-	SaveCharacter(ctx context.Context, c *Character) error
 	GetCharacter(ctx context.Context, id string) (*Character, error)
 	FindByName(ctx context.Context, novelID, name string) (*Character, error)
 	ListCharacters(ctx context.Context, novelID string) ([]*Character, error)
+	ListCharactersBeforeChapter(ctx context.Context, novelID string, chapterIndex int) ([]*Character, error)
+	ReplaceChapterCharacters(ctx context.Context, ref ChapterStateRef, characters []*Character) ([]*Character, error)
 	SaveRelationship(ctx context.Context, r *Relationship) error
 	ListRelationships(ctx context.Context, novelID string) ([]*Relationship, error)
 }

@@ -3,6 +3,8 @@ package agents
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	domain "github.com/ai-novel/studio/internal/domain/novel"
@@ -33,19 +35,11 @@ type characterRepositoryFake struct {
 	byName             map[string]*domain.Character
 	relationships      []*domain.Relationship
 	savedCharacter     *domain.Character
+	savedRef           domain.ChapterStateRef
 	saveCharacterCalls int
 	lastCharacterName  string
-}
-
-func (r *characterRepositoryFake) SaveCharacter(_ context.Context, c *domain.Character) error {
-	r.saveCharacterCalls++
-	r.lastCharacterName = c.Name
-	copy := *c
-	r.savedCharacter = &copy
-	if r.saveCharacterErr == nil {
-		c.ID = "1"
-	}
-	return r.saveCharacterErr
+	listBeforeIndex    int
+	savedRelationship  *domain.Relationship
 }
 
 func (*characterRepositoryFake) GetCharacter(context.Context, string) (*domain.Character, error) {
@@ -74,7 +68,63 @@ func (r *characterRepositoryFake) ListCharacters(context.Context, string) ([]*do
 	return []*domain.Character{r.existing}, nil
 }
 
-func (r *characterRepositoryFake) SaveRelationship(context.Context, *domain.Relationship) error {
+func (r *characterRepositoryFake) ListCharactersBeforeChapter(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) ([]*domain.Character, error) {
+	r.listBeforeIndex = chapterIndex
+	return r.ListCharacters(ctx, novelID)
+}
+
+func (r *characterRepositoryFake) ReplaceChapterCharacters(
+	_ context.Context,
+	ref domain.ChapterStateRef,
+	characters []*domain.Character,
+) ([]*domain.Character, error) {
+	if r.saveCharacterErr != nil {
+		return nil, r.saveCharacterErr
+	}
+	r.saveCharacterCalls++
+	r.savedRef = ref
+	result := make([]*domain.Character, len(characters))
+	for index, input := range characters {
+		canonical := *input
+		canonical.ID = fmt.Sprintf("%d", index+1)
+		canonical.NovelID = ref.NovelID
+		if r.existing != nil && r.existing.Name == input.Name {
+			canonical.ID = "1"
+			canonical.NovelID = r.existing.NovelID
+			if strings.TrimSpace(r.existing.Gender) != "" {
+				canonical.Gender = r.existing.Gender
+			}
+			if r.existing.Age != 0 {
+				canonical.Age = r.existing.Age
+			}
+			if strings.TrimSpace(r.existing.Appearance) != "" {
+				canonical.Appearance = r.existing.Appearance
+			}
+			if strings.TrimSpace(r.existing.Personality) != "" {
+				canonical.Personality = r.existing.Personality
+			}
+			if strings.TrimSpace(r.existing.Background) != "" {
+				canonical.Background = r.existing.Background
+			}
+		}
+		copy := canonical
+		result[index] = &copy
+		if index == 0 {
+			r.savedCharacter = &copy
+		}
+	}
+	return result, nil
+}
+
+func (r *characterRepositoryFake) SaveRelationship(_ context.Context, relationship *domain.Relationship) error {
+	if relationship != nil {
+		copy := *relationship
+		r.savedRelationship = &copy
+	}
 	return r.saveRelationErr
 }
 
@@ -83,18 +133,13 @@ func (r *characterRepositoryFake) ListRelationships(context.Context, string) ([]
 }
 
 type worldRepositoryFake struct {
-	listErr      error
-	saveErr      error
-	existing     *domain.WorldSetting
-	savedSetting *domain.WorldSetting
-	saveCalls    int
-}
-
-func (r *worldRepositoryFake) SaveSetting(_ context.Context, setting *domain.WorldSetting) error {
-	r.saveCalls++
-	copy := *setting
-	r.savedSetting = &copy
-	return r.saveErr
+	listErr         error
+	saveErr         error
+	existing        *domain.WorldSetting
+	savedSetting    *domain.WorldSetting
+	savedRef        domain.ChapterStateRef
+	saveCalls       int
+	listBeforeIndex int
 }
 
 func (r *worldRepositoryFake) FindByName(context.Context, string, string) (*domain.WorldSetting, error) {
@@ -119,23 +164,93 @@ func (r *worldRepositoryFake) ListAll(context.Context, string) ([]*domain.WorldS
 	return []*domain.WorldSetting{r.existing}, nil
 }
 
+func (r *worldRepositoryFake) ListWorldSettingsBeforeChapter(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) ([]*domain.WorldSetting, error) {
+	r.listBeforeIndex = chapterIndex
+	return r.ListAll(ctx, novelID)
+}
+
+func (r *worldRepositoryFake) ReplaceChapterWorldSettings(
+	_ context.Context,
+	ref domain.ChapterStateRef,
+	settings []*domain.WorldSetting,
+) ([]*domain.WorldSetting, error) {
+	if r.saveErr != nil {
+		return nil, r.saveErr
+	}
+	r.saveCalls++
+	r.savedRef = ref
+	result := make([]*domain.WorldSetting, len(settings))
+	for index, input := range settings {
+		canonical := *input
+		canonical.ID = fmt.Sprintf("%d", index+1)
+		canonical.NovelID = ref.NovelID
+		if r.existing != nil && r.existing.Name == input.Name {
+			canonical.ID = "1"
+			canonical.NovelID = r.existing.NovelID
+			if strings.TrimSpace(r.existing.Category) != "" {
+				canonical.Category = r.existing.Category
+			}
+			if strings.TrimSpace(r.existing.Description) != "" {
+				canonical.Description = r.existing.Description
+			}
+		}
+		copy := canonical
+		result[index] = &copy
+		if index == 0 {
+			r.savedSetting = &copy
+		}
+	}
+	return result, nil
+}
+
 func TestCharacterAgentReturnsRepositoryErrors(t *testing.T) {
 	listErr := errors.New("list failed")
 	agent := NewCharacterAgent(memoryAgentTestLLM{}, &characterRepositoryFake{listErr: listErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "7"}); !errors.Is(err, listErr) {
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, listErr) {
 		t.Fatalf("list error = %v, want %v", err, listErr)
 	}
 
 	saveErr := errors.New("save character failed")
 	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"留在青云山等待消息"}]}`}, &characterRepositoryFake{saveCharacterErr: saveErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "7"}); !errors.Is(err, saveErr) {
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, saveErr) {
 		t.Fatalf("save character error = %v, want %v", err, saveErr)
 	}
 
 	relationErr := errors.New("save relationship failed")
-	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青"},{"name":"苏青","current_status":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}, &characterRepositoryFake{saveRelationErr: relationErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "7"}); !errors.Is(err, relationErr) {
+	relationRepo := &characterRepositoryFake{saveRelationErr: relationErr}
+	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青"},{"name":"苏青","current_status":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}, relationRepo)
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, relationErr) {
 		t.Fatalf("save relationship error = %v, want %v", err, relationErr)
+	}
+	if relationRepo.saveCharacterCalls != 1 || relationRepo.savedCharacter == nil {
+		t.Fatalf("character state replacement was not committed before relationship failure: calls=%d character=%#v", relationRepo.saveCharacterCalls, relationRepo.savedCharacter)
+	}
+}
+
+func TestCharacterAgentUsesCanonicalRelationshipEndpoints(t *testing.T) {
+	repo := &characterRepositoryFake{}
+	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青"},{"name":"苏青","current_status":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}
+	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}
+
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	if repo.savedRelationship == nil || repo.savedRelationship.SourceCharacter.ID != "1" || repo.savedRelationship.TargetCharacter.ID != "2" {
+		t.Fatalf("relationship = %#v", repo.savedRelationship)
+	}
+}
+
+func TestCharacterAgentReturnsRelationshipResolutionError(t *testing.T) {
+	repo := &characterRepositoryFake{}
+	llm := memoryAgentTestLLM{response: `{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}
+	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}
+
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err == nil || !strings.Contains(err.Error(), "resolve relationship source") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -152,7 +267,7 @@ func TestCharacterAgentPreservesStaticLedgerAndReplacesCurrentStatus(t *testing.
 	}}
 	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","gender":"女","age":30,"appearance":"新外貌","personality":"新性格","background":"新背景","current_status":"本章结束时已进入密室"}]}`}
 
-	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{NovelID: "7"}); err != nil {
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
 		t.Fatal(err)
 	}
 	if repo.savedCharacter == nil {
@@ -164,6 +279,9 @@ func TestCharacterAgentPreservesStaticLedgerAndReplacesCurrentStatus(t *testing.
 	}
 	if got.CurrentStatus != "本章结束时已进入密室" {
 		t.Fatalf("CurrentStatus = %q", got.CurrentStatus)
+	}
+	if repo.listBeforeIndex != 4 || repo.savedRef.ChapterID != "11" || repo.savedRef.ChapterIndex != 4 || repo.savedRef.GenerationID != "generation" {
+		t.Fatalf("chapter state boundary/ref = %d / %#v", repo.listBeforeIndex, repo.savedRef)
 	}
 }
 
@@ -179,7 +297,7 @@ func TestCharacterAgentFillsMissingStaticFields(t *testing.T) {
 	}}
 	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","gender":"男","age":20,"appearance":"黑衣","personality":"谨慎","background":"边城出身","current_status":"本章结束时离开边城"}]}`}
 
-	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{NovelID: "7"}); err != nil {
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedCharacter
@@ -201,7 +319,7 @@ func TestWorldAgentPreservesStaticLedgerAndReplacesCurrentState(t *testing.T) {
 	}}
 	llm := memoryAgentTestLLM{response: `[{"category":"势力","name":"青云山","description":"被改写的说明","current_state":"本章结束时山门封闭并由长老守卫"}]`}
 
-	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{NovelID: "7"}); err != nil {
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedSetting
@@ -213,6 +331,9 @@ func TestWorldAgentPreservesStaticLedgerAndReplacesCurrentState(t *testing.T) {
 	}
 	if got.CurrentState != "本章结束时山门封闭并由长老守卫" {
 		t.Fatalf("CurrentState = %q", got.CurrentState)
+	}
+	if repo.listBeforeIndex != 4 || repo.savedRef.ChapterID != "11" || repo.savedRef.ChapterIndex != 4 || repo.savedRef.GenerationID != "generation" {
+		t.Fatalf("chapter state boundary/ref = %d / %#v", repo.listBeforeIndex, repo.savedRef)
 	}
 }
 
@@ -226,7 +347,7 @@ func TestWorldAgentFillsMissingStaticFields(t *testing.T) {
 	}}
 	llm := memoryAgentTestLLM{response: `[{"category":"地理","name":"青云山","description":"终年云雾环绕的修炼宗门","current_state":"本章结束时山门封闭"}]`}
 
-	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{NovelID: "7"}); err != nil {
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedSetting
@@ -242,7 +363,7 @@ func TestWorldAgentCreatesCompleteLedgerEntry(t *testing.T) {
 	repo := &worldRepositoryFake{}
 	llm := memoryAgentTestLLM{response: `[{"category":"宝物","name":"玄天镜","description":"可映照灵力轨迹的古镜","current_state":"本章结束时由林云持有"}]`}
 
-	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{NovelID: "7"}); err != nil {
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedSetting
@@ -254,13 +375,13 @@ func TestWorldAgentCreatesCompleteLedgerEntry(t *testing.T) {
 func TestWorldAgentReturnsRepositoryErrors(t *testing.T) {
 	listErr := errors.New("list failed")
 	agent := NewWorldAgent(memoryAgentTestLLM{}, &worldRepositoryFake{listErr: listErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "7"}); !errors.Is(err, listErr) {
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, listErr) {
 		t.Fatalf("list error = %v, want %v", err, listErr)
 	}
 
 	saveErr := errors.New("save setting failed")
 	agent = NewWorldAgent(memoryAgentTestLLM{response: `[{"category":"地理","name":"青云山","description":"群山中的修炼宗门","current_state":"山门已经封闭"}]`}, &worldRepositoryFake{saveErr: saveErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{NovelID: "7"}); !errors.Is(err, saveErr) {
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, saveErr) {
 		t.Fatalf("save setting error = %v, want %v", err, saveErr)
 	}
 }

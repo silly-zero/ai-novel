@@ -33,6 +33,18 @@ func (f CharacterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CharacterMutation", m)
 }
 
+// The CharacterStateVersionFunc type is an adapter to allow the use of ordinary
+// function as CharacterStateVersion mutator.
+type CharacterStateVersionFunc func(context.Context, *ent.CharacterStateVersionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f CharacterStateVersionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.CharacterStateVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.CharacterStateVersionMutation", m)
+}
+
 // The MemoryEntryFunc type is an adapter to allow the use of ordinary
 // function as MemoryEntry mutator.
 type MemoryEntryFunc func(context.Context, *ent.MemoryEntryMutation) (ent.Value, error)
@@ -79,6 +91,18 @@ func (f WorldSettingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 		return f(ctx, mv)
 	}
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.WorldSettingMutation", m)
+}
+
+// The WorldStateVersionFunc type is an adapter to allow the use of ordinary
+// function as WorldStateVersion mutator.
+type WorldStateVersionFunc func(context.Context, *ent.WorldStateVersionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f WorldStateVersionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.WorldStateVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.WorldStateVersionMutation", m)
 }
 
 // Condition is a hook condition function.

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"entgo.io/ent"
+	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 )
@@ -36,5 +37,9 @@ func (Chapter) Edges() []ent.Edge {
 			Ref("chapters").
 			Unique().
 			Required(),
+		edge.To("character_state_versions", CharacterStateVersion.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("world_state_versions", WorldStateVersion.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }

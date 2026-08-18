@@ -33,6 +33,8 @@ type Character struct {
 	Background string `json:"background,omitempty"`
 	// CurrentStatus holds the value of the "current_status" field.
 	CurrentStatus string `json:"current_status,omitempty"`
+	// StateVersioned holds the value of the "state_versioned" field.
+	StateVersioned bool `json:"state_versioned,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -47,9 +49,11 @@ type Character struct {
 type CharacterEdges struct {
 	// Relationships holds the value of the relationships edge.
 	Relationships []*Relationship `json:"relationships,omitempty"`
+	// StateVersions holds the value of the state_versions edge.
+	StateVersions []*CharacterStateVersion `json:"state_versions,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // RelationshipsOrErr returns the Relationships value or an error if the edge
@@ -61,11 +65,22 @@ func (e CharacterEdges) RelationshipsOrErr() ([]*Relationship, error) {
 	return nil, &NotLoadedError{edge: "relationships"}
 }
 
+// StateVersionsOrErr returns the StateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e CharacterEdges) StateVersionsOrErr() ([]*CharacterStateVersion, error) {
+	if e.loadedTypes[1] {
+		return e.StateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "state_versions"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*Character) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case character.FieldStateVersioned:
+			values[i] = new(sql.NullBool)
 		case character.FieldID, character.FieldAge:
 			values[i] = new(sql.NullInt64)
 		case character.FieldNovelID, character.FieldName, character.FieldGender, character.FieldAppearance, character.FieldPersonality, character.FieldBackground, character.FieldCurrentStatus:
@@ -141,6 +156,12 @@ func (_m *Character) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CurrentStatus = value.String
 			}
+		case character.FieldStateVersioned:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field state_versioned", values[i])
+			} else if value.Valid {
+				_m.StateVersioned = value.Bool
+			}
 		case character.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -169,6 +190,11 @@ func (_m *Character) Value(name string) (ent.Value, error) {
 // QueryRelationships queries the "relationships" edge of the Character entity.
 func (_m *Character) QueryRelationships() *RelationshipQuery {
 	return NewCharacterClient(_m.config).QueryRelationships(_m)
+}
+
+// QueryStateVersions queries the "state_versions" edge of the Character entity.
+func (_m *Character) QueryStateVersions() *CharacterStateVersionQuery {
+	return NewCharacterClient(_m.config).QueryStateVersions(_m)
 }
 
 // Update returns a builder for updating this Character.
@@ -217,6 +243,9 @@ func (_m *Character) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("current_status=")
 	builder.WriteString(_m.CurrentStatus)
+	builder.WriteString(", ")
+	builder.WriteString("state_versioned=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StateVersioned))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))
