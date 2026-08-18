@@ -21,6 +21,7 @@ import (
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldsetting"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 )
@@ -42,6 +43,8 @@ type Client struct {
 	Novel *NovelClient
 	// Relationship is the client for interacting with the Relationship builders.
 	Relationship *RelationshipClient
+	// RelationshipStateVersion is the client for interacting with the RelationshipStateVersion builders.
+	RelationshipStateVersion *RelationshipStateVersionClient
 	// WorldSetting is the client for interacting with the WorldSetting builders.
 	WorldSetting *WorldSettingClient
 	// WorldStateVersion is the client for interacting with the WorldStateVersion builders.
@@ -63,6 +66,7 @@ func (c *Client) init() {
 	c.MemoryEntry = NewMemoryEntryClient(c.config)
 	c.Novel = NewNovelClient(c.config)
 	c.Relationship = NewRelationshipClient(c.config)
+	c.RelationshipStateVersion = NewRelationshipStateVersionClient(c.config)
 	c.WorldSetting = NewWorldSettingClient(c.config)
 	c.WorldStateVersion = NewWorldStateVersionClient(c.config)
 }
@@ -155,16 +159,17 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                   ctx,
-		config:                cfg,
-		Chapter:               NewChapterClient(cfg),
-		Character:             NewCharacterClient(cfg),
-		CharacterStateVersion: NewCharacterStateVersionClient(cfg),
-		MemoryEntry:           NewMemoryEntryClient(cfg),
-		Novel:                 NewNovelClient(cfg),
-		Relationship:          NewRelationshipClient(cfg),
-		WorldSetting:          NewWorldSettingClient(cfg),
-		WorldStateVersion:     NewWorldStateVersionClient(cfg),
+		ctx:                      ctx,
+		config:                   cfg,
+		Chapter:                  NewChapterClient(cfg),
+		Character:                NewCharacterClient(cfg),
+		CharacterStateVersion:    NewCharacterStateVersionClient(cfg),
+		MemoryEntry:              NewMemoryEntryClient(cfg),
+		Novel:                    NewNovelClient(cfg),
+		Relationship:             NewRelationshipClient(cfg),
+		RelationshipStateVersion: NewRelationshipStateVersionClient(cfg),
+		WorldSetting:             NewWorldSettingClient(cfg),
+		WorldStateVersion:        NewWorldStateVersionClient(cfg),
 	}, nil
 }
 
@@ -182,16 +187,17 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                   ctx,
-		config:                cfg,
-		Chapter:               NewChapterClient(cfg),
-		Character:             NewCharacterClient(cfg),
-		CharacterStateVersion: NewCharacterStateVersionClient(cfg),
-		MemoryEntry:           NewMemoryEntryClient(cfg),
-		Novel:                 NewNovelClient(cfg),
-		Relationship:          NewRelationshipClient(cfg),
-		WorldSetting:          NewWorldSettingClient(cfg),
-		WorldStateVersion:     NewWorldStateVersionClient(cfg),
+		ctx:                      ctx,
+		config:                   cfg,
+		Chapter:                  NewChapterClient(cfg),
+		Character:                NewCharacterClient(cfg),
+		CharacterStateVersion:    NewCharacterStateVersionClient(cfg),
+		MemoryEntry:              NewMemoryEntryClient(cfg),
+		Novel:                    NewNovelClient(cfg),
+		Relationship:             NewRelationshipClient(cfg),
+		RelationshipStateVersion: NewRelationshipStateVersionClient(cfg),
+		WorldSetting:             NewWorldSettingClient(cfg),
+		WorldStateVersion:        NewWorldStateVersionClient(cfg),
 	}, nil
 }
 
@@ -222,7 +228,8 @@ func (c *Client) Close() error {
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.Chapter, c.Character, c.CharacterStateVersion, c.MemoryEntry, c.Novel,
-		c.Relationship, c.WorldSetting, c.WorldStateVersion,
+		c.Relationship, c.RelationshipStateVersion, c.WorldSetting,
+		c.WorldStateVersion,
 	} {
 		n.Use(hooks...)
 	}
@@ -233,7 +240,8 @@ func (c *Client) Use(hooks ...Hook) {
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.Chapter, c.Character, c.CharacterStateVersion, c.MemoryEntry, c.Novel,
-		c.Relationship, c.WorldSetting, c.WorldStateVersion,
+		c.Relationship, c.RelationshipStateVersion, c.WorldSetting,
+		c.WorldStateVersion,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -254,6 +262,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.Novel.mutate(ctx, m)
 	case *RelationshipMutation:
 		return c.Relationship.mutate(ctx, m)
+	case *RelationshipStateVersionMutation:
+		return c.RelationshipStateVersion.mutate(ctx, m)
 	case *WorldSettingMutation:
 		return c.WorldSetting.mutate(ctx, m)
 	case *WorldStateVersionMutation:
@@ -419,6 +429,22 @@ func (c *ChapterClient) QueryWorldStateVersions(_m *Chapter) *WorldStateVersionQ
 	return query
 }
 
+// QueryRelationshipStateVersions queries the relationship_state_versions edge of a Chapter.
+func (c *ChapterClient) QueryRelationshipStateVersions(_m *Chapter) *RelationshipStateVersionQuery {
+	query := (&RelationshipStateVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(chapter.Table, chapter.FieldID, id),
+			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, chapter.RelationshipStateVersionsTable, chapter.RelationshipStateVersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ChapterClient) Hooks() []Hook {
 	return c.hooks.Chapter
@@ -577,6 +603,38 @@ func (c *CharacterClient) QueryStateVersions(_m *Character) *CharacterStateVersi
 			sqlgraph.From(character.Table, character.FieldID, id),
 			sqlgraph.To(characterstateversion.Table, characterstateversion.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, character.StateVersionsTable, character.StateVersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySourceRelationshipStateVersions queries the source_relationship_state_versions edge of a Character.
+func (c *CharacterClient) QuerySourceRelationshipStateVersions(_m *Character) *RelationshipStateVersionQuery {
+	query := (&RelationshipStateVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(character.Table, character.FieldID, id),
+			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, character.SourceRelationshipStateVersionsTable, character.SourceRelationshipStateVersionsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTargetRelationshipStateVersions queries the target_relationship_state_versions edge of a Character.
+func (c *CharacterClient) QueryTargetRelationshipStateVersions(_m *Character) *RelationshipStateVersionQuery {
+	query := (&RelationshipStateVersionClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(character.Table, character.FieldID, id),
+			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, character.TargetRelationshipStateVersionsTable, character.TargetRelationshipStateVersionsColumn),
 		)
 		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
 		return fromV, nil
@@ -1221,6 +1279,187 @@ func (c *RelationshipClient) mutate(ctx context.Context, m *RelationshipMutation
 	}
 }
 
+// RelationshipStateVersionClient is a client for the RelationshipStateVersion schema.
+type RelationshipStateVersionClient struct {
+	config
+}
+
+// NewRelationshipStateVersionClient returns a client for the RelationshipStateVersion from the given config.
+func NewRelationshipStateVersionClient(c config) *RelationshipStateVersionClient {
+	return &RelationshipStateVersionClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `relationshipstateversion.Hooks(f(g(h())))`.
+func (c *RelationshipStateVersionClient) Use(hooks ...Hook) {
+	c.hooks.RelationshipStateVersion = append(c.hooks.RelationshipStateVersion, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `relationshipstateversion.Intercept(f(g(h())))`.
+func (c *RelationshipStateVersionClient) Intercept(interceptors ...Interceptor) {
+	c.inters.RelationshipStateVersion = append(c.inters.RelationshipStateVersion, interceptors...)
+}
+
+// Create returns a builder for creating a RelationshipStateVersion entity.
+func (c *RelationshipStateVersionClient) Create() *RelationshipStateVersionCreate {
+	mutation := newRelationshipStateVersionMutation(c.config, OpCreate)
+	return &RelationshipStateVersionCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of RelationshipStateVersion entities.
+func (c *RelationshipStateVersionClient) CreateBulk(builders ...*RelationshipStateVersionCreate) *RelationshipStateVersionCreateBulk {
+	return &RelationshipStateVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *RelationshipStateVersionClient) MapCreateBulk(slice any, setFunc func(*RelationshipStateVersionCreate, int)) *RelationshipStateVersionCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &RelationshipStateVersionCreateBulk{err: fmt.Errorf("calling to RelationshipStateVersionClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*RelationshipStateVersionCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &RelationshipStateVersionCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for RelationshipStateVersion.
+func (c *RelationshipStateVersionClient) Update() *RelationshipStateVersionUpdate {
+	mutation := newRelationshipStateVersionMutation(c.config, OpUpdate)
+	return &RelationshipStateVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *RelationshipStateVersionClient) UpdateOne(_m *RelationshipStateVersion) *RelationshipStateVersionUpdateOne {
+	mutation := newRelationshipStateVersionMutation(c.config, OpUpdateOne, withRelationshipStateVersion(_m))
+	return &RelationshipStateVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *RelationshipStateVersionClient) UpdateOneID(id int) *RelationshipStateVersionUpdateOne {
+	mutation := newRelationshipStateVersionMutation(c.config, OpUpdateOne, withRelationshipStateVersionID(id))
+	return &RelationshipStateVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for RelationshipStateVersion.
+func (c *RelationshipStateVersionClient) Delete() *RelationshipStateVersionDelete {
+	mutation := newRelationshipStateVersionMutation(c.config, OpDelete)
+	return &RelationshipStateVersionDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *RelationshipStateVersionClient) DeleteOne(_m *RelationshipStateVersion) *RelationshipStateVersionDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *RelationshipStateVersionClient) DeleteOneID(id int) *RelationshipStateVersionDeleteOne {
+	builder := c.Delete().Where(relationshipstateversion.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &RelationshipStateVersionDeleteOne{builder}
+}
+
+// Query returns a query builder for RelationshipStateVersion.
+func (c *RelationshipStateVersionClient) Query() *RelationshipStateVersionQuery {
+	return &RelationshipStateVersionQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeRelationshipStateVersion},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a RelationshipStateVersion entity by its id.
+func (c *RelationshipStateVersionClient) Get(ctx context.Context, id int) (*RelationshipStateVersion, error) {
+	return c.Query().Where(relationshipstateversion.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *RelationshipStateVersionClient) GetX(ctx context.Context, id int) *RelationshipStateVersion {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryChapter queries the chapter edge of a RelationshipStateVersion.
+func (c *RelationshipStateVersionClient) QueryChapter(_m *RelationshipStateVersion) *ChapterQuery {
+	query := (&ChapterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(relationshipstateversion.Table, relationshipstateversion.FieldID, id),
+			sqlgraph.To(chapter.Table, chapter.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, relationshipstateversion.ChapterTable, relationshipstateversion.ChapterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QuerySourceCharacter queries the source_character edge of a RelationshipStateVersion.
+func (c *RelationshipStateVersionClient) QuerySourceCharacter(_m *RelationshipStateVersion) *CharacterQuery {
+	query := (&CharacterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(relationshipstateversion.Table, relationshipstateversion.FieldID, id),
+			sqlgraph.To(character.Table, character.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, relationshipstateversion.SourceCharacterTable, relationshipstateversion.SourceCharacterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// QueryTargetCharacter queries the target_character edge of a RelationshipStateVersion.
+func (c *RelationshipStateVersionClient) QueryTargetCharacter(_m *RelationshipStateVersion) *CharacterQuery {
+	query := (&CharacterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(relationshipstateversion.Table, relationshipstateversion.FieldID, id),
+			sqlgraph.To(character.Table, character.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, relationshipstateversion.TargetCharacterTable, relationshipstateversion.TargetCharacterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *RelationshipStateVersionClient) Hooks() []Hook {
+	return c.hooks.RelationshipStateVersion
+}
+
+// Interceptors returns the client interceptors.
+func (c *RelationshipStateVersionClient) Interceptors() []Interceptor {
+	return c.inters.RelationshipStateVersion
+}
+
+func (c *RelationshipStateVersionClient) mutate(ctx context.Context, m *RelationshipStateVersionMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&RelationshipStateVersionCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&RelationshipStateVersionUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&RelationshipStateVersionUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&RelationshipStateVersionDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown RelationshipStateVersion mutation op: %q", m.Op())
+	}
+}
+
 // WorldSettingClient is a client for the WorldSetting schema.
 type WorldSettingClient struct {
 	config
@@ -1539,10 +1778,10 @@ func (c *WorldStateVersionClient) mutate(ctx context.Context, m *WorldStateVersi
 type (
 	hooks struct {
 		Chapter, Character, CharacterStateVersion, MemoryEntry, Novel, Relationship,
-		WorldSetting, WorldStateVersion []ent.Hook
+		RelationshipStateVersion, WorldSetting, WorldStateVersion []ent.Hook
 	}
 	inters struct {
 		Chapter, Character, CharacterStateVersion, MemoryEntry, Novel, Relationship,
-		WorldSetting, WorldStateVersion []ent.Interceptor
+		RelationshipStateVersion, WorldSetting, WorldStateVersion []ent.Interceptor
 	}
 )

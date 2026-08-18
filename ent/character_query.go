@@ -16,17 +16,20 @@ import (
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 )
 
 // CharacterQuery is the builder for querying Character entities.
 type CharacterQuery struct {
 	config
-	ctx               *QueryContext
-	order             []character.OrderOption
-	inters            []Interceptor
-	predicates        []predicate.Character
-	withRelationships *RelationshipQuery
-	withStateVersions *CharacterStateVersionQuery
+	ctx                                 *QueryContext
+	order                               []character.OrderOption
+	inters                              []Interceptor
+	predicates                          []predicate.Character
+	withRelationships                   *RelationshipQuery
+	withStateVersions                   *CharacterStateVersionQuery
+	withSourceRelationshipStateVersions *RelationshipStateVersionQuery
+	withTargetRelationshipStateVersions *RelationshipStateVersionQuery
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -100,6 +103,50 @@ func (_q *CharacterQuery) QueryStateVersions() *CharacterStateVersionQuery {
 			sqlgraph.From(character.Table, character.FieldID, selector),
 			sqlgraph.To(characterstateversion.Table, characterstateversion.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, character.StateVersionsTable, character.StateVersionsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QuerySourceRelationshipStateVersions chains the current query on the "source_relationship_state_versions" edge.
+func (_q *CharacterQuery) QuerySourceRelationshipStateVersions() *RelationshipStateVersionQuery {
+	query := (&RelationshipStateVersionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(character.Table, character.FieldID, selector),
+			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, character.SourceRelationshipStateVersionsTable, character.SourceRelationshipStateVersionsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryTargetRelationshipStateVersions chains the current query on the "target_relationship_state_versions" edge.
+func (_q *CharacterQuery) QueryTargetRelationshipStateVersions() *RelationshipStateVersionQuery {
+	query := (&RelationshipStateVersionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(character.Table, character.FieldID, selector),
+			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, character.TargetRelationshipStateVersionsTable, character.TargetRelationshipStateVersionsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -294,13 +341,15 @@ func (_q *CharacterQuery) Clone() *CharacterQuery {
 		return nil
 	}
 	return &CharacterQuery{
-		config:            _q.config,
-		ctx:               _q.ctx.Clone(),
-		order:             append([]character.OrderOption{}, _q.order...),
-		inters:            append([]Interceptor{}, _q.inters...),
-		predicates:        append([]predicate.Character{}, _q.predicates...),
-		withRelationships: _q.withRelationships.Clone(),
-		withStateVersions: _q.withStateVersions.Clone(),
+		config:                              _q.config,
+		ctx:                                 _q.ctx.Clone(),
+		order:                               append([]character.OrderOption{}, _q.order...),
+		inters:                              append([]Interceptor{}, _q.inters...),
+		predicates:                          append([]predicate.Character{}, _q.predicates...),
+		withRelationships:                   _q.withRelationships.Clone(),
+		withStateVersions:                   _q.withStateVersions.Clone(),
+		withSourceRelationshipStateVersions: _q.withSourceRelationshipStateVersions.Clone(),
+		withTargetRelationshipStateVersions: _q.withTargetRelationshipStateVersions.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -326,6 +375,28 @@ func (_q *CharacterQuery) WithStateVersions(opts ...func(*CharacterStateVersionQ
 		opt(query)
 	}
 	_q.withStateVersions = query
+	return _q
+}
+
+// WithSourceRelationshipStateVersions tells the query-builder to eager-load the nodes that are connected to
+// the "source_relationship_state_versions" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *CharacterQuery) WithSourceRelationshipStateVersions(opts ...func(*RelationshipStateVersionQuery)) *CharacterQuery {
+	query := (&RelationshipStateVersionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withSourceRelationshipStateVersions = query
+	return _q
+}
+
+// WithTargetRelationshipStateVersions tells the query-builder to eager-load the nodes that are connected to
+// the "target_relationship_state_versions" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *CharacterQuery) WithTargetRelationshipStateVersions(opts ...func(*RelationshipStateVersionQuery)) *CharacterQuery {
+	query := (&RelationshipStateVersionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withTargetRelationshipStateVersions = query
 	return _q
 }
 
@@ -407,9 +478,11 @@ func (_q *CharacterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ch
 	var (
 		nodes       = []*Character{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [4]bool{
 			_q.withRelationships != nil,
 			_q.withStateVersions != nil,
+			_q.withSourceRelationshipStateVersions != nil,
+			_q.withTargetRelationshipStateVersions != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -441,6 +514,24 @@ func (_q *CharacterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Ch
 		if err := _q.loadStateVersions(ctx, query, nodes,
 			func(n *Character) { n.Edges.StateVersions = []*CharacterStateVersion{} },
 			func(n *Character, e *CharacterStateVersion) { n.Edges.StateVersions = append(n.Edges.StateVersions, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withSourceRelationshipStateVersions; query != nil {
+		if err := _q.loadSourceRelationshipStateVersions(ctx, query, nodes,
+			func(n *Character) { n.Edges.SourceRelationshipStateVersions = []*RelationshipStateVersion{} },
+			func(n *Character, e *RelationshipStateVersion) {
+				n.Edges.SourceRelationshipStateVersions = append(n.Edges.SourceRelationshipStateVersions, e)
+			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withTargetRelationshipStateVersions; query != nil {
+		if err := _q.loadTargetRelationshipStateVersions(ctx, query, nodes,
+			func(n *Character) { n.Edges.TargetRelationshipStateVersions = []*RelationshipStateVersion{} },
+			func(n *Character, e *RelationshipStateVersion) {
+				n.Edges.TargetRelationshipStateVersions = append(n.Edges.TargetRelationshipStateVersions, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -503,6 +594,66 @@ func (_q *CharacterQuery) loadStateVersions(ctx context.Context, query *Characte
 		node, ok := nodeids[fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "character_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *CharacterQuery) loadSourceRelationshipStateVersions(ctx context.Context, query *RelationshipStateVersionQuery, nodes []*Character, init func(*Character), assign func(*Character, *RelationshipStateVersion)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Character)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(relationshipstateversion.FieldSourceCharacterID)
+	}
+	query.Where(predicate.RelationshipStateVersion(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(character.SourceRelationshipStateVersionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.SourceCharacterID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "source_character_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *CharacterQuery) loadTargetRelationshipStateVersions(ctx context.Context, query *RelationshipStateVersionQuery, nodes []*Character, init func(*Character), assign func(*Character, *RelationshipStateVersion)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Character)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(relationshipstateversion.FieldTargetCharacterID)
+	}
+	query.Where(predicate.RelationshipStateVersion(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(character.TargetRelationshipStateVersionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.TargetCharacterID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "target_character_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

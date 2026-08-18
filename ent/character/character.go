@@ -40,6 +40,10 @@ const (
 	EdgeRelationships = "relationships"
 	// EdgeStateVersions holds the string denoting the state_versions edge name in mutations.
 	EdgeStateVersions = "state_versions"
+	// EdgeSourceRelationshipStateVersions holds the string denoting the source_relationship_state_versions edge name in mutations.
+	EdgeSourceRelationshipStateVersions = "source_relationship_state_versions"
+	// EdgeTargetRelationshipStateVersions holds the string denoting the target_relationship_state_versions edge name in mutations.
+	EdgeTargetRelationshipStateVersions = "target_relationship_state_versions"
 	// Table holds the table name of the character in the database.
 	Table = "characters"
 	// RelationshipsTable is the table that holds the relationships relation/edge.
@@ -56,6 +60,20 @@ const (
 	StateVersionsInverseTable = "character_state_versions"
 	// StateVersionsColumn is the table column denoting the state_versions relation/edge.
 	StateVersionsColumn = "character_id"
+	// SourceRelationshipStateVersionsTable is the table that holds the source_relationship_state_versions relation/edge.
+	SourceRelationshipStateVersionsTable = "relationship_state_versions"
+	// SourceRelationshipStateVersionsInverseTable is the table name for the RelationshipStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "relationshipstateversion" package.
+	SourceRelationshipStateVersionsInverseTable = "relationship_state_versions"
+	// SourceRelationshipStateVersionsColumn is the table column denoting the source_relationship_state_versions relation/edge.
+	SourceRelationshipStateVersionsColumn = "source_character_id"
+	// TargetRelationshipStateVersionsTable is the table that holds the target_relationship_state_versions relation/edge.
+	TargetRelationshipStateVersionsTable = "relationship_state_versions"
+	// TargetRelationshipStateVersionsInverseTable is the table name for the RelationshipStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "relationshipstateversion" package.
+	TargetRelationshipStateVersionsInverseTable = "relationship_state_versions"
+	// TargetRelationshipStateVersionsColumn is the table column denoting the target_relationship_state_versions relation/edge.
+	TargetRelationshipStateVersionsColumn = "target_character_id"
 )
 
 // Columns holds all SQL columns for character fields.
@@ -185,6 +203,34 @@ func ByStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// BySourceRelationshipStateVersionsCount orders the results by source_relationship_state_versions count.
+func BySourceRelationshipStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newSourceRelationshipStateVersionsStep(), opts...)
+	}
+}
+
+// BySourceRelationshipStateVersions orders the results by source_relationship_state_versions terms.
+func BySourceRelationshipStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newSourceRelationshipStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByTargetRelationshipStateVersionsCount orders the results by target_relationship_state_versions count.
+func ByTargetRelationshipStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newTargetRelationshipStateVersionsStep(), opts...)
+	}
+}
+
+// ByTargetRelationshipStateVersions orders the results by target_relationship_state_versions terms.
+func ByTargetRelationshipStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newTargetRelationshipStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newRelationshipsStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -197,5 +243,19 @@ func newStateVersionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(StateVersionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, StateVersionsTable, StateVersionsColumn),
+	)
+}
+func newSourceRelationshipStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(SourceRelationshipStateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, SourceRelationshipStateVersionsTable, SourceRelationshipStateVersionsColumn),
+	)
+}
+func newTargetRelationshipStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(TargetRelationshipStateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, TargetRelationshipStateVersionsTable, TargetRelationshipStateVersionsColumn),
 	)
 }

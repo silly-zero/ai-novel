@@ -28,18 +28,20 @@ func (f memoryAgentTestLLM) StreamGenerate(
 }
 
 type characterRepositoryFake struct {
-	listErr            error
-	saveCharacterErr   error
-	saveRelationErr    error
-	existing           *domain.Character
-	byName             map[string]*domain.Character
-	relationships      []*domain.Relationship
-	savedCharacter     *domain.Character
-	savedRef           domain.ChapterStateRef
-	saveCharacterCalls int
-	lastCharacterName  string
-	listBeforeIndex    int
-	savedRelationship  *domain.Relationship
+	listErr                 error
+	saveCharacterErr        error
+	saveRelationErr         error
+	existing                *domain.Character
+	byName                  map[string]*domain.Character
+	relationships           []*domain.Relationship
+	savedCharacter          *domain.Character
+	savedRef                domain.ChapterStateRef
+	saveCharacterCalls      int
+	lastCharacterName       string
+	listBeforeIndex         int
+	savedRelationship       *domain.Relationship
+	savedChanges            []domain.RelationshipChange
+	relationshipBeforeIndex int
 }
 
 func (*characterRepositoryFake) GetCharacter(context.Context, string) (*domain.Character, error) {
@@ -120,12 +122,41 @@ func (r *characterRepositoryFake) ReplaceChapterCharacters(
 	return result, nil
 }
 
-func (r *characterRepositoryFake) SaveRelationship(_ context.Context, relationship *domain.Relationship) error {
-	if relationship != nil {
+func (r *characterRepositoryFake) ReplaceChapterRelationships(
+	_ context.Context,
+	_ domain.ChapterStateRef,
+	changes []domain.RelationshipChange,
+) ([]*domain.Relationship, error) {
+	r.savedChanges = append([]domain.RelationshipChange(nil), changes...)
+	if r.saveRelationErr != nil {
+		return nil, r.saveRelationErr
+	}
+	result := make([]*domain.Relationship, 0, len(changes))
+	for _, change := range changes {
+		if change.Operation == domain.RelationshipOperationRemove {
+			continue
+		}
+		relationship := &domain.Relationship{
+			ID:              "1",
+			SourceCharacter: change.SourceCharacter,
+			TargetCharacter: change.TargetCharacter,
+			RelationType:    change.RelationType,
+			Description:     change.Description,
+		}
+		result = append(result, relationship)
 		copy := *relationship
 		r.savedRelationship = &copy
 	}
-	return r.saveRelationErr
+	return result, nil
+}
+
+func (r *characterRepositoryFake) ListRelationshipsBeforeChapter(
+	_ context.Context,
+	_ string,
+	chapterIndex int,
+) ([]*domain.Relationship, error) {
+	r.relationshipBeforeIndex = chapterIndex
+	return r.relationships, nil
 }
 
 func (r *characterRepositoryFake) ListRelationships(context.Context, string) ([]*domain.Relationship, error) {
@@ -242,6 +273,9 @@ func TestCharacterAgentUsesCanonicalRelationshipEndpoints(t *testing.T) {
 	if repo.savedRelationship == nil || repo.savedRelationship.SourceCharacter.ID != "1" || repo.savedRelationship.TargetCharacter.ID != "2" {
 		t.Fatalf("relationship = %#v", repo.savedRelationship)
 	}
+	if len(repo.savedChanges) != 1 || repo.savedChanges[0].Operation != domain.RelationshipOperationUpsert {
+		t.Fatalf("relationship changes = %#v", repo.savedChanges)
+	}
 }
 
 func TestCharacterAgentReturnsRelationshipResolutionError(t *testing.T) {
@@ -249,8 +283,11 @@ func TestCharacterAgentReturnsRelationshipResolutionError(t *testing.T) {
 	llm := memoryAgentTestLLM{response: `{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}
 	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}
 
-	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err == nil || !strings.Contains(err.Error(), "resolve relationship source") {
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err == nil || !strings.Contains(err.Error(), "resolve relationship character") {
 		t.Fatalf("error = %v", err)
+	}
+	if repo.saveCharacterCalls != 0 {
+		t.Fatalf("character states committed before relationship resolution: %d", repo.saveCharacterCalls)
 	}
 }
 

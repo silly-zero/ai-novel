@@ -24,6 +24,8 @@ type Relationship struct {
 	RelationType string `json:"relation_type,omitempty"`
 	// Description holds the value of the "description" field.
 	Description string `json:"description,omitempty"`
+	// StateVersioned holds the value of the "state_versioned" field.
+	StateVersioned bool `json:"state_versioned,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -74,6 +76,8 @@ func (*Relationship) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case relationship.FieldStateVersioned:
+			values[i] = new(sql.NullBool)
 		case relationship.FieldID:
 			values[i] = new(sql.NullInt64)
 		case relationship.FieldNovelID, relationship.FieldRelationType, relationship.FieldDescription:
@@ -122,6 +126,12 @@ func (_m *Relationship) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field description", values[i])
 			} else if value.Valid {
 				_m.Description = value.String
+			}
+		case relationship.FieldStateVersioned:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field state_versioned", values[i])
+			} else if value.Valid {
+				_m.StateVersioned = value.Bool
 			}
 		case relationship.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -203,6 +213,9 @@ func (_m *Relationship) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("description=")
 	builder.WriteString(_m.Description)
+	builder.WriteString(", ")
+	builder.WriteString("state_versioned=")
+	builder.WriteString(fmt.Sprintf("%v", _m.StateVersioned))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

@@ -16,6 +16,7 @@ import (
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
@@ -223,6 +224,21 @@ func (_u *ChapterUpdate) AddWorldStateVersions(v ...*WorldStateVersion) *Chapter
 	return _u.AddWorldStateVersionIDs(ids...)
 }
 
+// AddRelationshipStateVersionIDs adds the "relationship_state_versions" edge to the RelationshipStateVersion entity by IDs.
+func (_u *ChapterUpdate) AddRelationshipStateVersionIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.AddRelationshipStateVersionIDs(ids...)
+	return _u
+}
+
+// AddRelationshipStateVersions adds the "relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_u *ChapterUpdate) AddRelationshipStateVersions(v ...*RelationshipStateVersion) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddRelationshipStateVersionIDs(ids...)
+}
+
 // Mutation returns the ChapterMutation object of the builder.
 func (_u *ChapterUpdate) Mutation() *ChapterMutation {
 	return _u.mutation
@@ -274,6 +290,27 @@ func (_u *ChapterUpdate) RemoveWorldStateVersions(v ...*WorldStateVersion) *Chap
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveWorldStateVersionIDs(ids...)
+}
+
+// ClearRelationshipStateVersions clears all "relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_u *ChapterUpdate) ClearRelationshipStateVersions() *ChapterUpdate {
+	_u.mutation.ClearRelationshipStateVersions()
+	return _u
+}
+
+// RemoveRelationshipStateVersionIDs removes the "relationship_state_versions" edge to RelationshipStateVersion entities by IDs.
+func (_u *ChapterUpdate) RemoveRelationshipStateVersionIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.RemoveRelationshipStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveRelationshipStateVersions removes "relationship_state_versions" edges to RelationshipStateVersion entities.
+func (_u *ChapterUpdate) RemoveRelationshipStateVersions(v ...*RelationshipStateVersion) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveRelationshipStateVersionIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -495,6 +532,51 @@ func (_u *ChapterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.RelationshipStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedRelationshipStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.RelationshipStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RelationshipStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{chapter.Label}
@@ -706,6 +788,21 @@ func (_u *ChapterUpdateOne) AddWorldStateVersions(v ...*WorldStateVersion) *Chap
 	return _u.AddWorldStateVersionIDs(ids...)
 }
 
+// AddRelationshipStateVersionIDs adds the "relationship_state_versions" edge to the RelationshipStateVersion entity by IDs.
+func (_u *ChapterUpdateOne) AddRelationshipStateVersionIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.AddRelationshipStateVersionIDs(ids...)
+	return _u
+}
+
+// AddRelationshipStateVersions adds the "relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_u *ChapterUpdateOne) AddRelationshipStateVersions(v ...*RelationshipStateVersion) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddRelationshipStateVersionIDs(ids...)
+}
+
 // Mutation returns the ChapterMutation object of the builder.
 func (_u *ChapterUpdateOne) Mutation() *ChapterMutation {
 	return _u.mutation
@@ -757,6 +854,27 @@ func (_u *ChapterUpdateOne) RemoveWorldStateVersions(v ...*WorldStateVersion) *C
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveWorldStateVersionIDs(ids...)
+}
+
+// ClearRelationshipStateVersions clears all "relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_u *ChapterUpdateOne) ClearRelationshipStateVersions() *ChapterUpdateOne {
+	_u.mutation.ClearRelationshipStateVersions()
+	return _u
+}
+
+// RemoveRelationshipStateVersionIDs removes the "relationship_state_versions" edge to RelationshipStateVersion entities by IDs.
+func (_u *ChapterUpdateOne) RemoveRelationshipStateVersionIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.RemoveRelationshipStateVersionIDs(ids...)
+	return _u
+}
+
+// RemoveRelationshipStateVersions removes "relationship_state_versions" edges to RelationshipStateVersion entities.
+func (_u *ChapterUpdateOne) RemoveRelationshipStateVersions(v ...*RelationshipStateVersion) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveRelationshipStateVersionIDs(ids...)
 }
 
 // Where appends a list predicates to the ChapterUpdate builder.
@@ -1001,6 +1119,51 @@ func (_u *ChapterUpdateOne) sqlSave(ctx context.Context) (_node *Chapter, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.RelationshipStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedRelationshipStateVersionsIDs(); len(nodes) > 0 && !_u.mutation.RelationshipStateVersionsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RelationshipStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

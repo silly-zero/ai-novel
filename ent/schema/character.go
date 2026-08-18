@@ -35,5 +35,7 @@ func (Character) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("relationships", Relationship.Type),
 		edge.To("state_versions", CharacterStateVersion.Type),
+		edge.To("source_relationship_state_versions", RelationshipStateVersion.Type),
+		edge.To("target_relationship_state_versions", RelationshipStateVersion.Type),
 	}
 }

@@ -51,9 +51,13 @@ type CharacterEdges struct {
 	Relationships []*Relationship `json:"relationships,omitempty"`
 	// StateVersions holds the value of the state_versions edge.
 	StateVersions []*CharacterStateVersion `json:"state_versions,omitempty"`
+	// SourceRelationshipStateVersions holds the value of the source_relationship_state_versions edge.
+	SourceRelationshipStateVersions []*RelationshipStateVersion `json:"source_relationship_state_versions,omitempty"`
+	// TargetRelationshipStateVersions holds the value of the target_relationship_state_versions edge.
+	TargetRelationshipStateVersions []*RelationshipStateVersion `json:"target_relationship_state_versions,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [4]bool
 }
 
 // RelationshipsOrErr returns the Relationships value or an error if the edge
@@ -72,6 +76,24 @@ func (e CharacterEdges) StateVersionsOrErr() ([]*CharacterStateVersion, error) {
 		return e.StateVersions, nil
 	}
 	return nil, &NotLoadedError{edge: "state_versions"}
+}
+
+// SourceRelationshipStateVersionsOrErr returns the SourceRelationshipStateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e CharacterEdges) SourceRelationshipStateVersionsOrErr() ([]*RelationshipStateVersion, error) {
+	if e.loadedTypes[2] {
+		return e.SourceRelationshipStateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "source_relationship_state_versions"}
+}
+
+// TargetRelationshipStateVersionsOrErr returns the TargetRelationshipStateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e CharacterEdges) TargetRelationshipStateVersionsOrErr() ([]*RelationshipStateVersion, error) {
+	if e.loadedTypes[3] {
+		return e.TargetRelationshipStateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "target_relationship_state_versions"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -195,6 +217,16 @@ func (_m *Character) QueryRelationships() *RelationshipQuery {
 // QueryStateVersions queries the "state_versions" edge of the Character entity.
 func (_m *Character) QueryStateVersions() *CharacterStateVersionQuery {
 	return NewCharacterClient(_m.config).QueryStateVersions(_m)
+}
+
+// QuerySourceRelationshipStateVersions queries the "source_relationship_state_versions" edge of the Character entity.
+func (_m *Character) QuerySourceRelationshipStateVersions() *RelationshipStateVersionQuery {
+	return NewCharacterClient(_m.config).QuerySourceRelationshipStateVersions(_m)
+}
+
+// QueryTargetRelationshipStateVersions queries the "target_relationship_state_versions" edge of the Character entity.
+func (_m *Character) QueryTargetRelationshipStateVersions() *RelationshipStateVersionQuery {
+	return NewCharacterClient(_m.config).QueryTargetRelationshipStateVersions(_m)
 }
 
 // Update returns a builder for updating this Character.

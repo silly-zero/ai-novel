@@ -24,6 +24,8 @@ type Tx struct {
 	Novel *NovelClient
 	// Relationship is the client for interacting with the Relationship builders.
 	Relationship *RelationshipClient
+	// RelationshipStateVersion is the client for interacting with the RelationshipStateVersion builders.
+	RelationshipStateVersion *RelationshipStateVersionClient
 	// WorldSetting is the client for interacting with the WorldSetting builders.
 	WorldSetting *WorldSettingClient
 	// WorldStateVersion is the client for interacting with the WorldStateVersion builders.
@@ -165,6 +167,7 @@ func (tx *Tx) init() {
 	tx.MemoryEntry = NewMemoryEntryClient(tx.config)
 	tx.Novel = NewNovelClient(tx.config)
 	tx.Relationship = NewRelationshipClient(tx.config)
+	tx.RelationshipStateVersion = NewRelationshipStateVersionClient(tx.config)
 	tx.WorldSetting = NewWorldSettingClient(tx.config)
 	tx.WorldStateVersion = NewWorldStateVersionClient(tx.config)
 }

@@ -20,6 +20,8 @@ const (
 	FieldRelationType = "relation_type"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldStateVersioned holds the string denoting the state_versioned field in the database.
+	FieldStateVersioned = "state_versioned"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -52,6 +54,7 @@ var Columns = []string{
 	FieldNovelID,
 	FieldRelationType,
 	FieldDescription,
+	FieldStateVersioned,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -79,6 +82,8 @@ func ValidColumn(column string) bool {
 }
 
 var (
+	// DefaultStateVersioned holds the default value on creation for the "state_versioned" field.
+	DefaultStateVersioned bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -108,6 +113,11 @@ func ByRelationType(opts ...sql.OrderTermOption) OrderOption {
 // ByDescription orders the results by the description field.
 func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDescription, opts...).ToFunc()
+}
+
+// ByStateVersioned orders the results by the state_versioned field.
+func ByStateVersioned(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldStateVersioned, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

@@ -18,6 +18,7 @@ import (
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldsetting"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 )
@@ -80,14 +81,15 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			chapter.Table:               chapter.ValidColumn,
-			character.Table:             character.ValidColumn,
-			characterstateversion.Table: characterstateversion.ValidColumn,
-			memoryentry.Table:           memoryentry.ValidColumn,
-			novel.Table:                 novel.ValidColumn,
-			relationship.Table:          relationship.ValidColumn,
-			worldsetting.Table:          worldsetting.ValidColumn,
-			worldstateversion.Table:     worldstateversion.ValidColumn,
+			chapter.Table:                  chapter.ValidColumn,
+			character.Table:                character.ValidColumn,
+			characterstateversion.Table:    characterstateversion.ValidColumn,
+			memoryentry.Table:              memoryentry.ValidColumn,
+			novel.Table:                    novel.ValidColumn,
+			relationship.Table:             relationship.ValidColumn,
+			relationshipstateversion.Table: relationshipstateversion.ValidColumn,
+			worldsetting.Table:             worldsetting.ValidColumn,
+			worldstateversion.Table:        worldstateversion.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

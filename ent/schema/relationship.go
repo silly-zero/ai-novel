@@ -19,6 +19,7 @@ func (Relationship) Fields() []ent.Field {
 		field.String("novel_id"),
 		field.String("relation_type"), // 如：师徒、敌人、恋人
 		field.Text("description").Optional(),
+		field.Bool("state_versioned").Default(false),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

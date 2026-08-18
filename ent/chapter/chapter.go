@@ -40,6 +40,8 @@ const (
 	EdgeCharacterStateVersions = "character_state_versions"
 	// EdgeWorldStateVersions holds the string denoting the world_state_versions edge name in mutations.
 	EdgeWorldStateVersions = "world_state_versions"
+	// EdgeRelationshipStateVersions holds the string denoting the relationship_state_versions edge name in mutations.
+	EdgeRelationshipStateVersions = "relationship_state_versions"
 	// Table holds the table name of the chapter in the database.
 	Table = "chapters"
 	// NovelTable is the table that holds the novel relation/edge.
@@ -63,6 +65,13 @@ const (
 	WorldStateVersionsInverseTable = "world_state_versions"
 	// WorldStateVersionsColumn is the table column denoting the world_state_versions relation/edge.
 	WorldStateVersionsColumn = "chapter_id"
+	// RelationshipStateVersionsTable is the table that holds the relationship_state_versions relation/edge.
+	RelationshipStateVersionsTable = "relationship_state_versions"
+	// RelationshipStateVersionsInverseTable is the table name for the RelationshipStateVersion entity.
+	// It exists in this package in order to avoid circular dependency with the "relationshipstateversion" package.
+	RelationshipStateVersionsInverseTable = "relationship_state_versions"
+	// RelationshipStateVersionsColumn is the table column denoting the relationship_state_versions relation/edge.
+	RelationshipStateVersionsColumn = "chapter_id"
 )
 
 // Columns holds all SQL columns for chapter fields.
@@ -203,6 +212,20 @@ func ByWorldStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOptio
 		sqlgraph.OrderByNeighborTerms(s, newWorldStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByRelationshipStateVersionsCount orders the results by relationship_state_versions count.
+func ByRelationshipStateVersionsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newRelationshipStateVersionsStep(), opts...)
+	}
+}
+
+// ByRelationshipStateVersions orders the results by relationship_state_versions terms.
+func ByRelationshipStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRelationshipStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newNovelStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -222,5 +245,12 @@ func newWorldStateVersionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(WorldStateVersionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, WorldStateVersionsTable, WorldStateVersionsColumn),
+	)
+}
+func newRelationshipStateVersionsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RelationshipStateVersionsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, RelationshipStateVersionsTable, RelationshipStateVersionsColumn),
 	)
 }

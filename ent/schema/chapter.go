@@ -41,5 +41,7 @@ func (Chapter) Edges() []ent.Edge {
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("world_state_versions", WorldStateVersion.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("relationship_state_versions", RelationshipStateVersion.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }

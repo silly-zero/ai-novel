@@ -81,6 +81,18 @@ func (f RelationshipFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RelationshipMutation", m)
 }
 
+// The RelationshipStateVersionFunc type is an adapter to allow the use of ordinary
+// function as RelationshipStateVersion mutator.
+type RelationshipStateVersionFunc func(context.Context, *ent.RelationshipStateVersionMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f RelationshipStateVersionFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.RelationshipStateVersionMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.RelationshipStateVersionMutation", m)
+}
+
 // The WorldSettingFunc type is an adapter to allow the use of ordinary
 // function as WorldSetting mutator.
 type WorldSettingFunc func(context.Context, *ent.WorldSettingMutation) (ent.Value, error)

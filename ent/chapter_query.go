@@ -16,20 +16,22 @@ import (
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
 // ChapterQuery is the builder for querying Chapter entities.
 type ChapterQuery struct {
 	config
-	ctx                        *QueryContext
-	order                      []chapter.OrderOption
-	inters                     []Interceptor
-	predicates                 []predicate.Chapter
-	withNovel                  *NovelQuery
-	withCharacterStateVersions *CharacterStateVersionQuery
-	withWorldStateVersions     *WorldStateVersionQuery
-	withFKs                    bool
+	ctx                           *QueryContext
+	order                         []chapter.OrderOption
+	inters                        []Interceptor
+	predicates                    []predicate.Chapter
+	withNovel                     *NovelQuery
+	withCharacterStateVersions    *CharacterStateVersionQuery
+	withWorldStateVersions        *WorldStateVersionQuery
+	withRelationshipStateVersions *RelationshipStateVersionQuery
+	withFKs                       bool
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -125,6 +127,28 @@ func (_q *ChapterQuery) QueryWorldStateVersions() *WorldStateVersionQuery {
 			sqlgraph.From(chapter.Table, chapter.FieldID, selector),
 			sqlgraph.To(worldstateversion.Table, worldstateversion.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, chapter.WorldStateVersionsTable, chapter.WorldStateVersionsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryRelationshipStateVersions chains the current query on the "relationship_state_versions" edge.
+func (_q *ChapterQuery) QueryRelationshipStateVersions() *RelationshipStateVersionQuery {
+	query := (&RelationshipStateVersionClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(chapter.Table, chapter.FieldID, selector),
+			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, chapter.RelationshipStateVersionsTable, chapter.RelationshipStateVersionsColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -319,14 +343,15 @@ func (_q *ChapterQuery) Clone() *ChapterQuery {
 		return nil
 	}
 	return &ChapterQuery{
-		config:                     _q.config,
-		ctx:                        _q.ctx.Clone(),
-		order:                      append([]chapter.OrderOption{}, _q.order...),
-		inters:                     append([]Interceptor{}, _q.inters...),
-		predicates:                 append([]predicate.Chapter{}, _q.predicates...),
-		withNovel:                  _q.withNovel.Clone(),
-		withCharacterStateVersions: _q.withCharacterStateVersions.Clone(),
-		withWorldStateVersions:     _q.withWorldStateVersions.Clone(),
+		config:                        _q.config,
+		ctx:                           _q.ctx.Clone(),
+		order:                         append([]chapter.OrderOption{}, _q.order...),
+		inters:                        append([]Interceptor{}, _q.inters...),
+		predicates:                    append([]predicate.Chapter{}, _q.predicates...),
+		withNovel:                     _q.withNovel.Clone(),
+		withCharacterStateVersions:    _q.withCharacterStateVersions.Clone(),
+		withWorldStateVersions:        _q.withWorldStateVersions.Clone(),
+		withRelationshipStateVersions: _q.withRelationshipStateVersions.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -363,6 +388,17 @@ func (_q *ChapterQuery) WithWorldStateVersions(opts ...func(*WorldStateVersionQu
 		opt(query)
 	}
 	_q.withWorldStateVersions = query
+	return _q
+}
+
+// WithRelationshipStateVersions tells the query-builder to eager-load the nodes that are connected to
+// the "relationship_state_versions" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ChapterQuery) WithRelationshipStateVersions(opts ...func(*RelationshipStateVersionQuery)) *ChapterQuery {
+	query := (&RelationshipStateVersionClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withRelationshipStateVersions = query
 	return _q
 }
 
@@ -445,10 +481,11 @@ func (_q *ChapterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Chap
 		nodes       = []*Chapter{}
 		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [3]bool{
+		loadedTypes = [4]bool{
 			_q.withNovel != nil,
 			_q.withCharacterStateVersions != nil,
 			_q.withWorldStateVersions != nil,
+			_q.withRelationshipStateVersions != nil,
 		}
 	)
 	if _q.withNovel != nil {
@@ -495,6 +532,15 @@ func (_q *ChapterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Chap
 			func(n *Chapter) { n.Edges.WorldStateVersions = []*WorldStateVersion{} },
 			func(n *Chapter, e *WorldStateVersion) {
 				n.Edges.WorldStateVersions = append(n.Edges.WorldStateVersions, e)
+			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withRelationshipStateVersions; query != nil {
+		if err := _q.loadRelationshipStateVersions(ctx, query, nodes,
+			func(n *Chapter) { n.Edges.RelationshipStateVersions = []*RelationshipStateVersion{} },
+			func(n *Chapter, e *RelationshipStateVersion) {
+				n.Edges.RelationshipStateVersions = append(n.Edges.RelationshipStateVersions, e)
 			}); err != nil {
 			return nil, err
 		}
@@ -579,6 +625,36 @@ func (_q *ChapterQuery) loadWorldStateVersions(ctx context.Context, query *World
 	}
 	query.Where(predicate.WorldStateVersion(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(chapter.WorldStateVersionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ChapterID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "chapter_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ChapterQuery) loadRelationshipStateVersions(ctx context.Context, query *RelationshipStateVersionQuery, nodes []*Chapter, init func(*Chapter), assign func(*Chapter, *RelationshipStateVersion)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Chapter)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(relationshipstateversion.FieldChapterID)
+	}
+	query.Where(predicate.RelationshipStateVersion(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(chapter.RelationshipStateVersionsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

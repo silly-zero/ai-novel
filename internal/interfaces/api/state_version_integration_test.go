@@ -12,6 +12,8 @@ import (
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldsetting"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 	_ "github.com/lib/pq"
@@ -52,6 +54,16 @@ func TestDeleteChapterWithIntegrityCascadesStateVersionsAndRefreshesCaches(t *te
 				return err
 			},
 			func() error {
+				_, err := client.RelationshipStateVersion.Delete().Where(
+					relationshipstateversion.HasSourceCharacterWith(character.NovelID(novelID)),
+				).Exec(cleanupCtx)
+				return err
+			},
+			func() error {
+				_, err := client.Relationship.Delete().Where(relationship.NovelID(novelID)).Exec(cleanupCtx)
+				return err
+			},
+			func() error {
 				_, err := client.Character.Delete().Where(character.NovelID(novelID)).Exec(cleanupCtx)
 				return err
 			},
@@ -84,6 +96,10 @@ func TestDeleteChapterWithIntegrityCascadesStateVersionsAndRefreshesCaches(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
+	targetCharacter, err := client.Character.Create().SetNovelID(novelID).SetName("苏青").SetStateVersioned(true).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	world, err := client.WorldSetting.Create().SetNovelID(novelID).SetCategory("地理").SetName("青云山").SetDescription("宗门").SetCurrentState("第二章状态").SetStateVersioned(true).Save(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -99,7 +115,44 @@ func TestDeleteChapterWithIntegrityCascadesStateVersionsAndRefreshesCaches(t *te
 		if _, err := client.CharacterStateVersion.Create().SetCharacterID(character.ID).SetChapterID(version.chapterID).SetChapterIndex(version.index).SetGenerationID("generation").SetCurrentStatus(version.state).Save(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := client.WorldStateVersion.Create().SetWorldSettingID(world.ID).SetChapterID(version.chapterID).SetChapterIndex(version.index).SetGenerationID("generation").SetCurrentState(version.state).Save(ctx); err != nil {
+		if _, err := client.WorldStateVersion.Create().
+			SetWorldSettingID(world.ID).
+			SetChapterID(version.chapterID).
+			SetChapterIndex(version.index).
+			SetGenerationID("generation").
+			SetCurrentState(version.state).
+			Save(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.RelationshipStateVersion.Create().
+			SetChapterID(version.chapterID).
+			SetSourceCharacterID(character.ID).
+			SetTargetCharacterID(targetCharacter.ID).
+			SetChapterIndex(version.index).
+			SetGenerationID("generation").
+			SetRelationType(map[bool]string{true: "盟友", false: "敌人"}[version.index == 1]).
+			SetDescription(version.state).
+			SetActive(true).
+			SetOperation(relationshipstateversion.OperationUpsert).
+			Save(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, cached := range []struct {
+		relationType string
+		description  string
+	}{
+		{relationType: "盟友", description: "第一章状态"},
+		{relationType: "敌人", description: "第二章状态"},
+	} {
+		if _, err := client.Relationship.Create().
+			SetNovelID(novelID).
+			SetCharacterID(character.ID).
+			SetTargetCharacterID(targetCharacter.ID).
+			SetRelationType(cached.relationType).
+			SetDescription(cached.description).
+			SetStateVersioned(true).
+			Save(ctx); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -120,6 +173,12 @@ func TestDeleteChapterWithIntegrityCascadesStateVersionsAndRefreshesCaches(t *te
 	if err != nil || worldVersion.ChapterIndex != newOrder {
 		t.Fatalf("moved world version = %#v, error=%v", worldVersion, err)
 	}
+	relationshipVersion, err := client.RelationshipStateVersion.Query().Where(
+		relationshipstateversion.ChapterID(chapter2.ID),
+	).Only(ctx)
+	if err != nil || relationshipVersion.ChapterIndex != newOrder {
+		t.Fatalf("moved relationship version = %#v, error=%v", relationshipVersion, err)
+	}
 
 	if err := deleteChapterWithIntegrity(ctx, client, chapter2.ID); err != nil {
 		t.Fatal(err)
@@ -129,6 +188,13 @@ func TestDeleteChapterWithIntegrityCascadesStateVersionsAndRefreshesCaches(t *te
 	}
 	if count, err := client.WorldStateVersion.Query().Where(worldstateversion.ChapterID(chapter2.ID)).Count(ctx); err != nil || count != 0 {
 		t.Fatalf("world versions after delete = %d, error=%v", count, err)
+	}
+	if count, err := client.RelationshipStateVersion.Query().Where(relationshipstateversion.ChapterID(chapter2.ID)).Count(ctx); err != nil || count != 0 {
+		t.Fatalf("relationship versions after delete = %d, error=%v", count, err)
+	}
+	cachedRelationships, err := client.Relationship.Query().Where(relationship.NovelID(novelID)).All(ctx)
+	if err != nil || len(cachedRelationships) != 1 || cachedRelationships[0].RelationType != "盟友" {
+		t.Fatalf("relationship cache after delete = %#v, error=%v", cachedRelationships, err)
 	}
 	character, err = client.Character.Get(ctx, character.ID)
 	if err != nil {
@@ -151,5 +217,9 @@ func TestDeleteChapterWithIntegrityCascadesStateVersionsAndRefreshesCaches(t *te
 	world, _ = client.WorldSetting.Get(ctx, world.ID)
 	if character.CurrentStatus != "" || world.CurrentState != "" || !character.StateVersioned || !world.StateVersioned {
 		t.Fatalf("last version delete: character=%#v world=%#v", character, world)
+	}
+	cachedRelationships, err = client.Relationship.Query().Where(relationship.NovelID(novelID)).All(ctx)
+	if err != nil || len(cachedRelationships) != 0 {
+		t.Fatalf("last relationship version delete cache = %#v, error=%v", cachedRelationships, err)
 	}
 }

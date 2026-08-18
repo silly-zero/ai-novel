@@ -101,6 +101,12 @@ func validateCharacterExtraction(extracted *CharacterExtraction) error {
 		relation.Target = strings.TrimSpace(relation.Target)
 		relation.RelationType = strings.TrimSpace(relation.RelationType)
 		relation.Description = strings.TrimSpace(relation.Description)
+		if relation.Operation == "" {
+			relation.Operation = domain.RelationshipOperationUpsert
+		}
+		if relation.Operation != domain.RelationshipOperationUpsert && relation.Operation != domain.RelationshipOperationRemove {
+			return fmt.Errorf("relationships[%d].operation must be upsert or remove", index)
+		}
 		if relation.Source == "" {
 			return fmt.Errorf("relationships[%d].source must not be blank", index)
 		}
@@ -142,10 +148,11 @@ type CharacterUpdate struct {
 }
 
 type RelationshipUpdate struct {
-	Source       string `json:"source"`
-	Target       string `json:"target"`
-	RelationType string `json:"relation_type"`
-	Description  string `json:"description"`
+	Source       string                       `json:"source"`
+	Target       string                       `json:"target"`
+	RelationType string                       `json:"relation_type"`
+	Description  string                       `json:"description"`
+	Operation    domain.RelationshipOperation `json:"operation"`
 }
 
 type CharacterExtraction struct {
@@ -169,12 +176,30 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if err != nil {
 		return state, fmt.Errorf("list existing characters: %w", err)
 	}
+	existingRelationships, err := a.repo.ListRelationshipsBeforeChapter(ctx, ref.NovelID, ref.ChapterIndex)
+	if err != nil {
+		return state, fmt.Errorf("list existing relationships: %w", err)
+	}
 	var charContext strings.Builder
 	charContext.WriteString("【现有角色账本】\n")
 	for _, c := range existingChars {
 		fmt.Fprintf(&charContext,
 			"- %s: 静态档案(性别:%s, 年龄:%d, 外貌:%s, 性格:%s, 背景:%s); 当前状态:%s\n",
 			c.Name, c.Gender, c.Age, c.Appearance, c.Personality, c.Background, c.CurrentStatus,
+		)
+	}
+	charContext.WriteString("\n【当前章之前的角色关系】\n")
+	for _, relationship := range existingRelationships {
+		if relationship == nil || relationship.SourceCharacter == nil || relationship.TargetCharacter == nil {
+			continue
+		}
+		fmt.Fprintf(
+			&charContext,
+			"- %s --(%s)--> %s：%s\n",
+			relationship.SourceCharacter.Name,
+			relationship.RelationType,
+			relationship.TargetCharacter.Name,
+			relationship.Description,
 		)
 	}
 
@@ -184,8 +209,10 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 2. 静态档案（性别、年龄、外貌、性格、背景）是长期事实；已有角色的静态字段不要改写，若正文没有新信息可留空。
 3. current_status 是本章结束时的动态快照，必须具体描述角色的位置、处境、目标、立场或持有物；已有角色也必须根据正文更新它。
 4. 新角色可以填写静态档案，但必须填写 current_status。
-5. 不要用空字符串清除已有信息。
-6. 只输出合法 JSON，不要输出 Markdown 或解释。
+5. 未提到的关系不要输出，不代表删除；只有正文明确建立、更新或解除关系时才输出。
+6. operation 为 upsert 或 remove。旧格式未提供 operation 时按 upsert 处理；关系改变时先 remove 旧类型，再 upsert 新类型。
+7. 不要用空字符串清除已有信息。
+8. 只输出合法 JSON，不要输出 Markdown 或解释。
 格式：
 {
   "characters": [
@@ -204,7 +231,8 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
       "source": "角色A",
       "target": "角色B",
       "relation_type": "师徒/敌人/盟友/亲属/恋人/交易等",
-      "description": "一句话说明正文依据"
+      "description": "一句话说明正文依据",
+      "operation": "upsert 或 remove"
     }
   ]
 }`
@@ -222,6 +250,27 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	)
 	if err != nil {
 		return state, err
+	}
+
+	extractedNames := make(map[string]struct{}, len(extracted.Characters))
+	for _, update := range extracted.Characters {
+		extractedNames[update.Name] = struct{}{}
+	}
+	existingRelationshipCharacters := make(map[string]*domain.Character)
+	for _, rel := range extracted.Relationships {
+		for _, name := range []string{rel.Source, rel.Target} {
+			if _, exists := extractedNames[name]; exists {
+				continue
+			}
+			if existingRelationshipCharacters[name] != nil {
+				continue
+			}
+			character, err := a.repo.FindByName(ctx, ref.NovelID, name)
+			if err != nil {
+				return state, fmt.Errorf("resolve relationship character %q: %w", name, err)
+			}
+			existingRelationshipCharacters[name] = character
+		}
 	}
 
 	characterSnapshots := make([]*domain.Character, 0, len(extracted.Characters))
@@ -245,49 +294,30 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		nameToChar[character.Name] = character
 	}
 
+	relationshipChanges := make([]domain.RelationshipChange, 0, len(extracted.Relationships))
 	for _, rel := range extracted.Relationships {
-		if rel.Source == "" || rel.Target == "" || rel.RelationType == "" {
-			continue
-		}
-
 		sourceChar := nameToChar[rel.Source]
 		if sourceChar == nil {
-			c, err := a.repo.FindByName(ctx, ref.NovelID, rel.Source)
-			if err != nil {
-				return state, fmt.Errorf("resolve relationship source %q: %w", rel.Source, err)
-			}
-			sourceChar = c
+			sourceChar = existingRelationshipCharacters[rel.Source]
 		}
 
 		targetChar := nameToChar[rel.Target]
 		if targetChar == nil {
-			c, err := a.repo.FindByName(ctx, ref.NovelID, rel.Target)
-			if err != nil {
-				return state, fmt.Errorf("resolve relationship target %q: %w", rel.Target, err)
-			}
-			targetChar = c
+			targetChar = existingRelationshipCharacters[rel.Target]
 		}
-
 		if sourceChar == nil || targetChar == nil {
 			return state, fmt.Errorf("relationship %q -> %q has unresolved endpoint", rel.Source, rel.Target)
 		}
-
-		if err := a.repo.SaveRelationship(ctx, &domain.Relationship{
-			NovelID:         ref.NovelID,
+		relationshipChanges = append(relationshipChanges, domain.RelationshipChange{
 			SourceCharacter: sourceChar,
 			TargetCharacter: targetChar,
 			RelationType:    rel.RelationType,
 			Description:     rel.Description,
-		}); err != nil {
-			return state, fmt.Errorf(
-				"save relationship %q -> %q (%s): %w",
-				rel.Source,
-				rel.Target,
-				rel.RelationType,
-				err,
-			)
-		}
+			Operation:       rel.Operation,
+		})
 	}
-
+	if _, err := a.repo.ReplaceChapterRelationships(ctx, ref, relationshipChanges); err != nil {
+		return state, fmt.Errorf("replace chapter relationships: %w", err)
+	}
 	return state, nil
 }

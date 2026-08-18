@@ -24,6 +24,9 @@ type Novel func(*sql.Selector)
 // Relationship is the predicate function for relationship builders.
 type Relationship func(*sql.Selector)
 
+// RelationshipStateVersion is the predicate function for relationshipstateversion builders.
+type RelationshipStateVersion func(*sql.Selector)
+
 // WorldSetting is the predicate function for worldsetting builders.
 type WorldSetting func(*sql.Selector)
 

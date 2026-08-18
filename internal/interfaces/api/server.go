@@ -19,9 +19,11 @@ import (
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
+	databaseinfra "github.com/ai-novel/studio/internal/infrastructure/database"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -614,6 +616,26 @@ func updateChapterWithIntegrity(
 			Save(ctx); err != nil {
 			return nil, err
 		}
+		relationshipVersions, err := txClient.RelationshipStateVersion.Query().
+			Where(relationshipstateversion.ChapterID(chapterID)).
+			All(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := txClient.RelationshipStateVersion.Update().
+			Where(relationshipstateversion.ChapterID(chapterID)).
+			SetChapterIndex(*req.Order).
+			Save(ctx); err != nil {
+			return nil, err
+		}
+		for _, version := range relationshipVersions {
+			if err := databaseinfra.RebuildRelationshipCache(
+				ctx, txClient, strconv.Itoa(novelRow.ID),
+				version.SourceCharacterID, version.TargetCharacterID, version.RelationType,
+			); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if req.Status != nil {
 		update.SetStatus(strings.TrimSpace(*req.Status))
@@ -694,6 +716,22 @@ func deleteChapterWithIntegrity(
 	for _, version := range worldVersions {
 		worldIDs[version.WorldSettingID] = struct{}{}
 	}
+	relationshipVersions, err := txClient.RelationshipStateVersion.Query().
+		Where(relationshipstateversion.ChapterID(chapterID)).
+		All(ctx)
+	if err != nil {
+		return err
+	}
+	type relationshipCacheKey struct {
+		sourceID, targetID int
+		relationType       string
+	}
+	relationshipKeys := make(map[relationshipCacheKey]struct{}, len(relationshipVersions))
+	for _, version := range relationshipVersions {
+		relationshipKeys[relationshipCacheKey{
+			sourceID: version.SourceCharacterID, targetID: version.TargetCharacterID, relationType: version.RelationType,
+		}] = struct{}{}
+	}
 	if _, err := txClient.CharacterStateVersion.Delete().Where(
 		characterstateversion.ChapterID(chapterID),
 	).Exec(ctx); err != nil {
@@ -701,6 +739,11 @@ func deleteChapterWithIntegrity(
 	}
 	if _, err := txClient.WorldStateVersion.Delete().Where(
 		worldstateversion.ChapterID(chapterID),
+	).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := txClient.RelationshipStateVersion.Delete().Where(
+		relationshipstateversion.ChapterID(chapterID),
 	).Exec(ctx); err != nil {
 		return err
 	}
@@ -740,6 +783,18 @@ func deleteChapterWithIntegrity(
 			SetCurrentState(state).
 			SetStateVersioned(true).
 			Exec(ctx); err != nil {
+			return err
+		}
+	}
+	for key := range relationshipKeys {
+		if err := databaseinfra.RebuildRelationshipCache(
+			ctx,
+			txClient,
+			strconv.Itoa(novelRow.ID),
+			key.sourceID,
+			key.targetID,
+			key.relationType,
+		); err != nil {
 			return err
 		}
 	}

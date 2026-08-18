@@ -127,8 +127,11 @@ func (l *LibrarianAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	}
 
 	if l.charRepo != nil && len(seedIDs) > 0 {
-		rels, err := l.charRepo.ListRelationships(ctx, state.NovelID)
-		if err == nil && len(rels) > 0 {
+		rels, err := l.charRepo.ListRelationshipsBeforeChapter(ctx, state.NovelID, state.ChapterIndex)
+		if err != nil {
+			return state, fmt.Errorf("librarian list relationships: %w", err)
+		}
+		if len(rels) > 0 {
 			sort.SliceStable(rels, func(i, j int) bool {
 				return relationshipSortKey(rels[i]) < relationshipSortKey(rels[j])
 			})

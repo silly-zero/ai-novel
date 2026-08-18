@@ -77,6 +77,20 @@ func (_u *RelationshipUpdate) ClearDescription() *RelationshipUpdate {
 	return _u
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_u *RelationshipUpdate) SetStateVersioned(v bool) *RelationshipUpdate {
+	_u.mutation.SetStateVersioned(v)
+	return _u
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_u *RelationshipUpdate) SetNillableStateVersioned(v *bool) *RelationshipUpdate {
+	if v != nil {
+		_u.SetStateVersioned(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *RelationshipUpdate) SetCreatedAt(v time.Time) *RelationshipUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -207,6 +221,9 @@ func (_u *RelationshipUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(relationship.FieldDescription, field.TypeString)
 	}
+	if value, ok := _u.mutation.StateVersioned(); ok {
+		_spec.SetField(relationship.FieldStateVersioned, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(relationship.FieldCreatedAt, field.TypeTime, value)
 	}
@@ -336,6 +353,20 @@ func (_u *RelationshipUpdateOne) SetNillableDescription(v *string) *Relationship
 // ClearDescription clears the value of the "description" field.
 func (_u *RelationshipUpdateOne) ClearDescription() *RelationshipUpdateOne {
 	_u.mutation.ClearDescription()
+	return _u
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (_u *RelationshipUpdateOne) SetStateVersioned(v bool) *RelationshipUpdateOne {
+	_u.mutation.SetStateVersioned(v)
+	return _u
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_u *RelationshipUpdateOne) SetNillableStateVersioned(v *bool) *RelationshipUpdateOne {
+	if v != nil {
+		_u.SetStateVersioned(*v)
+	}
 	return _u
 }
 
@@ -498,6 +529,9 @@ func (_u *RelationshipUpdateOne) sqlSave(ctx context.Context) (_node *Relationsh
 	}
 	if _u.mutation.DescriptionCleared() {
 		_spec.ClearField(relationship.FieldDescription, field.TypeString)
+	}
+	if value, ok := _u.mutation.StateVersioned(); ok {
+		_spec.SetField(relationship.FieldStateVersioned, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(relationship.FieldCreatedAt, field.TypeTime, value)

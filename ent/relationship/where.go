@@ -70,6 +70,11 @@ func Description(v string) predicate.Relationship {
 	return predicate.Relationship(sql.FieldEQ(FieldDescription, v))
 }
 
+// StateVersioned applies equality check predicate on the "state_versioned" field. It's identical to StateVersionedEQ.
+func StateVersioned(v bool) predicate.Relationship {
+	return predicate.Relationship(sql.FieldEQ(FieldStateVersioned, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.Relationship {
 	return predicate.Relationship(sql.FieldEQ(FieldCreatedAt, v))
@@ -283,6 +288,16 @@ func DescriptionEqualFold(v string) predicate.Relationship {
 // DescriptionContainsFold applies the ContainsFold predicate on the "description" field.
 func DescriptionContainsFold(v string) predicate.Relationship {
 	return predicate.Relationship(sql.FieldContainsFold(FieldDescription, v))
+}
+
+// StateVersionedEQ applies the EQ predicate on the "state_versioned" field.
+func StateVersionedEQ(v bool) predicate.Relationship {
+	return predicate.Relationship(sql.FieldEQ(FieldStateVersioned, v))
+}
+
+// StateVersionedNEQ applies the NEQ predicate on the "state_versioned" field.
+func StateVersionedNEQ(v bool) predicate.Relationship {
+	return predicate.Relationship(sql.FieldNEQ(FieldStateVersioned, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -801,6 +801,52 @@ func HasStateVersionsWith(preds ...predicate.CharacterStateVersion) predicate.Ch
 	})
 }
 
+// HasSourceRelationshipStateVersions applies the HasEdge predicate on the "source_relationship_state_versions" edge.
+func HasSourceRelationshipStateVersions() predicate.Character {
+	return predicate.Character(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, SourceRelationshipStateVersionsTable, SourceRelationshipStateVersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasSourceRelationshipStateVersionsWith applies the HasEdge predicate on the "source_relationship_state_versions" edge with a given conditions (other predicates).
+func HasSourceRelationshipStateVersionsWith(preds ...predicate.RelationshipStateVersion) predicate.Character {
+	return predicate.Character(func(s *sql.Selector) {
+		step := newSourceRelationshipStateVersionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasTargetRelationshipStateVersions applies the HasEdge predicate on the "target_relationship_state_versions" edge.
+func HasTargetRelationshipStateVersions() predicate.Character {
+	return predicate.Character(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, TargetRelationshipStateVersionsTable, TargetRelationshipStateVersionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasTargetRelationshipStateVersionsWith applies the HasEdge predicate on the "target_relationship_state_versions" edge with a given conditions (other predicates).
+func HasTargetRelationshipStateVersionsWith(preds ...predicate.RelationshipStateVersion) predicate.Character {
+	return predicate.Character(func(s *sql.Selector) {
+		step := newTargetRelationshipStateVersionsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Character) predicate.Character {
 	return predicate.Character(sql.AndPredicates(predicates...))

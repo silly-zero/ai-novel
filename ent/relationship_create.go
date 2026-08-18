@@ -47,6 +47,20 @@ func (_c *RelationshipCreate) SetNillableDescription(v *string) *RelationshipCre
 	return _c
 }
 
+// SetStateVersioned sets the "state_versioned" field.
+func (_c *RelationshipCreate) SetStateVersioned(v bool) *RelationshipCreate {
+	_c.mutation.SetStateVersioned(v)
+	return _c
+}
+
+// SetNillableStateVersioned sets the "state_versioned" field if the given value is not nil.
+func (_c *RelationshipCreate) SetNillableStateVersioned(v *bool) *RelationshipCreate {
+	if v != nil {
+		_c.SetStateVersioned(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *RelationshipCreate) SetCreatedAt(v time.Time) *RelationshipCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -132,6 +146,10 @@ func (_c *RelationshipCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *RelationshipCreate) defaults() {
+	if _, ok := _c.mutation.StateVersioned(); !ok {
+		v := relationship.DefaultStateVersioned
+		_c.mutation.SetStateVersioned(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := relationship.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -149,6 +167,9 @@ func (_c *RelationshipCreate) check() error {
 	}
 	if _, ok := _c.mutation.RelationType(); !ok {
 		return &ValidationError{Name: "relation_type", err: errors.New(`ent: missing required field "Relationship.relation_type"`)}
+	}
+	if _, ok := _c.mutation.StateVersioned(); !ok {
+		return &ValidationError{Name: "state_versioned", err: errors.New(`ent: missing required field "Relationship.state_versioned"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "Relationship.created_at"`)}
@@ -199,6 +220,10 @@ func (_c *RelationshipCreate) createSpec() (*Relationship, *sqlgraph.CreateSpec)
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(relationship.FieldDescription, field.TypeString, value)
 		_node.Description = value
+	}
+	if value, ok := _c.mutation.StateVersioned(); ok {
+		_spec.SetField(relationship.FieldStateVersioned, field.TypeBool, value)
+		_node.StateVersioned = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(relationship.FieldCreatedAt, field.TypeTime, value)

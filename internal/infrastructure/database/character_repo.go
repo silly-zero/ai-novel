@@ -13,6 +13,7 @@ import (
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
 
@@ -83,7 +84,7 @@ func (r *CharacterRepository) ListCharactersBeforeChapter(
 			characterstateversion.HasCharacterWith(character.NovelID(novelID)),
 		).
 		Where(func(selector *sql.Selector) {
-			newer := sql.Table(characterstateversion.Table)
+			newer := sql.Table(characterstateversion.Table).As("newer_character_state")
 			selector.Where(sql.NotExists(
 				sql.Select(newer.C(characterstateversion.FieldID)).
 					From(newer).
@@ -356,6 +357,327 @@ func (r *CharacterRepository) SaveRelationship(ctx context.Context, rel *domain.
 
 	rel.ID = fmt.Sprintf("%d", created.ID)
 	return nil
+}
+
+type relationshipKey struct {
+	sourceID     int
+	targetID     int
+	relationType string
+}
+
+type relationshipSnapshot struct {
+	key         relationshipKey
+	description string
+	active      bool
+	operation   domain.RelationshipOperation
+}
+
+func (r *CharacterRepository) ReplaceChapterRelationships(
+	ctx context.Context,
+	ref domain.ChapterStateRef,
+	changes []domain.RelationshipChange,
+) ([]*domain.Relationship, error) {
+	ref.Normalize()
+	if err := ref.Validate(); err != nil {
+		return nil, err
+	}
+	novelID, err := strconv.Atoi(ref.NovelID)
+	if err != nil || novelID <= 0 {
+		return nil, fmt.Errorf("invalid novel id %q", ref.NovelID)
+	}
+	chapterID, err := strconv.Atoi(ref.ChapterID)
+	if err != nil || chapterID <= 0 {
+		return nil, fmt.Errorf("invalid chapter id %q", ref.ChapterID)
+	}
+	normalized := make([]domain.RelationshipChange, len(changes))
+	seen := make(map[relationshipKey]struct{}, len(changes))
+	for index, change := range changes {
+		change.Normalize()
+		if err := change.Validate(); err != nil {
+			return nil, fmt.Errorf("relationship change %d: %w", index, err)
+		}
+		sourceID, err := strconv.Atoi(strings.TrimSpace(change.SourceCharacter.ID))
+		if err != nil || sourceID <= 0 {
+			return nil, fmt.Errorf("relationship change %d has invalid source id", index)
+		}
+		targetID, err := strconv.Atoi(strings.TrimSpace(change.TargetCharacter.ID))
+		if err != nil || targetID <= 0 {
+			return nil, fmt.Errorf("relationship change %d has invalid target id", index)
+		}
+		key := relationshipKey{sourceID: sourceID, targetID: targetID, relationType: change.RelationType}
+		if _, exists := seen[key]; exists {
+			return nil, fmt.Errorf("duplicate relationship change %d", index)
+		}
+		seen[key] = struct{}{}
+		normalized[index] = change
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("start relationship state transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	txClient := tx.Client()
+	if _, err := txClient.Novel.Query().Where(novel.ID(novelID), func(selector *sql.Selector) {
+		selector.ForUpdate()
+	}).Only(ctx); err != nil {
+		return nil, fmt.Errorf("lock novel for relationship states: %w", err)
+	}
+	if _, err := txClient.Chapter.Query().Where(
+		chapter.ID(chapterID),
+		chapter.Order(ref.ChapterIndex),
+		chapter.HasNovelWith(novel.ID(novelID)),
+		func(selector *sql.Selector) { selector.ForUpdate() },
+	).Only(ctx); err != nil {
+		return nil, fmt.Errorf("validate chapter for relationship states: %w", err)
+	}
+
+	characters, err := txClient.Character.Query().Where(character.NovelID(ref.NovelID)).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list relationship characters: %w", err)
+	}
+	characterByID := make(map[int]*ent.Character, len(characters))
+	for _, row := range characters {
+		characterByID[row.ID] = row
+	}
+	for index, change := range normalized {
+		sourceID, _ := strconv.Atoi(strings.TrimSpace(change.SourceCharacter.ID))
+		targetID, _ := strconv.Atoi(strings.TrimSpace(change.TargetCharacter.ID))
+		if characterByID[sourceID] == nil || characterByID[targetID] == nil {
+			return nil, fmt.Errorf("relationship change %d references character outside novel", index)
+		}
+	}
+
+	snapshots := make(map[relationshipKey]relationshipSnapshot, len(normalized))
+	oldRows, err := txClient.RelationshipStateVersion.Query().Where(
+		relationshipstateversion.ChapterID(chapterID),
+	).All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list chapter relationship states: %w", err)
+	}
+	affected := make(map[relationshipKey]struct{}, len(oldRows)+len(normalized))
+	for _, row := range oldRows {
+		affected[relationshipKey{sourceID: row.SourceCharacterID, targetID: row.TargetCharacterID, relationType: row.RelationType}] = struct{}{}
+	}
+	if _, err := txClient.RelationshipStateVersion.Delete().Where(
+		relationshipstateversion.ChapterID(chapterID),
+	).Exec(ctx); err != nil {
+		return nil, fmt.Errorf("delete chapter relationship states: %w", err)
+	}
+	for _, change := range normalized {
+		sourceID, _ := strconv.Atoi(strings.TrimSpace(change.SourceCharacter.ID))
+		targetID, _ := strconv.Atoi(strings.TrimSpace(change.TargetCharacter.ID))
+		key := relationshipKey{sourceID: sourceID, targetID: targetID, relationType: change.RelationType}
+		affected[key] = struct{}{}
+		snapshots[key] = relationshipSnapshot{
+			key: key, description: change.Description,
+			active:    change.Operation == domain.RelationshipOperationUpsert,
+			operation: change.Operation,
+		}
+	}
+	for key, snapshot := range snapshots {
+		if _, err := txClient.RelationshipStateVersion.Create().
+			SetChapterID(chapterID).
+			SetSourceCharacterID(key.sourceID).
+			SetTargetCharacterID(key.targetID).
+			SetChapterIndex(ref.ChapterIndex).
+			SetGenerationID(ref.GenerationID).
+			SetRelationType(key.relationType).
+			SetDescription(snapshot.description).
+			SetActive(snapshot.active).
+			SetOperation(relationshipstateversion.Operation(snapshot.operation)).
+			Save(ctx); err != nil {
+			return nil, fmt.Errorf("save relationship state: %w", err)
+		}
+		affected[key] = struct{}{}
+	}
+	for key := range affected {
+		if err := rebuildRelationshipCache(ctx, txClient, ref.NovelID, key); err != nil {
+			return nil, err
+		}
+	}
+	visibleRows, err := latestRelationshipVersionsBeforeChapter(ctx, txClient, ref.NovelID, ref.ChapterIndex+1)
+	if err != nil {
+		return nil, fmt.Errorf("load relationship state result: %w", err)
+	}
+	result := make([]*domain.Relationship, 0, len(visibleRows))
+	for _, row := range visibleRows {
+		if !row.Active {
+			continue
+		}
+		source := characterByID[row.SourceCharacterID]
+		target := characterByID[row.TargetCharacterID]
+		if source == nil || target == nil {
+			return nil, fmt.Errorf("relationship result references unknown character")
+		}
+		result = append(result, &domain.Relationship{
+			ID: fmt.Sprintf("%d", row.ID), NovelID: ref.NovelID,
+			SourceCharacter: r.toDomain(source), TargetCharacter: r.toDomain(target),
+			RelationType: row.RelationType, Description: row.Description,
+		})
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit relationship states: %w", err)
+	}
+	committed = true
+	return result, nil
+}
+
+func latestRelationshipVersionsBeforeChapter(
+	ctx context.Context,
+	client *ent.Client,
+	novelID string,
+	chapterIndex int,
+) ([]*ent.RelationshipStateVersion, error) {
+	return client.RelationshipStateVersion.Query().
+		Where(
+			relationshipstateversion.ChapterIndexLT(chapterIndex),
+			relationshipstateversion.HasSourceCharacterWith(character.NovelID(novelID)),
+			relationshipstateversion.HasTargetCharacterWith(character.NovelID(novelID)),
+		).
+		Where(func(selector *sql.Selector) {
+			newer := sql.Table(relationshipstateversion.Table).As("newer_relationship_state")
+			selector.Where(sql.NotExists(
+				sql.Select(newer.C(relationshipstateversion.FieldID)).From(newer).Where(sql.And(
+					sql.ColumnsEQ(newer.C(relationshipstateversion.FieldSourceCharacterID), selector.C(relationshipstateversion.FieldSourceCharacterID)),
+					sql.ColumnsEQ(newer.C(relationshipstateversion.FieldTargetCharacterID), selector.C(relationshipstateversion.FieldTargetCharacterID)),
+					sql.ColumnsEQ(newer.C(relationshipstateversion.FieldRelationType), selector.C(relationshipstateversion.FieldRelationType)),
+					sql.LT(newer.C(relationshipstateversion.FieldChapterIndex), chapterIndex),
+					sql.Or(
+						sql.ColumnsGT(newer.C(relationshipstateversion.FieldChapterIndex), selector.C(relationshipstateversion.FieldChapterIndex)),
+						sql.And(
+							sql.ColumnsEQ(newer.C(relationshipstateversion.FieldChapterIndex), selector.C(relationshipstateversion.FieldChapterIndex)),
+							sql.ColumnsGT(newer.C(relationshipstateversion.FieldID), selector.C(relationshipstateversion.FieldID)),
+						),
+					),
+				)),
+			))
+		}).
+		Order(
+			relationshipstateversion.BySourceCharacterID(),
+			relationshipstateversion.ByTargetCharacterID(),
+			relationshipstateversion.ByRelationType(),
+			relationshipstateversion.ByID(),
+		).
+		All(ctx)
+}
+
+func RebuildRelationshipCache(
+	ctx context.Context,
+	client *ent.Client,
+	novelID string,
+	sourceID int,
+	targetID int,
+	relationType string,
+) error {
+	return rebuildRelationshipCache(ctx, client, novelID, relationshipKey{
+		sourceID: sourceID, targetID: targetID, relationType: relationType,
+	})
+}
+
+func rebuildRelationshipCache(ctx context.Context, client *ent.Client, novelID string, key relationshipKey) error {
+	latest, err := client.RelationshipStateVersion.Query().Where(
+		relationshipstateversion.SourceCharacterID(key.sourceID),
+		relationshipstateversion.TargetCharacterID(key.targetID),
+		relationshipstateversion.RelationType(key.relationType),
+	).Order(
+		relationshipstateversion.ByChapterIndex(sql.OrderDesc()),
+		relationshipstateversion.ByID(sql.OrderDesc()),
+	).First(ctx)
+	if err != nil && !ent.IsNotFound(err) {
+		return fmt.Errorf("load latest relationship state: %w", err)
+	}
+	if _, err := client.Relationship.Delete().Where(
+		relationship.NovelID(novelID),
+		relationship.RelationType(key.relationType),
+		relationship.StateVersioned(true),
+		relationship.HasCharacterWith(character.ID(key.sourceID)),
+		relationship.HasTargetCharacterWith(character.ID(key.targetID)),
+	).Exec(ctx); err != nil {
+		return fmt.Errorf("clear relationship cache: %w", err)
+	}
+	if ent.IsNotFound(err) || !latest.Active {
+		return nil
+	}
+	if _, err := client.Relationship.Create().
+		SetNovelID(novelID).
+		SetRelationType(key.relationType).
+		SetDescription(latest.Description).
+		SetStateVersioned(true).
+		SetCharacterID(key.sourceID).
+		SetTargetCharacterID(key.targetID).
+		Save(ctx); err != nil {
+		return fmt.Errorf("rebuild relationship cache: %w", err)
+	}
+	return nil
+}
+
+func (r *CharacterRepository) ListRelationshipsBeforeChapter(
+	ctx context.Context,
+	novelID string,
+	chapterIndex int,
+) ([]*domain.Relationship, error) {
+	if strings.TrimSpace(novelID) == "" || chapterIndex <= 0 {
+		return nil, fmt.Errorf("novel id and positive chapter index are required")
+	}
+	rows, err := r.client.RelationshipStateVersion.Query().
+		Where(
+			relationshipstateversion.ChapterIndexLT(chapterIndex),
+			relationshipstateversion.HasSourceCharacterWith(character.NovelID(novelID)),
+			relationshipstateversion.HasTargetCharacterWith(character.NovelID(novelID)),
+		).
+		Where(func(selector *sql.Selector) {
+			newer := sql.Table(relationshipstateversion.Table).As("newer_relationship_state")
+			selector.Where(sql.NotExists(
+				sql.Select(newer.C(relationshipstateversion.FieldID)).
+					From(newer).
+					Where(sql.And(
+						sql.ColumnsEQ(newer.C(relationshipstateversion.FieldSourceCharacterID), selector.C(relationshipstateversion.FieldSourceCharacterID)),
+						sql.ColumnsEQ(newer.C(relationshipstateversion.FieldTargetCharacterID), selector.C(relationshipstateversion.FieldTargetCharacterID)),
+						sql.ColumnsEQ(newer.C(relationshipstateversion.FieldRelationType), selector.C(relationshipstateversion.FieldRelationType)),
+						sql.LT(newer.C(relationshipstateversion.FieldChapterIndex), chapterIndex),
+						sql.Or(
+							sql.ColumnsGT(newer.C(relationshipstateversion.FieldChapterIndex), selector.C(relationshipstateversion.FieldChapterIndex)),
+							sql.And(
+								sql.ColumnsEQ(newer.C(relationshipstateversion.FieldChapterIndex), selector.C(relationshipstateversion.FieldChapterIndex)),
+								sql.ColumnsGT(newer.C(relationshipstateversion.FieldID), selector.C(relationshipstateversion.FieldID)),
+							),
+						),
+					)),
+			))
+		}).
+		WithSourceCharacter().
+		WithTargetCharacter().
+		Order(
+			relationshipstateversion.BySourceCharacterID(),
+			relationshipstateversion.ByTargetCharacterID(),
+			relationshipstateversion.ByRelationType(),
+			relationshipstateversion.ByID(),
+		).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.Relationship, 0, len(rows))
+	for _, row := range rows {
+		if !row.Active || row.Edges.SourceCharacter == nil || row.Edges.TargetCharacter == nil {
+			continue
+		}
+		result = append(result, &domain.Relationship{
+			ID:              fmt.Sprintf("%d", row.ID),
+			NovelID:         novelID,
+			SourceCharacter: r.toDomain(row.Edges.SourceCharacter),
+			TargetCharacter: r.toDomain(row.Edges.TargetCharacter),
+			RelationType:    row.RelationType,
+			Description:     row.Description,
+		})
+	}
+	return result, nil
 }
 
 func (r *CharacterRepository) ListRelationships(ctx context.Context, novelID string) ([]*domain.Relationship, error) {

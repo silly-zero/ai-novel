@@ -13,6 +13,7 @@ import (
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 )
 
 // CharacterCreate is the builder for creating a Character entity.
@@ -190,6 +191,36 @@ func (_c *CharacterCreate) AddStateVersions(v ...*CharacterStateVersion) *Charac
 	return _c.AddStateVersionIDs(ids...)
 }
 
+// AddSourceRelationshipStateVersionIDs adds the "source_relationship_state_versions" edge to the RelationshipStateVersion entity by IDs.
+func (_c *CharacterCreate) AddSourceRelationshipStateVersionIDs(ids ...int) *CharacterCreate {
+	_c.mutation.AddSourceRelationshipStateVersionIDs(ids...)
+	return _c
+}
+
+// AddSourceRelationshipStateVersions adds the "source_relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_c *CharacterCreate) AddSourceRelationshipStateVersions(v ...*RelationshipStateVersion) *CharacterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddSourceRelationshipStateVersionIDs(ids...)
+}
+
+// AddTargetRelationshipStateVersionIDs adds the "target_relationship_state_versions" edge to the RelationshipStateVersion entity by IDs.
+func (_c *CharacterCreate) AddTargetRelationshipStateVersionIDs(ids ...int) *CharacterCreate {
+	_c.mutation.AddTargetRelationshipStateVersionIDs(ids...)
+	return _c
+}
+
+// AddTargetRelationshipStateVersions adds the "target_relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_c *CharacterCreate) AddTargetRelationshipStateVersions(v ...*RelationshipStateVersion) *CharacterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddTargetRelationshipStateVersionIDs(ids...)
+}
+
 // Mutation returns the CharacterMutation object of the builder.
 func (_c *CharacterCreate) Mutation() *CharacterMutation {
 	return _c.mutation
@@ -351,6 +382,38 @@ func (_c *CharacterCreate) createSpec() (*Character, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(characterstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.SourceRelationshipStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.SourceRelationshipStateVersionsTable,
+			Columns: []string{character.SourceRelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.TargetRelationshipStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   character.TargetRelationshipStateVersionsTable,
+			Columns: []string{character.TargetRelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

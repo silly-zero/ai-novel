@@ -86,7 +86,7 @@ func (r *WorldRepository) ListWorldSettingsBeforeChapter(
 			worldstateversion.HasWorldSettingWith(worldsetting.NovelID(novelID)),
 		).
 		Where(func(selector *sql.Selector) {
-			newer := sql.Table(worldstateversion.Table)
+			newer := sql.Table(worldstateversion.Table).As("newer_world_state")
 			selector.Where(sql.NotExists(
 				sql.Select(newer.C(worldstateversion.FieldID)).
 					From(newer).

@@ -13,6 +13,7 @@ import (
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 )
 
@@ -162,6 +163,21 @@ func (_c *ChapterCreate) AddWorldStateVersions(v ...*WorldStateVersion) *Chapter
 		ids[i] = v[i].ID
 	}
 	return _c.AddWorldStateVersionIDs(ids...)
+}
+
+// AddRelationshipStateVersionIDs adds the "relationship_state_versions" edge to the RelationshipStateVersion entity by IDs.
+func (_c *ChapterCreate) AddRelationshipStateVersionIDs(ids ...int) *ChapterCreate {
+	_c.mutation.AddRelationshipStateVersionIDs(ids...)
+	return _c
+}
+
+// AddRelationshipStateVersions adds the "relationship_state_versions" edges to the RelationshipStateVersion entity.
+func (_c *ChapterCreate) AddRelationshipStateVersions(v ...*RelationshipStateVersion) *ChapterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddRelationshipStateVersionIDs(ids...)
 }
 
 // Mutation returns the ChapterMutation object of the builder.
@@ -361,6 +377,22 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.RelationshipStateVersionsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.RelationshipStateVersionsTable,
+			Columns: []string{chapter.RelationshipStateVersionsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

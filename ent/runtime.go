@@ -11,6 +11,7 @@ import (
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationship"
+	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/schema"
 	"github.com/ai-novel/studio/ent/worldsetting"
 	"github.com/ai-novel/studio/ent/worldstateversion"
@@ -108,16 +109,48 @@ func init() {
 	novel.UpdateDefaultUpdatedAt = novelDescUpdatedAt.UpdateDefault.(func() time.Time)
 	relationshipFields := schema.Relationship{}.Fields()
 	_ = relationshipFields
+	// relationshipDescStateVersioned is the schema descriptor for state_versioned field.
+	relationshipDescStateVersioned := relationshipFields[3].Descriptor()
+	// relationship.DefaultStateVersioned holds the default value on creation for the state_versioned field.
+	relationship.DefaultStateVersioned = relationshipDescStateVersioned.Default.(bool)
 	// relationshipDescCreatedAt is the schema descriptor for created_at field.
-	relationshipDescCreatedAt := relationshipFields[3].Descriptor()
+	relationshipDescCreatedAt := relationshipFields[4].Descriptor()
 	// relationship.DefaultCreatedAt holds the default value on creation for the created_at field.
 	relationship.DefaultCreatedAt = relationshipDescCreatedAt.Default.(func() time.Time)
 	// relationshipDescUpdatedAt is the schema descriptor for updated_at field.
-	relationshipDescUpdatedAt := relationshipFields[4].Descriptor()
+	relationshipDescUpdatedAt := relationshipFields[5].Descriptor()
 	// relationship.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	relationship.DefaultUpdatedAt = relationshipDescUpdatedAt.Default.(func() time.Time)
 	// relationship.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	relationship.UpdateDefaultUpdatedAt = relationshipDescUpdatedAt.UpdateDefault.(func() time.Time)
+	relationshipstateversionFields := schema.RelationshipStateVersion{}.Fields()
+	_ = relationshipstateversionFields
+	// relationshipstateversionDescChapterID is the schema descriptor for chapter_id field.
+	relationshipstateversionDescChapterID := relationshipstateversionFields[0].Descriptor()
+	// relationshipstateversion.ChapterIDValidator is a validator for the "chapter_id" field. It is called by the builders before save.
+	relationshipstateversion.ChapterIDValidator = relationshipstateversionDescChapterID.Validators[0].(func(int) error)
+	// relationshipstateversionDescSourceCharacterID is the schema descriptor for source_character_id field.
+	relationshipstateversionDescSourceCharacterID := relationshipstateversionFields[1].Descriptor()
+	// relationshipstateversion.SourceCharacterIDValidator is a validator for the "source_character_id" field. It is called by the builders before save.
+	relationshipstateversion.SourceCharacterIDValidator = relationshipstateversionDescSourceCharacterID.Validators[0].(func(int) error)
+	// relationshipstateversionDescTargetCharacterID is the schema descriptor for target_character_id field.
+	relationshipstateversionDescTargetCharacterID := relationshipstateversionFields[2].Descriptor()
+	// relationshipstateversion.TargetCharacterIDValidator is a validator for the "target_character_id" field. It is called by the builders before save.
+	relationshipstateversion.TargetCharacterIDValidator = relationshipstateversionDescTargetCharacterID.Validators[0].(func(int) error)
+	// relationshipstateversionDescChapterIndex is the schema descriptor for chapter_index field.
+	relationshipstateversionDescChapterIndex := relationshipstateversionFields[3].Descriptor()
+	// relationshipstateversion.ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
+	relationshipstateversion.ChapterIndexValidator = relationshipstateversionDescChapterIndex.Validators[0].(func(int) error)
+	// relationshipstateversionDescCreatedAt is the schema descriptor for created_at field.
+	relationshipstateversionDescCreatedAt := relationshipstateversionFields[9].Descriptor()
+	// relationshipstateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
+	relationshipstateversion.DefaultCreatedAt = relationshipstateversionDescCreatedAt.Default.(func() time.Time)
+	// relationshipstateversionDescUpdatedAt is the schema descriptor for updated_at field.
+	relationshipstateversionDescUpdatedAt := relationshipstateversionFields[10].Descriptor()
+	// relationshipstateversion.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	relationshipstateversion.DefaultUpdatedAt = relationshipstateversionDescUpdatedAt.Default.(func() time.Time)
+	// relationshipstateversion.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	relationshipstateversion.UpdateDefaultUpdatedAt = relationshipstateversionDescUpdatedAt.UpdateDefault.(func() time.Time)
 	worldsettingFields := schema.WorldSetting{}.Fields()
 	_ = worldsettingFields
 	// worldsettingDescCurrentState is the schema descriptor for current_state field.

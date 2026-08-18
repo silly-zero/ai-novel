@@ -54,9 +54,11 @@ type ChapterEdges struct {
 	CharacterStateVersions []*CharacterStateVersion `json:"character_state_versions,omitempty"`
 	// WorldStateVersions holds the value of the world_state_versions edge.
 	WorldStateVersions []*WorldStateVersion `json:"world_state_versions,omitempty"`
+	// RelationshipStateVersions holds the value of the relationship_state_versions edge.
+	RelationshipStateVersions []*RelationshipStateVersion `json:"relationship_state_versions,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // NovelOrErr returns the Novel value or an error if the edge
@@ -86,6 +88,15 @@ func (e ChapterEdges) WorldStateVersionsOrErr() ([]*WorldStateVersion, error) {
 		return e.WorldStateVersions, nil
 	}
 	return nil, &NotLoadedError{edge: "world_state_versions"}
+}
+
+// RelationshipStateVersionsOrErr returns the RelationshipStateVersions value or an error if the edge
+// was not loaded in eager-loading.
+func (e ChapterEdges) RelationshipStateVersionsOrErr() ([]*RelationshipStateVersion, error) {
+	if e.loadedTypes[3] {
+		return e.RelationshipStateVersions, nil
+	}
+	return nil, &NotLoadedError{edge: "relationship_state_versions"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -219,6 +230,11 @@ func (_m *Chapter) QueryCharacterStateVersions() *CharacterStateVersionQuery {
 // QueryWorldStateVersions queries the "world_state_versions" edge of the Chapter entity.
 func (_m *Chapter) QueryWorldStateVersions() *WorldStateVersionQuery {
 	return NewChapterClient(_m.config).QueryWorldStateVersions(_m)
+}
+
+// QueryRelationshipStateVersions queries the "relationship_state_versions" edge of the Chapter entity.
+func (_m *Chapter) QueryRelationshipStateVersions() *RelationshipStateVersionQuery {
+	return NewChapterClient(_m.config).QueryRelationshipStateVersions(_m)
 }
 
 // Update returns a builder for updating this Chapter.

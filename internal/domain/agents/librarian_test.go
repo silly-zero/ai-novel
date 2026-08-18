@@ -14,16 +14,17 @@ import (
 )
 
 type librarianCharacterRepositoryFake struct {
-	characters           []*domain.Character
-	relationships        []*domain.Relationship
-	listErr              error
-	relationshipErr      error
-	listCalls            int
-	findCalls            int
-	relationshipCalls    int
-	listNovelIDs         []string
-	listChapterIndexes   []int
-	relationshipNovelIDs []string
+	characters                 []*domain.Character
+	relationships              []*domain.Relationship
+	listErr                    error
+	relationshipErr            error
+	listCalls                  int
+	findCalls                  int
+	relationshipCalls          int
+	listNovelIDs               []string
+	listChapterIndexes         []int
+	relationshipNovelIDs       []string
+	relationshipChapterIndexes []int
 }
 
 func (*librarianCharacterRepositoryFake) GetCharacter(context.Context, string) (*domain.Character, error) {
@@ -58,8 +59,23 @@ func (r *librarianCharacterRepositoryFake) ReplaceChapterCharacters(
 	return nil, nil
 }
 
-func (*librarianCharacterRepositoryFake) SaveRelationship(context.Context, *domain.Relationship) error {
-	return nil
+func (*librarianCharacterRepositoryFake) ReplaceChapterRelationships(
+	context.Context,
+	domain.ChapterStateRef,
+	[]domain.RelationshipChange,
+) ([]*domain.Relationship, error) {
+	return nil, nil
+}
+
+func (r *librarianCharacterRepositoryFake) ListRelationshipsBeforeChapter(
+	_ context.Context,
+	novelID string,
+	chapterIndex int,
+) ([]*domain.Relationship, error) {
+	r.relationshipCalls++
+	r.relationshipNovelIDs = append(r.relationshipNovelIDs, novelID)
+	r.relationshipChapterIndexes = append(r.relationshipChapterIndexes, chapterIndex)
+	return r.relationships, r.relationshipErr
 }
 
 func (r *librarianCharacterRepositoryFake) ListRelationships(_ context.Context, novelID string) ([]*domain.Relationship, error) {
@@ -849,7 +865,7 @@ func TestLibrarianRejectsAmbiguousWorldSettingName(t *testing.T) {
 	}
 }
 
-func TestLibrarianKeepsBaseCardsWhenRelationshipEnumerationFails(t *testing.T) {
+func TestLibrarianPreservesDerivedStateWhenRelationshipProjectionFails(t *testing.T) {
 	lin := &domain.Character{ID: "lin", Name: "林云", CurrentStatus: "负伤"}
 	characterRepo := &librarianCharacterRepositoryFake{
 		characters:      []*domain.Character{lin},
@@ -863,24 +879,22 @@ func TestLibrarianKeepsBaseCardsWhenRelationshipEnumerationFails(t *testing.T) {
 		nil,
 		librarianTestConfig(),
 	)
+	state := &GenerationState{
+		NovelID:          "novel",
+		ChapterIndex:     4,
+		Context:          "旧背景",
+		CanonConstraints: []CanonConstraint{{Kind: "old"}},
+	}
 
-	result, err := agent.Run(context.Background(), &GenerationState{NovelID: "novel", ChapterIndex: 4})
-	if err != nil {
-		t.Fatal(err)
+	result, err := agent.Run(context.Background(), state)
+	if err == nil || !strings.Contains(err.Error(), "librarian list relationships") {
+		t.Fatalf("error = %v", err)
 	}
-	if !strings.Contains(result.Context, "- 林云:") || strings.Contains(result.Context, "角色关系网") {
-		t.Fatalf("Context = %s", result.Context)
+	if result.Context != "旧背景" || len(result.CanonConstraints) != 1 || result.CanonConstraints[0].Kind != "old" {
+		t.Fatalf("derived state changed: context=%q constraints=%#v", result.Context, result.CanonConstraints)
 	}
-	if characterRepo.relationshipCalls != 1 {
-		t.Fatalf("relationship calls = %d, want 1", characterRepo.relationshipCalls)
-	}
-	wantConstraints := []CanonConstraint{{
-		Kind:      "character_current_status",
-		Subject:   "林云",
-		Statement: "角色林云当前状态：负伤",
-	}}
-	if !reflect.DeepEqual(result.CanonConstraints, wantConstraints) {
-		t.Fatalf("CanonConstraints = %#v, want %#v", result.CanonConstraints, wantConstraints)
+	if characterRepo.relationshipCalls != 1 || !reflect.DeepEqual(characterRepo.relationshipChapterIndexes, []int{4}) {
+		t.Fatalf("relationship calls=%d chapters=%#v", characterRepo.relationshipCalls, characterRepo.relationshipChapterIndexes)
 	}
 }
 

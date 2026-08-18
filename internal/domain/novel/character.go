@@ -37,6 +37,7 @@ type CharacterRepository interface {
 	ListCharacters(ctx context.Context, novelID string) ([]*Character, error)
 	ListCharactersBeforeChapter(ctx context.Context, novelID string, chapterIndex int) ([]*Character, error)
 	ReplaceChapterCharacters(ctx context.Context, ref ChapterStateRef, characters []*Character) ([]*Character, error)
-	SaveRelationship(ctx context.Context, r *Relationship) error
+	ReplaceChapterRelationships(ctx context.Context, ref ChapterStateRef, changes []RelationshipChange) ([]*Relationship, error)
 	ListRelationships(ctx context.Context, novelID string) ([]*Relationship, error)
+	ListRelationshipsBeforeChapter(ctx context.Context, novelID string, chapterIndex int) ([]*Relationship, error)
 }
