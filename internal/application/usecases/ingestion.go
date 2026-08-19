@@ -59,10 +59,11 @@ func (uc *IngestionUseCase) HandleChapterGenerated(ctx context.Context, event ev
 		Content:   summary,
 		Embedding: vector,
 		Metadata: map[string]interface{}{
-			"generation_id": e.GenerationID,
-			"chapter_id":    e.ChapterID,
-			"chapter_index": e.ChapterIndex,
-			"type":          "plot_summary",
+			"generation_id":  e.GenerationID,
+			"chapter_id":     e.ChapterID,
+			"chapter_index":  e.ChapterIndex,
+			"chapter_status": "Draft",
+			"type":           "plot_summary",
 		},
 	}
 

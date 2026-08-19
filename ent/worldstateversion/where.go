@@ -80,6 +80,11 @@ func CurrentState(v string) predicate.WorldStateVersion {
 	return predicate.WorldStateVersion(sql.FieldEQ(FieldCurrentState, v))
 }
 
+// Valid applies equality check predicate on the "valid" field. It's identical to ValidEQ.
+func Valid(v bool) predicate.WorldStateVersion {
+	return predicate.WorldStateVersion(sql.FieldEQ(FieldValid, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.WorldStateVersion {
 	return predicate.WorldStateVersion(sql.FieldEQ(FieldCreatedAt, v))
@@ -298,6 +303,16 @@ func CurrentStateEqualFold(v string) predicate.WorldStateVersion {
 // CurrentStateContainsFold applies the ContainsFold predicate on the "current_state" field.
 func CurrentStateContainsFold(v string) predicate.WorldStateVersion {
 	return predicate.WorldStateVersion(sql.FieldContainsFold(FieldCurrentState, v))
+}
+
+// ValidEQ applies the EQ predicate on the "valid" field.
+func ValidEQ(v bool) predicate.WorldStateVersion {
+	return predicate.WorldStateVersion(sql.FieldEQ(FieldValid, v))
+}
+
+// ValidNEQ applies the NEQ predicate on the "valid" field.
+func ValidNEQ(v bool) predicate.WorldStateVersion {
+	return predicate.WorldStateVersion(sql.FieldNEQ(FieldValid, v))
 }
 
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.

@@ -95,6 +95,11 @@ func Active(v bool) predicate.RelationshipStateVersion {
 	return predicate.RelationshipStateVersion(sql.FieldEQ(FieldActive, v))
 }
 
+// Valid applies equality check predicate on the "valid" field. It's identical to ValidEQ.
+func Valid(v bool) predicate.RelationshipStateVersion {
+	return predicate.RelationshipStateVersion(sql.FieldEQ(FieldValid, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.RelationshipStateVersion {
 	return predicate.RelationshipStateVersion(sql.FieldEQ(FieldCreatedAt, v))
@@ -418,6 +423,16 @@ func ActiveEQ(v bool) predicate.RelationshipStateVersion {
 // ActiveNEQ applies the NEQ predicate on the "active" field.
 func ActiveNEQ(v bool) predicate.RelationshipStateVersion {
 	return predicate.RelationshipStateVersion(sql.FieldNEQ(FieldActive, v))
+}
+
+// ValidEQ applies the EQ predicate on the "valid" field.
+func ValidEQ(v bool) predicate.RelationshipStateVersion {
+	return predicate.RelationshipStateVersion(sql.FieldEQ(FieldValid, v))
+}
+
+// ValidNEQ applies the NEQ predicate on the "valid" field.
+func ValidNEQ(v bool) predicate.RelationshipStateVersion {
+	return predicate.RelationshipStateVersion(sql.FieldNEQ(FieldValid, v))
 }
 
 // OperationEQ applies the EQ predicate on the "operation" field.

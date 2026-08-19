@@ -31,6 +31,8 @@ const (
 	FieldDescription = "description"
 	// FieldActive holds the string denoting the active field in the database.
 	FieldActive = "active"
+	// FieldValid holds the string denoting the valid field in the database.
+	FieldValid = "valid"
 	// FieldOperation holds the string denoting the operation field in the database.
 	FieldOperation = "operation"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -79,6 +81,7 @@ var Columns = []string{
 	FieldRelationType,
 	FieldDescription,
 	FieldActive,
+	FieldValid,
 	FieldOperation,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -103,6 +106,8 @@ var (
 	TargetCharacterIDValidator func(int) error
 	// ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
 	ChapterIndexValidator func(int) error
+	// DefaultValid holds the default value on creation for the "valid" field.
+	DefaultValid bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -180,6 +185,11 @@ func ByDescription(opts ...sql.OrderTermOption) OrderOption {
 // ByActive orders the results by the active field.
 func ByActive(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldActive, opts...).ToFunc()
+}
+
+// ByValid orders the results by the valid field.
+func ByValid(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldValid, opts...).ToFunc()
 }
 
 // ByOperation orders the results by the operation field.

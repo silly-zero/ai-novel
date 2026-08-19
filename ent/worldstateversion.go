@@ -29,6 +29,8 @@ type WorldStateVersion struct {
 	GenerationID string `json:"generation_id,omitempty"`
 	// CurrentState holds the value of the "current_state" field.
 	CurrentState string `json:"current_state,omitempty"`
+	// Valid holds the value of the "valid" field.
+	Valid bool `json:"valid,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -77,6 +79,8 @@ func (*WorldStateVersion) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
+		case worldstateversion.FieldValid:
+			values[i] = new(sql.NullBool)
 		case worldstateversion.FieldID, worldstateversion.FieldWorldSettingID, worldstateversion.FieldChapterID, worldstateversion.FieldChapterIndex:
 			values[i] = new(sql.NullInt64)
 		case worldstateversion.FieldGenerationID, worldstateversion.FieldCurrentState:
@@ -133,6 +137,12 @@ func (_m *WorldStateVersion) assignValues(columns []string, values []any) error 
 				return fmt.Errorf("unexpected type %T for field current_state", values[i])
 			} else if value.Valid {
 				_m.CurrentState = value.String
+			}
+		case worldstateversion.FieldValid:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field valid", values[i])
+			} else if value.Valid {
+				_m.Valid = value.Bool
 			}
 		case worldstateversion.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -206,6 +216,9 @@ func (_m *WorldStateVersion) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("current_state=")
 	builder.WriteString(_m.CurrentState)
+	builder.WriteString(", ")
+	builder.WriteString("valid=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Valid))
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")
 	builder.WriteString(_m.CreatedAt.Format(time.ANSIC))

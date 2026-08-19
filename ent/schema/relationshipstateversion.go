@@ -23,6 +23,7 @@ func (RelationshipStateVersion) Fields() []ent.Field {
 		field.String("relation_type"),
 		field.Text("description").Optional(),
 		field.Bool("active"),
+		field.Bool("valid").Default(true),
 		field.Enum("operation").Values("upsert", "remove"),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),

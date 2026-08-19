@@ -107,6 +107,20 @@ func (_u *CharacterStateVersionUpdate) SetNillableCurrentStatus(v *string) *Char
 	return _u
 }
 
+// SetValid sets the "valid" field.
+func (_u *CharacterStateVersionUpdate) SetValid(v bool) *CharacterStateVersionUpdate {
+	_u.mutation.SetValid(v)
+	return _u
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_u *CharacterStateVersionUpdate) SetNillableValid(v *bool) *CharacterStateVersionUpdate {
+	if v != nil {
+		_u.SetValid(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *CharacterStateVersionUpdate) SetCreatedAt(v time.Time) *CharacterStateVersionUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -239,6 +253,9 @@ func (_u *CharacterStateVersionUpdate) sqlSave(ctx context.Context) (_node int, 
 	}
 	if value, ok := _u.mutation.CurrentStatus(); ok {
 		_spec.SetField(characterstateversion.FieldCurrentStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Valid(); ok {
+		_spec.SetField(characterstateversion.FieldValid, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(characterstateversion.FieldCreatedAt, field.TypeTime, value)
@@ -397,6 +414,20 @@ func (_u *CharacterStateVersionUpdateOne) SetCurrentStatus(v string) *CharacterS
 func (_u *CharacterStateVersionUpdateOne) SetNillableCurrentStatus(v *string) *CharacterStateVersionUpdateOne {
 	if v != nil {
 		_u.SetCurrentStatus(*v)
+	}
+	return _u
+}
+
+// SetValid sets the "valid" field.
+func (_u *CharacterStateVersionUpdateOne) SetValid(v bool) *CharacterStateVersionUpdateOne {
+	_u.mutation.SetValid(v)
+	return _u
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_u *CharacterStateVersionUpdateOne) SetNillableValid(v *bool) *CharacterStateVersionUpdateOne {
+	if v != nil {
+		_u.SetValid(*v)
 	}
 	return _u
 }
@@ -563,6 +594,9 @@ func (_u *CharacterStateVersionUpdateOne) sqlSave(ctx context.Context) (_node *C
 	}
 	if value, ok := _u.mutation.CurrentStatus(); ok {
 		_spec.SetField(characterstateversion.FieldCurrentStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Valid(); ok {
+		_spec.SetField(characterstateversion.FieldValid, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(characterstateversion.FieldCreatedAt, field.TypeTime, value)

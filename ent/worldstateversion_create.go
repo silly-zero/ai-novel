@@ -52,6 +52,20 @@ func (_c *WorldStateVersionCreate) SetCurrentState(v string) *WorldStateVersionC
 	return _c
 }
 
+// SetValid sets the "valid" field.
+func (_c *WorldStateVersionCreate) SetValid(v bool) *WorldStateVersionCreate {
+	_c.mutation.SetValid(v)
+	return _c
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_c *WorldStateVersionCreate) SetNillableValid(v *bool) *WorldStateVersionCreate {
+	if v != nil {
+		_c.SetValid(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *WorldStateVersionCreate) SetCreatedAt(v time.Time) *WorldStateVersionCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -125,6 +139,10 @@ func (_c *WorldStateVersionCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *WorldStateVersionCreate) defaults() {
+	if _, ok := _c.mutation.Valid(); !ok {
+		v := worldstateversion.DefaultValid
+		_c.mutation.SetValid(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := worldstateversion.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -166,6 +184,9 @@ func (_c *WorldStateVersionCreate) check() error {
 	}
 	if _, ok := _c.mutation.CurrentState(); !ok {
 		return &ValidationError{Name: "current_state", err: errors.New(`ent: missing required field "WorldStateVersion.current_state"`)}
+	}
+	if _, ok := _c.mutation.Valid(); !ok {
+		return &ValidationError{Name: "valid", err: errors.New(`ent: missing required field "WorldStateVersion.valid"`)}
 	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		return &ValidationError{Name: "created_at", err: errors.New(`ent: missing required field "WorldStateVersion.created_at"`)}
@@ -216,6 +237,10 @@ func (_c *WorldStateVersionCreate) createSpec() (*WorldStateVersion, *sqlgraph.C
 	if value, ok := _c.mutation.CurrentState(); ok {
 		_spec.SetField(worldstateversion.FieldCurrentState, field.TypeString, value)
 		_node.CurrentState = value
+	}
+	if value, ok := _c.mutation.Valid(); ok {
+		_spec.SetField(worldstateversion.FieldValid, field.TypeBool, value)
+		_node.Valid = value
 	}
 	if value, ok := _c.mutation.CreatedAt(); ok {
 		_spec.SetField(worldstateversion.FieldCreatedAt, field.TypeTime, value)

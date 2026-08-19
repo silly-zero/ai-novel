@@ -39,11 +39,11 @@ func TestChapterBoundaryPredicateBuildsSafePostgresExpression(t *testing.T) {
 func TestMemoryVectorStoreSearchFiltersChapterBoundaryBeforeCandidateLimit(t *testing.T) {
 	store := NewMemoryVectorStore()
 	entries := []*memory.MemoryEntry{
-		{ID: "eligible", NovelID: "novel", Metadata: map[string]any{"chapter_index": 2}, Embedding: []float32{1, 0}},
+		{ID: "eligible", NovelID: "novel", Metadata: map[string]any{"chapter_index": 2, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
 		{ID: "missing", NovelID: "novel", Metadata: map[string]any{}, Embedding: []float32{1, 0}},
 		{ID: "invalid", NovelID: "novel", Metadata: map[string]any{"chapter_index": "3"}, Embedding: []float32{1, 0}},
-		{ID: "current", NovelID: "novel", Metadata: map[string]any{"chapter_index": 4}, Embedding: []float32{1, 0}},
-		{ID: "future", NovelID: "novel", Metadata: map[string]any{"chapter_index": float64(5)}, Embedding: []float32{1, 0}},
+		{ID: "current", NovelID: "novel", Metadata: map[string]any{"chapter_index": 4, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
+		{ID: "future", NovelID: "novel", Metadata: map[string]any{"chapter_index": float64(5), "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
 	}
 	if err := store.Add(context.Background(), entries); err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestMemoryVectorStoreSearchFiltersChapterBoundaryBeforeCandidateLimit(t *te
 func TestMemoryVectorStoreSearchExcludesAllMemoriesBeforeFirstChapter(t *testing.T) {
 	store := NewMemoryVectorStore()
 	if err := store.Add(context.Background(), []*memory.MemoryEntry{
-		{ID: "chapter-1", NovelID: "novel", Metadata: map[string]any{"chapter_index": 1}, Embedding: []float32{1, 0}},
+		{ID: "chapter-1", NovelID: "novel", Metadata: map[string]any{"chapter_index": 1, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
 	}); err != nil {
 		t.Fatal(err)
 	}

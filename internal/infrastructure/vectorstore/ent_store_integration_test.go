@@ -35,28 +35,28 @@ func TestEntVectorStoreSearchFiltersChapterBoundaryBeforeLimit(t *testing.T) {
 
 	store := NewEntVectorStore(client)
 	entries := []*memory.MemoryEntry{
-		{NovelID: novelID, Content: "eligible-decimal", Metadata: map[string]any{"chapter_index": 2}, Embedding: []float32{1, 0}},
-		{NovelID: novelID, Content: "eligible-exponent", Metadata: map[string]any{"chapter_index": 3}, Embedding: []float32{1, 0}},
+		{NovelID: novelID, Content: "eligible-decimal", Metadata: map[string]any{"chapter_index": 2, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
+		{NovelID: novelID, Content: "eligible-exponent", Metadata: map[string]any{"chapter_index": 3, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
 		{NovelID: novelID, Content: "missing", Metadata: map[string]any{}, Embedding: []float32{1, 0}},
 		{NovelID: novelID, Content: "string", Metadata: map[string]any{"chapter_index": "2"}, Embedding: []float32{1, 0}},
 		{NovelID: novelID, Content: "object", Metadata: map[string]any{"chapter_index": map[string]any{"value": 2}}, Embedding: []float32{1, 0}},
 		{NovelID: novelID, Content: "fraction", Metadata: map[string]any{"chapter_index": 2.5}, Embedding: []float32{1, 0}},
 		{NovelID: novelID, Content: "too-large", Metadata: map[string]any{"chapter_index": uint64(1 << 53)}, Embedding: []float32{1, 0}},
-		{NovelID: novelID, Content: "current", Metadata: map[string]any{"chapter_index": 4}, Embedding: []float32{1, 0}},
-		{NovelID: novelID, Content: "future", Metadata: map[string]any{"chapter_index": 5}, Embedding: []float32{1, 0}},
+		{NovelID: novelID, Content: "current", Metadata: map[string]any{"chapter_index": 4, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
+		{NovelID: novelID, Content: "future", Metadata: map[string]any{"chapter_index": 5, "chapter_status": "Draft"}, Embedding: []float32{1, 0}},
 	}
 	if err := store.Add(ctx, entries); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.MemoryEntry.Update().
 		Where(memoryentry.NovelID(novelID), memoryentry.Content("eligible-decimal")).
-		SetMetadata(map[string]any{"chapter_index": json.RawMessage("2.0")}).
+		SetMetadata(map[string]any{"chapter_index": json.RawMessage("2.0"), "chapter_status": "Draft"}).
 		Exec(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if err := client.MemoryEntry.Update().
 		Where(memoryentry.NovelID(novelID), memoryentry.Content("eligible-exponent")).
-		SetMetadata(map[string]any{"chapter_index": json.RawMessage("3e0")}).
+		SetMetadata(map[string]any{"chapter_index": json.RawMessage("3e0"), "chapter_status": "Draft"}).
 		Exec(ctx); err != nil {
 		t.Fatal(err)
 	}

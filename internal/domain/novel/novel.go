@@ -37,6 +37,7 @@ const (
 	StatusGenerating Status = "Generating" // 生成中
 	StatusReviewing  Status = "Reviewing"  // 审查中
 	StatusPublished  Status = "Published"  // 已发布
+	StatusStale      Status = "Stale"      // 前文已变更，待重生成
 )
 
 // Repository 定义了小说的持久化接口，具体实现在 infrastructure 层

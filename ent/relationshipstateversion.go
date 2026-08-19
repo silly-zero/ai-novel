@@ -35,6 +35,8 @@ type RelationshipStateVersion struct {
 	Description string `json:"description,omitempty"`
 	// Active holds the value of the "active" field.
 	Active bool `json:"active,omitempty"`
+	// Valid holds the value of the "valid" field.
+	Valid bool `json:"valid,omitempty"`
 	// Operation holds the value of the "operation" field.
 	Operation relationshipstateversion.Operation `json:"operation,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -98,7 +100,7 @@ func (*RelationshipStateVersion) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case relationshipstateversion.FieldActive:
+		case relationshipstateversion.FieldActive, relationshipstateversion.FieldValid:
 			values[i] = new(sql.NullBool)
 		case relationshipstateversion.FieldID, relationshipstateversion.FieldChapterID, relationshipstateversion.FieldSourceCharacterID, relationshipstateversion.FieldTargetCharacterID, relationshipstateversion.FieldChapterIndex:
 			values[i] = new(sql.NullInt64)
@@ -174,6 +176,12 @@ func (_m *RelationshipStateVersion) assignValues(columns []string, values []any)
 				return fmt.Errorf("unexpected type %T for field active", values[i])
 			} else if value.Valid {
 				_m.Active = value.Bool
+			}
+		case relationshipstateversion.FieldValid:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field valid", values[i])
+			} else if value.Valid {
+				_m.Valid = value.Bool
 			}
 		case relationshipstateversion.FieldOperation:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -267,6 +275,9 @@ func (_m *RelationshipStateVersion) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("active=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Active))
+	builder.WriteString(", ")
+	builder.WriteString("valid=")
+	builder.WriteString(fmt.Sprintf("%v", _m.Valid))
 	builder.WriteString(", ")
 	builder.WriteString("operation=")
 	builder.WriteString(fmt.Sprintf("%v", _m.Operation))

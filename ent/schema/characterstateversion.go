@@ -20,6 +20,7 @@ func (CharacterStateVersion) Fields() []ent.Field {
 		field.Int("chapter_index").Positive(),
 		field.String("generation_id"),
 		field.Text("current_status"),
+		field.Bool("valid").Default(true),
 		field.Time("created_at").Default(time.Now),
 		field.Time("updated_at").Default(time.Now).UpdateDefault(time.Now),
 	}

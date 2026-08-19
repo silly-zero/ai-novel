@@ -24,6 +24,8 @@ const (
 	FieldGenerationID = "generation_id"
 	// FieldCurrentStatus holds the string denoting the current_status field in the database.
 	FieldCurrentStatus = "current_status"
+	// FieldValid holds the string denoting the valid field in the database.
+	FieldValid = "valid"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
 	FieldCreatedAt = "created_at"
 	// FieldUpdatedAt holds the string denoting the updated_at field in the database.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldChapterIndex,
 	FieldGenerationID,
 	FieldCurrentStatus,
+	FieldValid,
 	FieldCreatedAt,
 	FieldUpdatedAt,
 }
@@ -79,6 +82,8 @@ var (
 	ChapterIDValidator func(int) error
 	// ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
 	ChapterIndexValidator func(int) error
+	// DefaultValid holds the default value on creation for the "valid" field.
+	DefaultValid bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
 	DefaultCreatedAt func() time.Time
 	// DefaultUpdatedAt holds the default value on creation for the "updated_at" field.
@@ -118,6 +123,11 @@ func ByGenerationID(opts ...sql.OrderTermOption) OrderOption {
 // ByCurrentStatus orders the results by the current_status field.
 func ByCurrentStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCurrentStatus, opts...).ToFunc()
+}
+
+// ByValid orders the results by the valid field.
+func ByValid(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldValid, opts...).ToFunc()
 }
 
 // ByCreatedAt orders the results by the created_at field.

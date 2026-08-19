@@ -75,12 +75,16 @@ func init() {
 	characterstateversionDescChapterIndex := characterstateversionFields[2].Descriptor()
 	// characterstateversion.ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
 	characterstateversion.ChapterIndexValidator = characterstateversionDescChapterIndex.Validators[0].(func(int) error)
+	// characterstateversionDescValid is the schema descriptor for valid field.
+	characterstateversionDescValid := characterstateversionFields[5].Descriptor()
+	// characterstateversion.DefaultValid holds the default value on creation for the valid field.
+	characterstateversion.DefaultValid = characterstateversionDescValid.Default.(bool)
 	// characterstateversionDescCreatedAt is the schema descriptor for created_at field.
-	characterstateversionDescCreatedAt := characterstateversionFields[5].Descriptor()
+	characterstateversionDescCreatedAt := characterstateversionFields[6].Descriptor()
 	// characterstateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
 	characterstateversion.DefaultCreatedAt = characterstateversionDescCreatedAt.Default.(func() time.Time)
 	// characterstateversionDescUpdatedAt is the schema descriptor for updated_at field.
-	characterstateversionDescUpdatedAt := characterstateversionFields[6].Descriptor()
+	characterstateversionDescUpdatedAt := characterstateversionFields[7].Descriptor()
 	// characterstateversion.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	characterstateversion.DefaultUpdatedAt = characterstateversionDescUpdatedAt.Default.(func() time.Time)
 	// characterstateversion.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -141,12 +145,16 @@ func init() {
 	relationshipstateversionDescChapterIndex := relationshipstateversionFields[3].Descriptor()
 	// relationshipstateversion.ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
 	relationshipstateversion.ChapterIndexValidator = relationshipstateversionDescChapterIndex.Validators[0].(func(int) error)
+	// relationshipstateversionDescValid is the schema descriptor for valid field.
+	relationshipstateversionDescValid := relationshipstateversionFields[8].Descriptor()
+	// relationshipstateversion.DefaultValid holds the default value on creation for the valid field.
+	relationshipstateversion.DefaultValid = relationshipstateversionDescValid.Default.(bool)
 	// relationshipstateversionDescCreatedAt is the schema descriptor for created_at field.
-	relationshipstateversionDescCreatedAt := relationshipstateversionFields[9].Descriptor()
+	relationshipstateversionDescCreatedAt := relationshipstateversionFields[10].Descriptor()
 	// relationshipstateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
 	relationshipstateversion.DefaultCreatedAt = relationshipstateversionDescCreatedAt.Default.(func() time.Time)
 	// relationshipstateversionDescUpdatedAt is the schema descriptor for updated_at field.
-	relationshipstateversionDescUpdatedAt := relationshipstateversionFields[10].Descriptor()
+	relationshipstateversionDescUpdatedAt := relationshipstateversionFields[11].Descriptor()
 	// relationshipstateversion.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	relationshipstateversion.DefaultUpdatedAt = relationshipstateversionDescUpdatedAt.Default.(func() time.Time)
 	// relationshipstateversion.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -185,12 +193,16 @@ func init() {
 	worldstateversionDescChapterIndex := worldstateversionFields[2].Descriptor()
 	// worldstateversion.ChapterIndexValidator is a validator for the "chapter_index" field. It is called by the builders before save.
 	worldstateversion.ChapterIndexValidator = worldstateversionDescChapterIndex.Validators[0].(func(int) error)
+	// worldstateversionDescValid is the schema descriptor for valid field.
+	worldstateversionDescValid := worldstateversionFields[5].Descriptor()
+	// worldstateversion.DefaultValid holds the default value on creation for the valid field.
+	worldstateversion.DefaultValid = worldstateversionDescValid.Default.(bool)
 	// worldstateversionDescCreatedAt is the schema descriptor for created_at field.
-	worldstateversionDescCreatedAt := worldstateversionFields[5].Descriptor()
+	worldstateversionDescCreatedAt := worldstateversionFields[6].Descriptor()
 	// worldstateversion.DefaultCreatedAt holds the default value on creation for the created_at field.
 	worldstateversion.DefaultCreatedAt = worldstateversionDescCreatedAt.Default.(func() time.Time)
 	// worldstateversionDescUpdatedAt is the schema descriptor for updated_at field.
-	worldstateversionDescUpdatedAt := worldstateversionFields[6].Descriptor()
+	worldstateversionDescUpdatedAt := worldstateversionFields[7].Descriptor()
 	// worldstateversion.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	worldstateversion.DefaultUpdatedAt = worldstateversionDescUpdatedAt.Default.(func() time.Time)
 	// worldstateversion.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

@@ -22,7 +22,8 @@ func NewEntVectorStore(client *ent.Client) *EntVectorStore {
 
 func chapterBoundaryPredicate(metadataColumn string, beforeChapterIndex int) *sql.Predicate {
 	value := fmt.Sprintf(
-		"CASE WHEN jsonb_typeof(%s->'chapter_index') = 'number' THEN (%s->>'chapter_index')::numeric ELSE NULL END",
+		"CASE WHEN jsonb_typeof(%s->'chapter_index') = 'number' AND %s->>'chapter_status' IN ('Draft', 'Published') THEN (%s->>'chapter_index')::numeric ELSE NULL END",
+		metadataColumn,
 		metadataColumn,
 		metadataColumn,
 	)
@@ -55,6 +56,27 @@ func (s *EntVectorStore) Add(ctx context.Context, entries []*memory.MemoryEntry)
 	_, err := s.client.MemoryEntry.CreateBulk(bulk...).Save(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to save memory entries to ent: %w", err)
+	}
+	return nil
+}
+
+func (s *EntVectorStore) MarkChapterStale(ctx context.Context, novelID, chapterID string) error {
+	rows, err := s.client.MemoryEntry.Query().Where(memoryentry.NovelID(novelID)).All(ctx)
+	if err != nil {
+		return fmt.Errorf("query chapter memories: %w", err)
+	}
+	for _, row := range rows {
+		if row.Metadata == nil || row.Metadata["chapter_id"] != chapterID {
+			continue
+		}
+		metadata := make(map[string]any, len(row.Metadata)+1)
+		for key, value := range row.Metadata {
+			metadata[key] = value
+		}
+		metadata["chapter_status"] = "Stale"
+		if err := s.client.MemoryEntry.UpdateOneID(row.ID).SetMetadata(metadata).Exec(ctx); err != nil {
+			return fmt.Errorf("mark chapter memory stale: %w", err)
+		}
 	}
 	return nil
 }

@@ -17,12 +17,14 @@ import (
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
 	"github.com/ai-novel/studio/ent/characterstateversion"
+	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
 	"github.com/ai-novel/studio/ent/relationshipstateversion"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
+	domain "github.com/ai-novel/studio/internal/domain/novel"
 	databaseinfra "github.com/ai-novel/studio/internal/infrastructure/database"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -65,6 +67,7 @@ var (
 	errGenerationPreviousChapterMissing = errors.New("previous chapter is required before generation")
 	errChapterOrderOccupied             = errors.New("chapter order is already occupied")
 	errChapterHasSuccessor              = errors.New("chapter has a successor and cannot be moved or deleted")
+	errGenerationEarlierChapterStale    = errors.New("an earlier chapter is stale and must be regenerated first")
 )
 
 type generationPreviousChapterMissingError struct {
@@ -161,6 +164,9 @@ func (s *entGenerationChapterStore) Prepare(
 	if err != nil {
 		return nil, err
 	}
+	if err := requireEarliestStaleTarget(ctx, txClient, novelID, row.Order); err != nil {
+		return nil, err
+	}
 	target := generationChapterTargetFromRow(row)
 	target.NovelID = novelID
 	target.NovelUpdatedAt, err = generationNovelUpdatedAt(ctx, txClient, novelID)
@@ -208,7 +214,10 @@ func (s *entGenerationChapterStore) prepareNewGenerationChapter(
 		novelID,
 		chapterIndex,
 		func(ctx context.Context, novelID int) error {
-			return lockGenerationNovel(ctx, txClient, novelID)
+			if err := lockGenerationNovel(ctx, txClient, novelID); err != nil {
+				return err
+			}
+			return requireEarliestStaleTarget(ctx, txClient, novelID, chapterIndex)
 		},
 		func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
 			return lookupGenerationChapter(ctx, txClient, novelID, order)
@@ -302,6 +311,9 @@ func preparePreviousContinuity(
 	if err != nil {
 		return agents.ContinuityPacket{}, err
 	}
+	if previous.Status == string(domain.StatusStale) {
+		return agents.ContinuityPacket{}, fmt.Errorf("%w: chapter %d", errGenerationEarlierChapterStale, previousOrder)
+	}
 	packet := agents.ContinuityPacket{
 		LastBeat:   strings.TrimSpace(previous.LastBeat),
 		OpenLoops:  append([]string(nil), previous.OpenLoops...),
@@ -311,6 +323,31 @@ func preparePreviousContinuity(
 		return agents.ContinuityPacket{}, fmt.Errorf("previous chapter continuity is invalid: %w", err)
 	}
 	return packet, nil
+}
+
+func requireEarliestStaleTarget(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	targetOrder int,
+) error {
+	if targetOrder <= 0 {
+		return errors.New("invalid generation target order")
+	}
+	row, err := client.Chapter.Query().Where(
+		chapter.StatusEQ(string(domain.StatusStale)),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).Order(chapter.ByOrder()).First(ctx)
+	if ent.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if row.Order != targetOrder {
+		return fmt.Errorf("%w: chapter %d", errGenerationEarlierChapterStale, row.Order)
+	}
+	return nil
 }
 
 func lockGenerationNovel(
@@ -398,6 +435,7 @@ func (s *entGenerationChapterStore) createGenerationChapter(
 
 func isChapterIntegrityConflict(err error) bool {
 	return errors.Is(err, errGenerationPreviousChapterMissing) ||
+		errors.Is(err, errGenerationEarlierChapterStale) ||
 		errors.Is(err, errChapterOrderOccupied) ||
 		errors.Is(err, errChapterHasSuccessor)
 }
@@ -463,20 +501,27 @@ func requirePreviousChapterOrder(
 	return nil
 }
 
+func chapterSuccessorResult(exists bool) error {
+	if exists {
+		return errChapterHasSuccessor
+	}
+	return nil
+}
+
 func requireNoChapterSuccessor(
 	ctx context.Context,
+	client *ent.Client,
 	novelID int,
 	order int,
-	lookup generationChapterLookup,
 ) error {
-	_, err := lookup(ctx, novelID, order+1)
-	if ent.IsNotFound(err) {
-		return nil
-	}
+	exists, err := client.Chapter.Query().Where(
+		chapter.OrderGT(order),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).Exist(ctx)
 	if err != nil {
 		return err
 	}
-	return errChapterHasSuccessor
+	return chapterSuccessorResult(exists)
 }
 
 func createChapterWithIntegrity(
@@ -547,6 +592,163 @@ func createChapterWithIntegrity(
 	return row.Unwrap(), nil
 }
 
+func updateChapterMemoryMetadata(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	chapterID int,
+	mutate func(map[string]any),
+) error {
+	rows, err := client.MemoryEntry.Query().Where(memoryentry.NovelID(strconv.Itoa(novelID))).All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if row.Metadata == nil || row.Metadata["chapter_id"] != strconv.Itoa(chapterID) {
+			continue
+		}
+		metadata := make(map[string]any, len(row.Metadata)+2)
+		for key, value := range row.Metadata {
+			metadata[key] = value
+		}
+		mutate(metadata)
+		if err := client.MemoryEntry.UpdateOneID(row.ID).SetMetadata(metadata).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func invalidateChapterDerivedData(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	chapterIDs []int,
+) error {
+	if len(chapterIDs) == 0 {
+		return nil
+	}
+	characterVersions, err := client.CharacterStateVersion.Query().Where(
+		characterstateversion.ChapterIDIn(chapterIDs...),
+		characterstateversion.Valid(true),
+	).All(ctx)
+	if err != nil {
+		return err
+	}
+	characterIDs := make(map[int]struct{}, len(characterVersions))
+	for _, version := range characterVersions {
+		characterIDs[version.CharacterID] = struct{}{}
+	}
+	worldVersions, err := client.WorldStateVersion.Query().Where(
+		worldstateversion.ChapterIDIn(chapterIDs...),
+		worldstateversion.Valid(true),
+	).All(ctx)
+	if err != nil {
+		return err
+	}
+	worldIDs := make(map[int]struct{}, len(worldVersions))
+	for _, version := range worldVersions {
+		worldIDs[version.WorldSettingID] = struct{}{}
+	}
+	relationshipVersions, err := client.RelationshipStateVersion.Query().Where(
+		relationshipstateversion.ChapterIDIn(chapterIDs...),
+		relationshipstateversion.Valid(true),
+	).All(ctx)
+	if err != nil {
+		return err
+	}
+	if _, err := client.CharacterStateVersion.Update().Where(
+		characterstateversion.ChapterIDIn(chapterIDs...),
+	).SetValid(false).Save(ctx); err != nil {
+		return err
+	}
+	if _, err := client.WorldStateVersion.Update().Where(
+		worldstateversion.ChapterIDIn(chapterIDs...),
+	).SetValid(false).Save(ctx); err != nil {
+		return err
+	}
+	if _, err := client.RelationshipStateVersion.Update().Where(
+		relationshipstateversion.ChapterIDIn(chapterIDs...),
+	).SetValid(false).Save(ctx); err != nil {
+		return err
+	}
+	for id := range characterIDs {
+		latest, latestErr := client.CharacterStateVersion.Query().Where(
+			characterstateversion.CharacterID(id), characterstateversion.Valid(true),
+		).Order(characterstateversion.ByChapterIndex(sql.OrderDesc()), characterstateversion.ByID(sql.OrderDesc())).First(ctx)
+		status := ""
+		if latestErr == nil {
+			status = latest.CurrentStatus
+		} else if !ent.IsNotFound(latestErr) {
+			return latestErr
+		}
+		if err := client.Character.UpdateOneID(id).SetCurrentStatus(status).SetStateVersioned(true).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	for id := range worldIDs {
+		latest, latestErr := client.WorldStateVersion.Query().Where(
+			worldstateversion.WorldSettingID(id), worldstateversion.Valid(true),
+		).Order(worldstateversion.ByChapterIndex(sql.OrderDesc()), worldstateversion.ByID(sql.OrderDesc())).First(ctx)
+		state := ""
+		if latestErr == nil {
+			state = latest.CurrentState
+		} else if !ent.IsNotFound(latestErr) {
+			return latestErr
+		}
+		if err := client.WorldSetting.UpdateOneID(id).SetCurrentState(state).SetStateVersioned(true).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	for _, version := range relationshipVersions {
+		if err := databaseinfra.RebuildRelationshipCache(
+			ctx, client, strconv.Itoa(novelID),
+			version.SourceCharacterID, version.TargetCharacterID, version.RelationType,
+		); err != nil {
+			return err
+		}
+	}
+	for _, chapterID := range chapterIDs {
+		if err := updateChapterMemoryMetadata(ctx, client, novelID, chapterID, func(metadata map[string]any) {
+			metadata["chapter_status"] = "Stale"
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func markFollowingChaptersStale(
+	ctx context.Context,
+	client *ent.Client,
+	novelID int,
+	chapterOrder int,
+	excludeChapterID int,
+) error {
+	if novelID <= 0 || chapterOrder <= 0 {
+		return errors.New("invalid chapter stale boundary")
+	}
+	staleRows, err := client.Chapter.Query().Where(
+		chapter.IDNEQ(excludeChapterID),
+		chapter.OrderGT(chapterOrder),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).Select(chapter.FieldID).Ints(ctx)
+	if err != nil {
+		return err
+	}
+	if _, err := client.Chapter.Update().Where(
+		chapter.IDNEQ(excludeChapterID),
+		chapter.OrderGT(chapterOrder),
+		chapter.HasNovelWith(novel.ID(novelID)),
+	).SetStatus(string(domain.StatusStale)).Save(ctx); err != nil {
+		return err
+	}
+	if err := invalidateChapterDerivedData(ctx, client, novelID, staleRows); err != nil {
+		return err
+	}
+	return nil
+}
+
 func updateChapterWithIntegrity(
 	ctx context.Context,
 	client *ent.Client,
@@ -587,7 +789,7 @@ func updateChapterWithIntegrity(
 		lookup := func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
 			return lookupGenerationChapter(ctx, txClient, novelID, order)
 		}
-		if err := requireNoChapterSuccessor(ctx, novelRow.ID, row.Order, lookup); err != nil {
+		if err := requireNoChapterSuccessor(ctx, txClient, novelRow.ID, row.Order); err != nil {
 			return nil, err
 		}
 		if err := requireAvailableChapterOrder(ctx, novelRow.ID, *req.Order, chapterID, lookup); err != nil {
@@ -598,12 +800,30 @@ func updateChapterWithIntegrity(
 		}
 	}
 
+	contentChanged := req.Content != nil && *req.Content != row.Content
+	orderChanged := req.Order != nil && *req.Order != row.Order
+	explicitStale := req.Status != nil && strings.TrimSpace(*req.Status) == string(domain.StatusStale) && row.Status != string(domain.StatusStale)
+	targetInvalidated := contentChanged || orderChanged || explicitStale
+	semanticChanged := targetInvalidated
+	finalOrder := row.Order
+	if orderChanged {
+		semanticChanged = true
+		finalOrder = *req.Order
+	}
+	staleBoundary := row.Order
+	if finalOrder < staleBoundary {
+		staleBoundary = finalOrder
+	}
 	update := txClient.Chapter.UpdateOneID(chapterID)
 	if req.Title != nil {
 		update.SetTitle(strings.TrimSpace(*req.Title))
 	}
 	if req.Order != nil {
 		update.SetOrder(*req.Order)
+		if orderChanged {
+			update.SetStatus(string(domain.StatusStale)).
+				SetLastBeat("").SetOpenLoops([]string{}).SetNextAction("")
+		}
 		if _, err := txClient.CharacterStateVersion.Update().
 			Where(characterstateversion.ChapterID(chapterID)).
 			SetChapterIndex(*req.Order).
@@ -636,17 +856,44 @@ func updateChapterWithIntegrity(
 				return nil, err
 			}
 		}
+		if err := updateChapterMemoryMetadata(ctx, txClient, novelRow.ID, chapterID, func(metadata map[string]any) {
+			metadata["chapter_index"] = *req.Order
+		}); err != nil {
+			return nil, err
+		}
 	}
 	if req.Status != nil {
-		update.SetStatus(strings.TrimSpace(*req.Status))
+		requestedStatus := strings.TrimSpace(*req.Status)
+		if row.Status == string(domain.StatusStale) && requestedStatus != string(domain.StatusStale) {
+			return nil, errGenerationEarlierChapterStale
+		}
+		update.SetStatus(requestedStatus)
 	}
 	if req.Content != nil {
 		update.SetContent(*req.Content)
 		update.SetWordCount(wordCountOf(*req.Content))
+		if contentChanged {
+			update.SetStatus(string(domain.StatusStale)).
+				SetLastBeat("").SetOpenLoops([]string{}).SetNextAction("")
+		}
+	}
+	if targetInvalidated {
+		update.SetStatus(string(domain.StatusStale)).
+			SetLastBeat("").SetOpenLoops([]string{}).SetNextAction("")
 	}
 	row, err = update.Save(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if semanticChanged {
+		if targetInvalidated {
+			if err := invalidateChapterDerivedData(ctx, txClient, novelRow.ID, []int{chapterID}); err != nil {
+				return nil, err
+			}
+		}
+		if err := markFollowingChaptersStale(ctx, txClient, novelRow.ID, staleBoundary, chapterID); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -690,10 +937,7 @@ func deleteChapterWithIntegrity(
 	if err != nil {
 		return err
 	}
-	lookup := func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
-		return lookupGenerationChapter(ctx, txClient, novelID, order)
-	}
-	if err := requireNoChapterSuccessor(ctx, novelRow.ID, row.Order, lookup); err != nil {
+	if err := requireNoChapterSuccessor(ctx, txClient, novelRow.ID, row.Order); err != nil {
 		return err
 	}
 	characterVersions, err := txClient.CharacterStateVersion.Query().
@@ -747,12 +991,17 @@ func deleteChapterWithIntegrity(
 	).Exec(ctx); err != nil {
 		return err
 	}
+	if err := updateChapterMemoryMetadata(ctx, txClient, novelRow.ID, chapterID, func(metadata map[string]any) {
+		metadata["chapter_status"] = "Stale"
+	}); err != nil {
+		return err
+	}
 	if err := txClient.Chapter.DeleteOneID(chapterID).Exec(ctx); err != nil {
 		return err
 	}
 	for id := range characterIDs {
 		latest, latestErr := txClient.CharacterStateVersion.Query().
-			Where(characterstateversion.CharacterID(id)).
+			Where(characterstateversion.CharacterID(id), characterstateversion.Valid(true)).
 			Order(characterstateversion.ByChapterIndex(sql.OrderDesc()), characterstateversion.ByID(sql.OrderDesc())).
 			First(ctx)
 		status := ""
@@ -770,7 +1019,7 @@ func deleteChapterWithIntegrity(
 	}
 	for id := range worldIDs {
 		latest, latestErr := txClient.WorldStateVersion.Query().
-			Where(worldstateversion.WorldSettingID(id)).
+			Where(worldstateversion.WorldSettingID(id), worldstateversion.Valid(true)).
 			Order(worldstateversion.ByChapterIndex(sql.OrderDesc()), worldstateversion.ByID(sql.OrderDesc())).
 			First(ctx)
 		state := ""
@@ -881,6 +1130,12 @@ func (s *entGenerationChapterStore) Save(
 	if err != nil {
 		return err
 	}
+	if err := invalidateChapterDerivedData(ctx, txClient, target.NovelID, []int{target.ID}); err != nil {
+		return err
+	}
+	if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, target.ID); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -964,12 +1219,29 @@ type activeGeneration struct {
 }
 
 type generationGuard struct {
-	mu     sync.Mutex
-	active map[int]activeGeneration
+	mu       sync.Mutex
+	active   map[int]activeGeneration
+	mutating map[int]bool
 }
 
 func newGenerationGuard() *generationGuard {
-	return &generationGuard{active: make(map[int]activeGeneration)}
+	return &generationGuard{active: make(map[int]activeGeneration), mutating: make(map[int]bool)}
+}
+
+func (g *generationGuard) acquireMutation(novelID int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, active := g.active[novelID]; active || g.mutating[novelID] {
+		return false
+	}
+	g.mutating[novelID] = true
+	return true
+}
+
+func (g *generationGuard) releaseMutation(novelID int) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.mutating, novelID)
 }
 
 func (g *generationGuard) acquire(
@@ -980,7 +1252,7 @@ func (g *generationGuard) acquire(
 ) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if _, exists := g.active[novelID]; exists {
+	if _, exists := g.active[novelID]; exists || g.mutating[novelID] {
 		return false
 	}
 	g.active[novelID] = activeGeneration{
@@ -1634,6 +1906,12 @@ func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.generationGuard.acquireMutation(novelID) {
+		http.Error(w, "该小说正在生成或修改，不能修改章节", http.StatusConflict)
+		return
+	}
+	defer s.generationGuard.releaseMutation(novelID)
+
 	var req CreateChapterRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20))
 	dec.DisallowUnknownFields()
@@ -1697,6 +1975,26 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chapterRow, queryErr := s.db.Chapter.Query().Where(chapter.ID(id)).WithNovel().Only(r.Context())
+	if queryErr != nil {
+		if ent.IsNotFound(queryErr) {
+			http.Error(w, "chapter not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, queryErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	chapterNovel, queryErr := chapterRow.Edges.NovelOrErr()
+	if queryErr != nil {
+		http.Error(w, queryErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !s.generationGuard.acquireMutation(chapterNovel.ID) {
+		http.Error(w, "该小说正在生成或修改，不能修改章节", http.StatusConflict)
+		return
+	}
+	defer s.generationGuard.releaseMutation(chapterNovel.ID)
+
 	var req UpdateChapterRequest
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 10<<20))
 	dec.DisallowUnknownFields()
@@ -1752,6 +2050,26 @@ func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	chapterRow, queryErr := s.db.Chapter.Query().Where(chapter.ID(id)).WithNovel().Only(r.Context())
+	if queryErr != nil {
+		if ent.IsNotFound(queryErr) {
+			http.Error(w, "chapter not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, queryErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	chapterNovel, queryErr := chapterRow.Edges.NovelOrErr()
+	if queryErr != nil {
+		http.Error(w, queryErr.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !s.generationGuard.acquireMutation(chapterNovel.ID) {
+		http.Error(w, "该小说正在生成或修改，不能删除章节", http.StatusConflict)
+		return
+	}
+	defer s.generationGuard.releaseMutation(chapterNovel.ID)
 
 	if err := deleteChapterWithIntegrity(r.Context(), s.db, id); err != nil {
 		if ent.IsNotFound(err) {

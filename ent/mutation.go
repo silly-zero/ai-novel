@@ -2653,6 +2653,7 @@ type CharacterStateVersionMutation struct {
 	addchapter_index *int
 	generation_id    *string
 	current_status   *string
+	valid            *bool
 	created_at       *time.Time
 	updated_at       *time.Time
 	clearedFields    map[string]struct{}
@@ -2963,6 +2964,42 @@ func (m *CharacterStateVersionMutation) ResetCurrentStatus() {
 	m.current_status = nil
 }
 
+// SetValid sets the "valid" field.
+func (m *CharacterStateVersionMutation) SetValid(b bool) {
+	m.valid = &b
+}
+
+// Valid returns the value of the "valid" field in the mutation.
+func (m *CharacterStateVersionMutation) Valid() (r bool, exists bool) {
+	v := m.valid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValid returns the old "valid" field's value of the CharacterStateVersion entity.
+// If the CharacterStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CharacterStateVersionMutation) OldValid(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValid: %w", err)
+	}
+	return oldValue.Valid, nil
+}
+
+// ResetValid resets all changes to the "valid" field.
+func (m *CharacterStateVersionMutation) ResetValid() {
+	m.valid = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *CharacterStateVersionMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -3123,7 +3160,7 @@ func (m *CharacterStateVersionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CharacterStateVersionMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.character != nil {
 		fields = append(fields, characterstateversion.FieldCharacterID)
 	}
@@ -3138,6 +3175,9 @@ func (m *CharacterStateVersionMutation) Fields() []string {
 	}
 	if m.current_status != nil {
 		fields = append(fields, characterstateversion.FieldCurrentStatus)
+	}
+	if m.valid != nil {
+		fields = append(fields, characterstateversion.FieldValid)
 	}
 	if m.created_at != nil {
 		fields = append(fields, characterstateversion.FieldCreatedAt)
@@ -3163,6 +3203,8 @@ func (m *CharacterStateVersionMutation) Field(name string) (ent.Value, bool) {
 		return m.GenerationID()
 	case characterstateversion.FieldCurrentStatus:
 		return m.CurrentStatus()
+	case characterstateversion.FieldValid:
+		return m.Valid()
 	case characterstateversion.FieldCreatedAt:
 		return m.CreatedAt()
 	case characterstateversion.FieldUpdatedAt:
@@ -3186,6 +3228,8 @@ func (m *CharacterStateVersionMutation) OldField(ctx context.Context, name strin
 		return m.OldGenerationID(ctx)
 	case characterstateversion.FieldCurrentStatus:
 		return m.OldCurrentStatus(ctx)
+	case characterstateversion.FieldValid:
+		return m.OldValid(ctx)
 	case characterstateversion.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case characterstateversion.FieldUpdatedAt:
@@ -3233,6 +3277,13 @@ func (m *CharacterStateVersionMutation) SetField(name string, value ent.Value) e
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCurrentStatus(v)
+		return nil
+	case characterstateversion.FieldValid:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValid(v)
 		return nil
 	case characterstateversion.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -3326,6 +3377,9 @@ func (m *CharacterStateVersionMutation) ResetField(name string) error {
 		return nil
 	case characterstateversion.FieldCurrentStatus:
 		m.ResetCurrentStatus()
+		return nil
+	case characterstateversion.FieldValid:
+		m.ResetValid()
 		return nil
 	case characterstateversion.FieldCreatedAt:
 		m.ResetCreatedAt()
@@ -5636,6 +5690,7 @@ type RelationshipStateVersionMutation struct {
 	relation_type           *string
 	description             *string
 	active                  *bool
+	valid                   *bool
 	operation               *relationshipstateversion.Operation
 	created_at              *time.Time
 	updated_at              *time.Time
@@ -6070,6 +6125,42 @@ func (m *RelationshipStateVersionMutation) ResetActive() {
 	m.active = nil
 }
 
+// SetValid sets the "valid" field.
+func (m *RelationshipStateVersionMutation) SetValid(b bool) {
+	m.valid = &b
+}
+
+// Valid returns the value of the "valid" field in the mutation.
+func (m *RelationshipStateVersionMutation) Valid() (r bool, exists bool) {
+	v := m.valid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValid returns the old "valid" field's value of the RelationshipStateVersion entity.
+// If the RelationshipStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *RelationshipStateVersionMutation) OldValid(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValid: %w", err)
+	}
+	return oldValue.Valid, nil
+}
+
+// ResetValid resets all changes to the "valid" field.
+func (m *RelationshipStateVersionMutation) ResetValid() {
+	m.valid = nil
+}
+
 // SetOperation sets the "operation" field.
 func (m *RelationshipStateVersionMutation) SetOperation(r relationshipstateversion.Operation) {
 	m.operation = &r
@@ -6293,7 +6384,7 @@ func (m *RelationshipStateVersionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *RelationshipStateVersionMutation) Fields() []string {
-	fields := make([]string, 0, 11)
+	fields := make([]string, 0, 12)
 	if m.chapter != nil {
 		fields = append(fields, relationshipstateversion.FieldChapterID)
 	}
@@ -6317,6 +6408,9 @@ func (m *RelationshipStateVersionMutation) Fields() []string {
 	}
 	if m.active != nil {
 		fields = append(fields, relationshipstateversion.FieldActive)
+	}
+	if m.valid != nil {
+		fields = append(fields, relationshipstateversion.FieldValid)
 	}
 	if m.operation != nil {
 		fields = append(fields, relationshipstateversion.FieldOperation)
@@ -6351,6 +6445,8 @@ func (m *RelationshipStateVersionMutation) Field(name string) (ent.Value, bool) 
 		return m.Description()
 	case relationshipstateversion.FieldActive:
 		return m.Active()
+	case relationshipstateversion.FieldValid:
+		return m.Valid()
 	case relationshipstateversion.FieldOperation:
 		return m.Operation()
 	case relationshipstateversion.FieldCreatedAt:
@@ -6382,6 +6478,8 @@ func (m *RelationshipStateVersionMutation) OldField(ctx context.Context, name st
 		return m.OldDescription(ctx)
 	case relationshipstateversion.FieldActive:
 		return m.OldActive(ctx)
+	case relationshipstateversion.FieldValid:
+		return m.OldValid(ctx)
 	case relationshipstateversion.FieldOperation:
 		return m.OldOperation(ctx)
 	case relationshipstateversion.FieldCreatedAt:
@@ -6452,6 +6550,13 @@ func (m *RelationshipStateVersionMutation) SetField(name string, value ent.Value
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetActive(v)
+		return nil
+	case relationshipstateversion.FieldValid:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValid(v)
 		return nil
 	case relationshipstateversion.FieldOperation:
 		v, ok := value.(relationshipstateversion.Operation)
@@ -6570,6 +6675,9 @@ func (m *RelationshipStateVersionMutation) ResetField(name string) error {
 		return nil
 	case relationshipstateversion.FieldActive:
 		m.ResetActive()
+		return nil
+	case relationshipstateversion.FieldValid:
+		m.ResetValid()
 		return nil
 	case relationshipstateversion.FieldOperation:
 		m.ResetOperation()
@@ -7577,6 +7685,7 @@ type WorldStateVersionMutation struct {
 	addchapter_index     *int
 	generation_id        *string
 	current_state        *string
+	valid                *bool
 	created_at           *time.Time
 	updated_at           *time.Time
 	clearedFields        map[string]struct{}
@@ -7887,6 +7996,42 @@ func (m *WorldStateVersionMutation) ResetCurrentState() {
 	m.current_state = nil
 }
 
+// SetValid sets the "valid" field.
+func (m *WorldStateVersionMutation) SetValid(b bool) {
+	m.valid = &b
+}
+
+// Valid returns the value of the "valid" field in the mutation.
+func (m *WorldStateVersionMutation) Valid() (r bool, exists bool) {
+	v := m.valid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValid returns the old "valid" field's value of the WorldStateVersion entity.
+// If the WorldStateVersion object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *WorldStateVersionMutation) OldValid(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValid is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValid requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValid: %w", err)
+	}
+	return oldValue.Valid, nil
+}
+
+// ResetValid resets all changes to the "valid" field.
+func (m *WorldStateVersionMutation) ResetValid() {
+	m.valid = nil
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *WorldStateVersionMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -8047,7 +8192,7 @@ func (m *WorldStateVersionMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *WorldStateVersionMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.world_setting != nil {
 		fields = append(fields, worldstateversion.FieldWorldSettingID)
 	}
@@ -8062,6 +8207,9 @@ func (m *WorldStateVersionMutation) Fields() []string {
 	}
 	if m.current_state != nil {
 		fields = append(fields, worldstateversion.FieldCurrentState)
+	}
+	if m.valid != nil {
+		fields = append(fields, worldstateversion.FieldValid)
 	}
 	if m.created_at != nil {
 		fields = append(fields, worldstateversion.FieldCreatedAt)
@@ -8087,6 +8235,8 @@ func (m *WorldStateVersionMutation) Field(name string) (ent.Value, bool) {
 		return m.GenerationID()
 	case worldstateversion.FieldCurrentState:
 		return m.CurrentState()
+	case worldstateversion.FieldValid:
+		return m.Valid()
 	case worldstateversion.FieldCreatedAt:
 		return m.CreatedAt()
 	case worldstateversion.FieldUpdatedAt:
@@ -8110,6 +8260,8 @@ func (m *WorldStateVersionMutation) OldField(ctx context.Context, name string) (
 		return m.OldGenerationID(ctx)
 	case worldstateversion.FieldCurrentState:
 		return m.OldCurrentState(ctx)
+	case worldstateversion.FieldValid:
+		return m.OldValid(ctx)
 	case worldstateversion.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	case worldstateversion.FieldUpdatedAt:
@@ -8157,6 +8309,13 @@ func (m *WorldStateVersionMutation) SetField(name string, value ent.Value) error
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCurrentState(v)
+		return nil
+	case worldstateversion.FieldValid:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValid(v)
 		return nil
 	case worldstateversion.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -8250,6 +8409,9 @@ func (m *WorldStateVersionMutation) ResetField(name string) error {
 		return nil
 	case worldstateversion.FieldCurrentState:
 		m.ResetCurrentState()
+		return nil
+	case worldstateversion.FieldValid:
+		m.ResetValid()
 		return nil
 	case worldstateversion.FieldCreatedAt:
 		m.ResetCreatedAt()

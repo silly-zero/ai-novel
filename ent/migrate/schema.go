@@ -64,6 +64,7 @@ var (
 		{Name: "chapter_index", Type: field.TypeInt},
 		{Name: "generation_id", Type: field.TypeString},
 		{Name: "current_status", Type: field.TypeString, Size: 2147483647},
+		{Name: "valid", Type: field.TypeBool, Default: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "chapter_id", Type: field.TypeInt},
@@ -77,13 +78,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "character_state_versions_chapters_character_state_versions",
-				Columns:    []*schema.Column{CharacterStateVersionsColumns[6]},
+				Columns:    []*schema.Column{CharacterStateVersionsColumns[7]},
 				RefColumns: []*schema.Column{ChaptersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
 			{
 				Symbol:     "character_state_versions_characters_state_versions",
-				Columns:    []*schema.Column{CharacterStateVersionsColumns[7]},
+				Columns:    []*schema.Column{CharacterStateVersionsColumns[8]},
 				RefColumns: []*schema.Column{CharactersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -92,17 +93,17 @@ var (
 			{
 				Name:    "characterstateversion_character_id_chapter_id",
 				Unique:  true,
-				Columns: []*schema.Column{CharacterStateVersionsColumns[7], CharacterStateVersionsColumns[6]},
+				Columns: []*schema.Column{CharacterStateVersionsColumns[8], CharacterStateVersionsColumns[7]},
 			},
 			{
 				Name:    "characterstateversion_character_id_chapter_index",
 				Unique:  false,
-				Columns: []*schema.Column{CharacterStateVersionsColumns[7], CharacterStateVersionsColumns[1]},
+				Columns: []*schema.Column{CharacterStateVersionsColumns[8], CharacterStateVersionsColumns[1]},
 			},
 			{
 				Name:    "characterstateversion_chapter_id",
 				Unique:  false,
-				Columns: []*schema.Column{CharacterStateVersionsColumns[6]},
+				Columns: []*schema.Column{CharacterStateVersionsColumns[7]},
 			},
 		},
 	}
@@ -179,6 +180,7 @@ var (
 		{Name: "relation_type", Type: field.TypeString},
 		{Name: "description", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "active", Type: field.TypeBool},
+		{Name: "valid", Type: field.TypeBool, Default: true},
 		{Name: "operation", Type: field.TypeEnum, Enums: []string{"upsert", "remove"}},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
@@ -194,19 +196,19 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "relationship_state_versions_chapters_relationship_state_versions",
-				Columns:    []*schema.Column{RelationshipStateVersionsColumns[9]},
+				Columns:    []*schema.Column{RelationshipStateVersionsColumns[10]},
 				RefColumns: []*schema.Column{ChaptersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
 			{
 				Symbol:     "relationship_state_versions_characters_source_relationship_state_versions",
-				Columns:    []*schema.Column{RelationshipStateVersionsColumns[10]},
+				Columns:    []*schema.Column{RelationshipStateVersionsColumns[11]},
 				RefColumns: []*schema.Column{CharactersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "relationship_state_versions_characters_target_relationship_state_versions",
-				Columns:    []*schema.Column{RelationshipStateVersionsColumns[11]},
+				Columns:    []*schema.Column{RelationshipStateVersionsColumns[12]},
 				RefColumns: []*schema.Column{CharactersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -215,17 +217,17 @@ var (
 			{
 				Name:    "relationshipstateversion_source_character_id_target_character_id_relation_type_chapter_id",
 				Unique:  true,
-				Columns: []*schema.Column{RelationshipStateVersionsColumns[10], RelationshipStateVersionsColumns[11], RelationshipStateVersionsColumns[3], RelationshipStateVersionsColumns[9]},
+				Columns: []*schema.Column{RelationshipStateVersionsColumns[11], RelationshipStateVersionsColumns[12], RelationshipStateVersionsColumns[3], RelationshipStateVersionsColumns[10]},
 			},
 			{
 				Name:    "relationshipstateversion_source_character_id_target_character_id_relation_type_chapter_index",
 				Unique:  false,
-				Columns: []*schema.Column{RelationshipStateVersionsColumns[10], RelationshipStateVersionsColumns[11], RelationshipStateVersionsColumns[3], RelationshipStateVersionsColumns[1]},
+				Columns: []*schema.Column{RelationshipStateVersionsColumns[11], RelationshipStateVersionsColumns[12], RelationshipStateVersionsColumns[3], RelationshipStateVersionsColumns[1]},
 			},
 			{
 				Name:    "relationshipstateversion_chapter_id",
 				Unique:  false,
-				Columns: []*schema.Column{RelationshipStateVersionsColumns[9]},
+				Columns: []*schema.Column{RelationshipStateVersionsColumns[10]},
 			},
 		},
 	}
@@ -254,6 +256,7 @@ var (
 		{Name: "chapter_index", Type: field.TypeInt},
 		{Name: "generation_id", Type: field.TypeString},
 		{Name: "current_state", Type: field.TypeString, Size: 2147483647},
+		{Name: "valid", Type: field.TypeBool, Default: true},
 		{Name: "created_at", Type: field.TypeTime},
 		{Name: "updated_at", Type: field.TypeTime},
 		{Name: "chapter_id", Type: field.TypeInt},
@@ -267,13 +270,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "world_state_versions_chapters_world_state_versions",
-				Columns:    []*schema.Column{WorldStateVersionsColumns[6]},
+				Columns:    []*schema.Column{WorldStateVersionsColumns[7]},
 				RefColumns: []*schema.Column{ChaptersColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
 			{
 				Symbol:     "world_state_versions_world_settings_state_versions",
-				Columns:    []*schema.Column{WorldStateVersionsColumns[7]},
+				Columns:    []*schema.Column{WorldStateVersionsColumns[8]},
 				RefColumns: []*schema.Column{WorldSettingsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -282,17 +285,17 @@ var (
 			{
 				Name:    "worldstateversion_world_setting_id_chapter_id",
 				Unique:  true,
-				Columns: []*schema.Column{WorldStateVersionsColumns[7], WorldStateVersionsColumns[6]},
+				Columns: []*schema.Column{WorldStateVersionsColumns[8], WorldStateVersionsColumns[7]},
 			},
 			{
 				Name:    "worldstateversion_world_setting_id_chapter_index",
 				Unique:  false,
-				Columns: []*schema.Column{WorldStateVersionsColumns[7], WorldStateVersionsColumns[1]},
+				Columns: []*schema.Column{WorldStateVersionsColumns[8], WorldStateVersionsColumns[1]},
 			},
 			{
 				Name:    "worldstateversion_chapter_id",
 				Unique:  false,
-				Columns: []*schema.Column{WorldStateVersionsColumns[6]},
+				Columns: []*schema.Column{WorldStateVersionsColumns[7]},
 			},
 		},
 	}

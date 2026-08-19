@@ -107,6 +107,20 @@ func (_u *WorldStateVersionUpdate) SetNillableCurrentState(v *string) *WorldStat
 	return _u
 }
 
+// SetValid sets the "valid" field.
+func (_u *WorldStateVersionUpdate) SetValid(v bool) *WorldStateVersionUpdate {
+	_u.mutation.SetValid(v)
+	return _u
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_u *WorldStateVersionUpdate) SetNillableValid(v *bool) *WorldStateVersionUpdate {
+	if v != nil {
+		_u.SetValid(*v)
+	}
+	return _u
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_u *WorldStateVersionUpdate) SetCreatedAt(v time.Time) *WorldStateVersionUpdate {
 	_u.mutation.SetCreatedAt(v)
@@ -239,6 +253,9 @@ func (_u *WorldStateVersionUpdate) sqlSave(ctx context.Context) (_node int, err 
 	}
 	if value, ok := _u.mutation.CurrentState(); ok {
 		_spec.SetField(worldstateversion.FieldCurrentState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Valid(); ok {
+		_spec.SetField(worldstateversion.FieldValid, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(worldstateversion.FieldCreatedAt, field.TypeTime, value)
@@ -397,6 +414,20 @@ func (_u *WorldStateVersionUpdateOne) SetCurrentState(v string) *WorldStateVersi
 func (_u *WorldStateVersionUpdateOne) SetNillableCurrentState(v *string) *WorldStateVersionUpdateOne {
 	if v != nil {
 		_u.SetCurrentState(*v)
+	}
+	return _u
+}
+
+// SetValid sets the "valid" field.
+func (_u *WorldStateVersionUpdateOne) SetValid(v bool) *WorldStateVersionUpdateOne {
+	_u.mutation.SetValid(v)
+	return _u
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_u *WorldStateVersionUpdateOne) SetNillableValid(v *bool) *WorldStateVersionUpdateOne {
+	if v != nil {
+		_u.SetValid(*v)
 	}
 	return _u
 }
@@ -563,6 +594,9 @@ func (_u *WorldStateVersionUpdateOne) sqlSave(ctx context.Context) (_node *World
 	}
 	if value, ok := _u.mutation.CurrentState(); ok {
 		_spec.SetField(worldstateversion.FieldCurrentState, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.Valid(); ok {
+		_spec.SetField(worldstateversion.FieldValid, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.CreatedAt(); ok {
 		_spec.SetField(worldstateversion.FieldCreatedAt, field.TypeTime, value)

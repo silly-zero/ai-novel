@@ -155,6 +155,20 @@ func (_u *RelationshipStateVersionUpdate) SetNillableActive(v *bool) *Relationsh
 	return _u
 }
 
+// SetValid sets the "valid" field.
+func (_u *RelationshipStateVersionUpdate) SetValid(v bool) *RelationshipStateVersionUpdate {
+	_u.mutation.SetValid(v)
+	return _u
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_u *RelationshipStateVersionUpdate) SetNillableValid(v *bool) *RelationshipStateVersionUpdate {
+	if v != nil {
+		_u.SetValid(*v)
+	}
+	return _u
+}
+
 // SetOperation sets the "operation" field.
 func (_u *RelationshipStateVersionUpdate) SetOperation(v relationshipstateversion.Operation) *RelationshipStateVersionUpdate {
 	_u.mutation.SetOperation(v)
@@ -334,6 +348,9 @@ func (_u *RelationshipStateVersionUpdate) sqlSave(ctx context.Context) (_node in
 	}
 	if value, ok := _u.mutation.Active(); ok {
 		_spec.SetField(relationshipstateversion.FieldActive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Valid(); ok {
+		_spec.SetField(relationshipstateversion.FieldValid, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Operation(); ok {
 		_spec.SetField(relationshipstateversion.FieldOperation, field.TypeEnum, value)
@@ -576,6 +593,20 @@ func (_u *RelationshipStateVersionUpdateOne) SetNillableActive(v *bool) *Relatio
 	return _u
 }
 
+// SetValid sets the "valid" field.
+func (_u *RelationshipStateVersionUpdateOne) SetValid(v bool) *RelationshipStateVersionUpdateOne {
+	_u.mutation.SetValid(v)
+	return _u
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_u *RelationshipStateVersionUpdateOne) SetNillableValid(v *bool) *RelationshipStateVersionUpdateOne {
+	if v != nil {
+		_u.SetValid(*v)
+	}
+	return _u
+}
+
 // SetOperation sets the "operation" field.
 func (_u *RelationshipStateVersionUpdateOne) SetOperation(v relationshipstateversion.Operation) *RelationshipStateVersionUpdateOne {
 	_u.mutation.SetOperation(v)
@@ -785,6 +816,9 @@ func (_u *RelationshipStateVersionUpdateOne) sqlSave(ctx context.Context) (_node
 	}
 	if value, ok := _u.mutation.Active(); ok {
 		_spec.SetField(relationshipstateversion.FieldActive, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Valid(); ok {
+		_spec.SetField(relationshipstateversion.FieldValid, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.Operation(); ok {
 		_spec.SetField(relationshipstateversion.FieldOperation, field.TypeEnum, value)

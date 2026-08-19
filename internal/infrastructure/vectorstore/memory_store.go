@@ -72,6 +72,10 @@ func memoryEntryWithinChapterBoundary(entry *memory.MemoryEntry, options memory.
 	if entry == nil || entry.Metadata == nil {
 		return false
 	}
+	status, ok := entry.Metadata["chapter_status"].(string)
+	if !ok || (status != "Draft" && status != "Published") {
+		return false
+	}
 	chapterIndex, ok := memoryChapterIndex(entry.Metadata["chapter_index"])
 	return ok && chapterIndex < options.BeforeChapterIndex
 }

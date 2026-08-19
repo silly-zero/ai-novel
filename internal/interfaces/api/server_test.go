@@ -13,6 +13,7 @@ import (
 
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/internal/domain/agents"
+	domain "github.com/ai-novel/studio/internal/domain/novel"
 )
 
 type generationTestEngine struct {
@@ -717,6 +718,20 @@ func TestPreparePreviousContinuityRequiresMissingChapter(t *testing.T) {
 	}
 }
 
+func TestPreparePreviousContinuityRejectsStalePreviousChapter(t *testing.T) {
+	packet, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return &ent.Chapter{Status: string(domain.StatusStale), LastBeat: "旧", NextAction: "旧"}, nil
+		},
+	)
+	if !packet.IsEmpty() || !errors.Is(err, errGenerationEarlierChapterStale) {
+		t.Fatalf("packet = %#v, error = %v", packet, err)
+	}
+}
+
 func TestPreparePreviousContinuityCopiesPreviousPacket(t *testing.T) {
 	loops := []string{"线索一", "线索二"}
 	packet, err := preparePreviousContinuity(
@@ -1022,43 +1037,12 @@ func TestRequirePreviousChapterOrder(t *testing.T) {
 	}
 }
 
-func TestRequireNoChapterSuccessor(t *testing.T) {
-	lookupErr := errors.New("lookup failed")
-	tests := []struct {
-		name      string
-		row       *ent.Chapter
-		lookupErr error
-		wantErr   error
-	}{
-		{name: "no successor", lookupErr: &ent.NotFoundError{}},
-		{name: "has successor", row: &ent.Chapter{ID: 12}, wantErr: errChapterHasSuccessor},
-		{name: "not singular", lookupErr: &ent.NotSingularError{}, wantErr: &ent.NotSingularError{}},
-		{name: "lookup failure", lookupErr: lookupErr, wantErr: lookupErr},
+func TestChapterSuccessorResult(t *testing.T) {
+	if err := chapterSuccessorResult(false); err != nil {
+		t.Fatalf("no successor error = %v", err)
 	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			err := requireNoChapterSuccessor(
-				context.Background(),
-				7,
-				3,
-				func(_ context.Context, novelID, order int) (*ent.Chapter, error) {
-					if novelID != 7 || order != 4 {
-						t.Fatalf("lookup = novel %d order %d", novelID, order)
-					}
-					return test.row, test.lookupErr
-				},
-			)
-			switch {
-			case test.wantErr == nil && err != nil:
-				t.Fatalf("error = %v, want nil", err)
-			case errors.Is(test.wantErr, lookupErr) && !errors.Is(err, lookupErr):
-				t.Fatalf("error = %v, want %v", err, lookupErr)
-			case ent.IsNotSingular(test.wantErr) && !ent.IsNotSingular(err):
-				t.Fatalf("error = %v, want not singular", err)
-			case test.wantErr != nil && !errors.Is(err, test.wantErr) && !ent.IsNotSingular(test.wantErr):
-				t.Fatalf("error = %v, want %v", err, test.wantErr)
-			}
-		})
+	if err := chapterSuccessorResult(true); !errors.Is(err, errChapterHasSuccessor) {
+		t.Fatalf("successor error = %v", err)
 	}
 }
 
@@ -2230,6 +2214,31 @@ func TestCancelGenerationRejectsMissingAndMismatchedGeneration(t *testing.T) {
 
 func testGenerationContext() (context.Context, context.CancelCauseFunc) {
 	return context.WithCancelCause(context.Background())
+}
+
+func TestGenerationGuardMutationAndGenerationAreMutuallyExclusive(t *testing.T) {
+	guard := newGenerationGuard()
+	if !guard.acquireMutation(7) {
+		t.Fatal("first mutation lease was rejected")
+	}
+	if guard.acquire(7, "generation", context.Background(), func(error) {}) {
+		t.Fatal("generation acquired during mutation")
+	}
+	if guard.acquireMutation(7) {
+		t.Fatal("second mutation acquired concurrently")
+	}
+	guard.releaseMutation(7)
+	if !guard.acquire(7, "generation", context.Background(), func(error) {}) {
+		t.Fatal("generation lease was rejected after mutation release")
+	}
+	if guard.acquireMutation(7) {
+		t.Fatal("mutation acquired during generation")
+	}
+	guard.release(7, "generation")
+	if !guard.acquireMutation(7) {
+		t.Fatal("mutation lease was rejected after generation release")
+	}
+	guard.releaseMutation(7)
 }
 
 func TestGenerationGuardCancellationLinearizesWithRelease(t *testing.T) {

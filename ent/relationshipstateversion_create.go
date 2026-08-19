@@ -78,6 +78,20 @@ func (_c *RelationshipStateVersionCreate) SetActive(v bool) *RelationshipStateVe
 	return _c
 }
 
+// SetValid sets the "valid" field.
+func (_c *RelationshipStateVersionCreate) SetValid(v bool) *RelationshipStateVersionCreate {
+	_c.mutation.SetValid(v)
+	return _c
+}
+
+// SetNillableValid sets the "valid" field if the given value is not nil.
+func (_c *RelationshipStateVersionCreate) SetNillableValid(v *bool) *RelationshipStateVersionCreate {
+	if v != nil {
+		_c.SetValid(*v)
+	}
+	return _c
+}
+
 // SetOperation sets the "operation" field.
 func (_c *RelationshipStateVersionCreate) SetOperation(v relationshipstateversion.Operation) *RelationshipStateVersionCreate {
 	_c.mutation.SetOperation(v)
@@ -162,6 +176,10 @@ func (_c *RelationshipStateVersionCreate) ExecX(ctx context.Context) {
 
 // defaults sets the default values of the builder before save.
 func (_c *RelationshipStateVersionCreate) defaults() {
+	if _, ok := _c.mutation.Valid(); !ok {
+		v := relationshipstateversion.DefaultValid
+		_c.mutation.SetValid(v)
+	}
 	if _, ok := _c.mutation.CreatedAt(); !ok {
 		v := relationshipstateversion.DefaultCreatedAt()
 		_c.mutation.SetCreatedAt(v)
@@ -214,6 +232,9 @@ func (_c *RelationshipStateVersionCreate) check() error {
 	}
 	if _, ok := _c.mutation.Active(); !ok {
 		return &ValidationError{Name: "active", err: errors.New(`ent: missing required field "RelationshipStateVersion.active"`)}
+	}
+	if _, ok := _c.mutation.Valid(); !ok {
+		return &ValidationError{Name: "valid", err: errors.New(`ent: missing required field "RelationshipStateVersion.valid"`)}
 	}
 	if _, ok := _c.mutation.Operation(); !ok {
 		return &ValidationError{Name: "operation", err: errors.New(`ent: missing required field "RelationshipStateVersion.operation"`)}
@@ -283,6 +304,10 @@ func (_c *RelationshipStateVersionCreate) createSpec() (*RelationshipStateVersio
 	if value, ok := _c.mutation.Active(); ok {
 		_spec.SetField(relationshipstateversion.FieldActive, field.TypeBool, value)
 		_node.Active = value
+	}
+	if value, ok := _c.mutation.Valid(); ok {
+		_spec.SetField(relationshipstateversion.FieldValid, field.TypeBool, value)
+		_node.Valid = value
 	}
 	if value, ok := _c.mutation.Operation(); ok {
 		_spec.SetField(relationshipstateversion.FieldOperation, field.TypeEnum, value)

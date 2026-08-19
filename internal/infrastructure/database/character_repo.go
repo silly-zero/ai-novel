@@ -81,6 +81,7 @@ func (r *CharacterRepository) ListCharactersBeforeChapter(
 	rows, err := r.client.CharacterStateVersion.Query().
 		Where(
 			characterstateversion.ChapterIndexLT(chapterIndex),
+			characterstateversion.Valid(true),
 			characterstateversion.HasCharacterWith(character.NovelID(novelID)),
 		).
 		Where(func(selector *sql.Selector) {
@@ -89,6 +90,7 @@ func (r *CharacterRepository) ListCharactersBeforeChapter(
 				sql.Select(newer.C(characterstateversion.FieldID)).
 					From(newer).
 					Where(sql.And(
+						sql.EQ(newer.C(characterstateversion.FieldValid), true),
 						sql.ColumnsEQ(newer.C(characterstateversion.CharacterColumn), selector.C(characterstateversion.CharacterColumn)),
 						sql.LT(newer.C(characterstateversion.FieldChapterIndex), chapterIndex),
 						sql.Or(
@@ -283,7 +285,7 @@ func (r *CharacterRepository) ReplaceChapterCharacters(
 
 	for id := range affectedIDs {
 		latest, latestErr := txClient.CharacterStateVersion.Query().
-			Where(characterstateversion.CharacterID(id)).
+			Where(characterstateversion.CharacterID(id), characterstateversion.Valid(true)).
 			Order(
 				characterstateversion.ByChapterIndex(sql.OrderDesc()),
 				characterstateversion.ByID(sql.OrderDesc()),
@@ -537,6 +539,7 @@ func latestRelationshipVersionsBeforeChapter(
 	return client.RelationshipStateVersion.Query().
 		Where(
 			relationshipstateversion.ChapterIndexLT(chapterIndex),
+			relationshipstateversion.Valid(true),
 			relationshipstateversion.HasSourceCharacterWith(character.NovelID(novelID)),
 			relationshipstateversion.HasTargetCharacterWith(character.NovelID(novelID)),
 		).
@@ -544,6 +547,7 @@ func latestRelationshipVersionsBeforeChapter(
 			newer := sql.Table(relationshipstateversion.Table).As("newer_relationship_state")
 			selector.Where(sql.NotExists(
 				sql.Select(newer.C(relationshipstateversion.FieldID)).From(newer).Where(sql.And(
+					sql.EQ(newer.C(relationshipstateversion.FieldValid), true),
 					sql.ColumnsEQ(newer.C(relationshipstateversion.FieldSourceCharacterID), selector.C(relationshipstateversion.FieldSourceCharacterID)),
 					sql.ColumnsEQ(newer.C(relationshipstateversion.FieldTargetCharacterID), selector.C(relationshipstateversion.FieldTargetCharacterID)),
 					sql.ColumnsEQ(newer.C(relationshipstateversion.FieldRelationType), selector.C(relationshipstateversion.FieldRelationType)),
@@ -585,6 +589,7 @@ func rebuildRelationshipCache(ctx context.Context, client *ent.Client, novelID s
 		relationshipstateversion.SourceCharacterID(key.sourceID),
 		relationshipstateversion.TargetCharacterID(key.targetID),
 		relationshipstateversion.RelationType(key.relationType),
+		relationshipstateversion.Valid(true),
 	).Order(
 		relationshipstateversion.ByChapterIndex(sql.OrderDesc()),
 		relationshipstateversion.ByID(sql.OrderDesc()),
@@ -628,6 +633,7 @@ func (r *CharacterRepository) ListRelationshipsBeforeChapter(
 	rows, err := r.client.RelationshipStateVersion.Query().
 		Where(
 			relationshipstateversion.ChapterIndexLT(chapterIndex),
+			relationshipstateversion.Valid(true),
 			relationshipstateversion.HasSourceCharacterWith(character.NovelID(novelID)),
 			relationshipstateversion.HasTargetCharacterWith(character.NovelID(novelID)),
 		).
@@ -637,6 +643,7 @@ func (r *CharacterRepository) ListRelationshipsBeforeChapter(
 				sql.Select(newer.C(relationshipstateversion.FieldID)).
 					From(newer).
 					Where(sql.And(
+						sql.EQ(newer.C(relationshipstateversion.FieldValid), true),
 						sql.ColumnsEQ(newer.C(relationshipstateversion.FieldSourceCharacterID), selector.C(relationshipstateversion.FieldSourceCharacterID)),
 						sql.ColumnsEQ(newer.C(relationshipstateversion.FieldTargetCharacterID), selector.C(relationshipstateversion.FieldTargetCharacterID)),
 						sql.ColumnsEQ(newer.C(relationshipstateversion.FieldRelationType), selector.C(relationshipstateversion.FieldRelationType)),

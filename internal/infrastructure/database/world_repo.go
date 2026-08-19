@@ -83,6 +83,7 @@ func (r *WorldRepository) ListWorldSettingsBeforeChapter(
 	rows, err := r.client.WorldStateVersion.Query().
 		Where(
 			worldstateversion.ChapterIndexLT(chapterIndex),
+			worldstateversion.Valid(true),
 			worldstateversion.HasWorldSettingWith(worldsetting.NovelID(novelID)),
 		).
 		Where(func(selector *sql.Selector) {
@@ -91,6 +92,7 @@ func (r *WorldRepository) ListWorldSettingsBeforeChapter(
 				sql.Select(newer.C(worldstateversion.FieldID)).
 					From(newer).
 					Where(sql.And(
+						sql.EQ(newer.C(worldstateversion.FieldValid), true),
 						sql.ColumnsEQ(newer.C(worldstateversion.WorldSettingColumn), selector.C(worldstateversion.WorldSettingColumn)),
 						sql.LT(newer.C(worldstateversion.FieldChapterIndex), chapterIndex),
 						sql.Or(
@@ -277,7 +279,7 @@ func (r *WorldRepository) ReplaceChapterWorldSettings(
 
 	for id := range affectedIDs {
 		latest, latestErr := txClient.WorldStateVersion.Query().
-			Where(worldstateversion.WorldSettingID(id)).
+			Where(worldstateversion.WorldSettingID(id), worldstateversion.Valid(true)).
 			Order(
 				worldstateversion.ByChapterIndex(sql.OrderDesc()),
 				worldstateversion.ByID(sql.OrderDesc()),
