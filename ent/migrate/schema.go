@@ -16,6 +16,8 @@ var (
 		{Name: "word_count", Type: field.TypeInt},
 		{Name: "order", Type: field.TypeInt},
 		{Name: "status", Type: field.TypeString, Default: "Draft"},
+		{Name: "derived_status", Type: field.TypeString, Default: "Ready"},
+		{Name: "derived_generation_id", Type: field.TypeString, Default: ""},
 		{Name: "last_beat", Type: field.TypeString, Size: 2147483647, Default: ""},
 		{Name: "open_loops", Type: field.TypeJSON, Nullable: true},
 		{Name: "next_action", Type: field.TypeString, Size: 2147483647, Default: ""},
@@ -31,7 +33,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "chapters_novels_chapters",
-				Columns:    []*schema.Column{ChaptersColumns[11]},
+				Columns:    []*schema.Column{ChaptersColumns[13]},
 				RefColumns: []*schema.Column{NovelsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -110,6 +112,7 @@ var (
 	// MemoryEntriesColumns holds the columns for the "memory_entries" table.
 	MemoryEntriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "dedupe_key", Type: field.TypeString, Unique: true, Nullable: true},
 		{Name: "novel_id", Type: field.TypeString},
 		{Name: "content", Type: field.TypeString, Size: 2147483647},
 		{Name: "metadata", Type: field.TypeJSON},

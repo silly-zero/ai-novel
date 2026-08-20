@@ -80,6 +80,16 @@ func Status(v string) predicate.Chapter {
 	return predicate.Chapter(sql.FieldEQ(FieldStatus, v))
 }
 
+// DerivedStatus applies equality check predicate on the "derived_status" field. It's identical to DerivedStatusEQ.
+func DerivedStatus(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldDerivedStatus, v))
+}
+
+// DerivedGenerationID applies equality check predicate on the "derived_generation_id" field. It's identical to DerivedGenerationIDEQ.
+func DerivedGenerationID(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldDerivedGenerationID, v))
+}
+
 // LastBeat applies equality check predicate on the "last_beat" field. It's identical to LastBeatEQ.
 func LastBeat(v string) predicate.Chapter {
 	return predicate.Chapter(sql.FieldEQ(FieldLastBeat, v))
@@ -373,6 +383,136 @@ func StatusEqualFold(v string) predicate.Chapter {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.Chapter {
 	return predicate.Chapter(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// DerivedStatusEQ applies the EQ predicate on the "derived_status" field.
+func DerivedStatusEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldDerivedStatus, v))
+}
+
+// DerivedStatusNEQ applies the NEQ predicate on the "derived_status" field.
+func DerivedStatusNEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNEQ(FieldDerivedStatus, v))
+}
+
+// DerivedStatusIn applies the In predicate on the "derived_status" field.
+func DerivedStatusIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldIn(FieldDerivedStatus, vs...))
+}
+
+// DerivedStatusNotIn applies the NotIn predicate on the "derived_status" field.
+func DerivedStatusNotIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNotIn(FieldDerivedStatus, vs...))
+}
+
+// DerivedStatusGT applies the GT predicate on the "derived_status" field.
+func DerivedStatusGT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGT(FieldDerivedStatus, v))
+}
+
+// DerivedStatusGTE applies the GTE predicate on the "derived_status" field.
+func DerivedStatusGTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGTE(FieldDerivedStatus, v))
+}
+
+// DerivedStatusLT applies the LT predicate on the "derived_status" field.
+func DerivedStatusLT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLT(FieldDerivedStatus, v))
+}
+
+// DerivedStatusLTE applies the LTE predicate on the "derived_status" field.
+func DerivedStatusLTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLTE(FieldDerivedStatus, v))
+}
+
+// DerivedStatusContains applies the Contains predicate on the "derived_status" field.
+func DerivedStatusContains(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContains(FieldDerivedStatus, v))
+}
+
+// DerivedStatusHasPrefix applies the HasPrefix predicate on the "derived_status" field.
+func DerivedStatusHasPrefix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasPrefix(FieldDerivedStatus, v))
+}
+
+// DerivedStatusHasSuffix applies the HasSuffix predicate on the "derived_status" field.
+func DerivedStatusHasSuffix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasSuffix(FieldDerivedStatus, v))
+}
+
+// DerivedStatusEqualFold applies the EqualFold predicate on the "derived_status" field.
+func DerivedStatusEqualFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEqualFold(FieldDerivedStatus, v))
+}
+
+// DerivedStatusContainsFold applies the ContainsFold predicate on the "derived_status" field.
+func DerivedStatusContainsFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContainsFold(FieldDerivedStatus, v))
+}
+
+// DerivedGenerationIDEQ applies the EQ predicate on the "derived_generation_id" field.
+func DerivedGenerationIDEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEQ(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDNEQ applies the NEQ predicate on the "derived_generation_id" field.
+func DerivedGenerationIDNEQ(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNEQ(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDIn applies the In predicate on the "derived_generation_id" field.
+func DerivedGenerationIDIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldIn(FieldDerivedGenerationID, vs...))
+}
+
+// DerivedGenerationIDNotIn applies the NotIn predicate on the "derived_generation_id" field.
+func DerivedGenerationIDNotIn(vs ...string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldNotIn(FieldDerivedGenerationID, vs...))
+}
+
+// DerivedGenerationIDGT applies the GT predicate on the "derived_generation_id" field.
+func DerivedGenerationIDGT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGT(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDGTE applies the GTE predicate on the "derived_generation_id" field.
+func DerivedGenerationIDGTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldGTE(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDLT applies the LT predicate on the "derived_generation_id" field.
+func DerivedGenerationIDLT(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLT(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDLTE applies the LTE predicate on the "derived_generation_id" field.
+func DerivedGenerationIDLTE(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldLTE(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDContains applies the Contains predicate on the "derived_generation_id" field.
+func DerivedGenerationIDContains(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContains(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDHasPrefix applies the HasPrefix predicate on the "derived_generation_id" field.
+func DerivedGenerationIDHasPrefix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasPrefix(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDHasSuffix applies the HasSuffix predicate on the "derived_generation_id" field.
+func DerivedGenerationIDHasSuffix(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldHasSuffix(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDEqualFold applies the EqualFold predicate on the "derived_generation_id" field.
+func DerivedGenerationIDEqualFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldEqualFold(FieldDerivedGenerationID, v))
+}
+
+// DerivedGenerationIDContainsFold applies the ContainsFold predicate on the "derived_generation_id" field.
+func DerivedGenerationIDContainsFold(v string) predicate.Chapter {
+	return predicate.Chapter(sql.FieldContainsFold(FieldDerivedGenerationID, v))
 }
 
 // LastBeatEQ applies the EQ predicate on the "last_beat" field.

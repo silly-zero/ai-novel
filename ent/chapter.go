@@ -29,6 +29,10 @@ type Chapter struct {
 	Order int `json:"order,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// DerivedStatus holds the value of the "derived_status" field.
+	DerivedStatus string `json:"derived_status,omitempty"`
+	// DerivedGenerationID holds the value of the "derived_generation_id" field.
+	DerivedGenerationID string `json:"derived_generation_id,omitempty"`
 	// LastBeat holds the value of the "last_beat" field.
 	LastBeat string `json:"last_beat,omitempty"`
 	// OpenLoops holds the value of the "open_loops" field.
@@ -108,7 +112,7 @@ func (*Chapter) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case chapter.FieldID, chapter.FieldWordCount, chapter.FieldOrder:
 			values[i] = new(sql.NullInt64)
-		case chapter.FieldTitle, chapter.FieldContent, chapter.FieldStatus, chapter.FieldLastBeat, chapter.FieldNextAction:
+		case chapter.FieldTitle, chapter.FieldContent, chapter.FieldStatus, chapter.FieldDerivedStatus, chapter.FieldDerivedGenerationID, chapter.FieldLastBeat, chapter.FieldNextAction:
 			values[i] = new(sql.NullString)
 		case chapter.FieldCreatedAt, chapter.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -164,6 +168,18 @@ func (_m *Chapter) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case chapter.FieldDerivedStatus:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field derived_status", values[i])
+			} else if value.Valid {
+				_m.DerivedStatus = value.String
+			}
+		case chapter.FieldDerivedGenerationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field derived_generation_id", values[i])
+			} else if value.Valid {
+				_m.DerivedGenerationID = value.String
 			}
 		case chapter.FieldLastBeat:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -274,6 +290,12 @@ func (_m *Chapter) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	builder.WriteString("derived_status=")
+	builder.WriteString(_m.DerivedStatus)
+	builder.WriteString(", ")
+	builder.WriteString("derived_generation_id=")
+	builder.WriteString(_m.DerivedGenerationID)
 	builder.WriteString(", ")
 	builder.WriteString("last_beat=")
 	builder.WriteString(_m.LastBeat)

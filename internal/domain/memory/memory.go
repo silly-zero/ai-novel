@@ -14,6 +14,7 @@ type Embedder interface {
 // MemoryEntry 代表一条存入向量库的记忆记录
 type MemoryEntry struct {
 	ID        string
+	DedupeKey string
 	NovelID   string
 	Content   string
 	Metadata  map[string]any

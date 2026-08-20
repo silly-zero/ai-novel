@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/character"
@@ -21,6 +22,7 @@ type CharacterCreate struct {
 	config
 	mutation *CharacterMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetNovelID sets the "novel_id" field.
@@ -313,6 +315,7 @@ func (_c *CharacterCreate) createSpec() (*Character, *sqlgraph.CreateSpec) {
 		_node = &Character{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(character.Table, sqlgraph.NewFieldSpec(character.FieldID, field.TypeInt))
 	)
+	_spec.OnConflict = _c.conflict
 	if value, ok := _c.mutation.NovelID(); ok {
 		_spec.SetField(character.FieldNovelID, field.TypeString, value)
 		_node.NovelID = value
@@ -424,11 +427,511 @@ func (_c *CharacterCreate) createSpec() (*Character, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Character.Create().
+//		SetNovelID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.CharacterUpsert) {
+//			SetNovelID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *CharacterCreate) OnConflict(opts ...sql.ConflictOption) *CharacterUpsertOne {
+	_c.conflict = opts
+	return &CharacterUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Character.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *CharacterCreate) OnConflictColumns(columns ...string) *CharacterUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &CharacterUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// CharacterUpsertOne is the builder for "upsert"-ing
+	//  one Character node.
+	CharacterUpsertOne struct {
+		create *CharacterCreate
+	}
+
+	// CharacterUpsert is the "OnConflict" setter.
+	CharacterUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetNovelID sets the "novel_id" field.
+func (u *CharacterUpsert) SetNovelID(v string) *CharacterUpsert {
+	u.Set(character.FieldNovelID, v)
+	return u
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateNovelID() *CharacterUpsert {
+	u.SetExcluded(character.FieldNovelID)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *CharacterUpsert) SetName(v string) *CharacterUpsert {
+	u.Set(character.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateName() *CharacterUpsert {
+	u.SetExcluded(character.FieldName)
+	return u
+}
+
+// SetGender sets the "gender" field.
+func (u *CharacterUpsert) SetGender(v string) *CharacterUpsert {
+	u.Set(character.FieldGender, v)
+	return u
+}
+
+// UpdateGender sets the "gender" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateGender() *CharacterUpsert {
+	u.SetExcluded(character.FieldGender)
+	return u
+}
+
+// ClearGender clears the value of the "gender" field.
+func (u *CharacterUpsert) ClearGender() *CharacterUpsert {
+	u.SetNull(character.FieldGender)
+	return u
+}
+
+// SetAge sets the "age" field.
+func (u *CharacterUpsert) SetAge(v int) *CharacterUpsert {
+	u.Set(character.FieldAge, v)
+	return u
+}
+
+// UpdateAge sets the "age" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateAge() *CharacterUpsert {
+	u.SetExcluded(character.FieldAge)
+	return u
+}
+
+// AddAge adds v to the "age" field.
+func (u *CharacterUpsert) AddAge(v int) *CharacterUpsert {
+	u.Add(character.FieldAge, v)
+	return u
+}
+
+// ClearAge clears the value of the "age" field.
+func (u *CharacterUpsert) ClearAge() *CharacterUpsert {
+	u.SetNull(character.FieldAge)
+	return u
+}
+
+// SetAppearance sets the "appearance" field.
+func (u *CharacterUpsert) SetAppearance(v string) *CharacterUpsert {
+	u.Set(character.FieldAppearance, v)
+	return u
+}
+
+// UpdateAppearance sets the "appearance" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateAppearance() *CharacterUpsert {
+	u.SetExcluded(character.FieldAppearance)
+	return u
+}
+
+// ClearAppearance clears the value of the "appearance" field.
+func (u *CharacterUpsert) ClearAppearance() *CharacterUpsert {
+	u.SetNull(character.FieldAppearance)
+	return u
+}
+
+// SetPersonality sets the "personality" field.
+func (u *CharacterUpsert) SetPersonality(v string) *CharacterUpsert {
+	u.Set(character.FieldPersonality, v)
+	return u
+}
+
+// UpdatePersonality sets the "personality" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdatePersonality() *CharacterUpsert {
+	u.SetExcluded(character.FieldPersonality)
+	return u
+}
+
+// ClearPersonality clears the value of the "personality" field.
+func (u *CharacterUpsert) ClearPersonality() *CharacterUpsert {
+	u.SetNull(character.FieldPersonality)
+	return u
+}
+
+// SetBackground sets the "background" field.
+func (u *CharacterUpsert) SetBackground(v string) *CharacterUpsert {
+	u.Set(character.FieldBackground, v)
+	return u
+}
+
+// UpdateBackground sets the "background" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateBackground() *CharacterUpsert {
+	u.SetExcluded(character.FieldBackground)
+	return u
+}
+
+// ClearBackground clears the value of the "background" field.
+func (u *CharacterUpsert) ClearBackground() *CharacterUpsert {
+	u.SetNull(character.FieldBackground)
+	return u
+}
+
+// SetCurrentStatus sets the "current_status" field.
+func (u *CharacterUpsert) SetCurrentStatus(v string) *CharacterUpsert {
+	u.Set(character.FieldCurrentStatus, v)
+	return u
+}
+
+// UpdateCurrentStatus sets the "current_status" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateCurrentStatus() *CharacterUpsert {
+	u.SetExcluded(character.FieldCurrentStatus)
+	return u
+}
+
+// ClearCurrentStatus clears the value of the "current_status" field.
+func (u *CharacterUpsert) ClearCurrentStatus() *CharacterUpsert {
+	u.SetNull(character.FieldCurrentStatus)
+	return u
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (u *CharacterUpsert) SetStateVersioned(v bool) *CharacterUpsert {
+	u.Set(character.FieldStateVersioned, v)
+	return u
+}
+
+// UpdateStateVersioned sets the "state_versioned" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateStateVersioned() *CharacterUpsert {
+	u.SetExcluded(character.FieldStateVersioned)
+	return u
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *CharacterUpsert) SetCreatedAt(v time.Time) *CharacterUpsert {
+	u.Set(character.FieldCreatedAt, v)
+	return u
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateCreatedAt() *CharacterUpsert {
+	u.SetExcluded(character.FieldCreatedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *CharacterUpsert) SetUpdatedAt(v time.Time) *CharacterUpsert {
+	u.Set(character.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *CharacterUpsert) UpdateUpdatedAt() *CharacterUpsert {
+	u.SetExcluded(character.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
+// Using this option is equivalent to using:
+//
+//	client.Character.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *CharacterUpsertOne) UpdateNewValues() *CharacterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Character.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *CharacterUpsertOne) Ignore() *CharacterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *CharacterUpsertOne) DoNothing() *CharacterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the CharacterCreate.OnConflict
+// documentation for more info.
+func (u *CharacterUpsertOne) Update(set func(*CharacterUpsert)) *CharacterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&CharacterUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *CharacterUpsertOne) SetNovelID(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetNovelID(v)
+	})
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateNovelID() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateNovelID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *CharacterUpsertOne) SetName(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateName() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetGender sets the "gender" field.
+func (u *CharacterUpsertOne) SetGender(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetGender(v)
+	})
+}
+
+// UpdateGender sets the "gender" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateGender() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateGender()
+	})
+}
+
+// ClearGender clears the value of the "gender" field.
+func (u *CharacterUpsertOne) ClearGender() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearGender()
+	})
+}
+
+// SetAge sets the "age" field.
+func (u *CharacterUpsertOne) SetAge(v int) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetAge(v)
+	})
+}
+
+// AddAge adds v to the "age" field.
+func (u *CharacterUpsertOne) AddAge(v int) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.AddAge(v)
+	})
+}
+
+// UpdateAge sets the "age" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateAge() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateAge()
+	})
+}
+
+// ClearAge clears the value of the "age" field.
+func (u *CharacterUpsertOne) ClearAge() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearAge()
+	})
+}
+
+// SetAppearance sets the "appearance" field.
+func (u *CharacterUpsertOne) SetAppearance(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetAppearance(v)
+	})
+}
+
+// UpdateAppearance sets the "appearance" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateAppearance() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateAppearance()
+	})
+}
+
+// ClearAppearance clears the value of the "appearance" field.
+func (u *CharacterUpsertOne) ClearAppearance() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearAppearance()
+	})
+}
+
+// SetPersonality sets the "personality" field.
+func (u *CharacterUpsertOne) SetPersonality(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetPersonality(v)
+	})
+}
+
+// UpdatePersonality sets the "personality" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdatePersonality() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdatePersonality()
+	})
+}
+
+// ClearPersonality clears the value of the "personality" field.
+func (u *CharacterUpsertOne) ClearPersonality() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearPersonality()
+	})
+}
+
+// SetBackground sets the "background" field.
+func (u *CharacterUpsertOne) SetBackground(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetBackground(v)
+	})
+}
+
+// UpdateBackground sets the "background" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateBackground() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateBackground()
+	})
+}
+
+// ClearBackground clears the value of the "background" field.
+func (u *CharacterUpsertOne) ClearBackground() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearBackground()
+	})
+}
+
+// SetCurrentStatus sets the "current_status" field.
+func (u *CharacterUpsertOne) SetCurrentStatus(v string) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetCurrentStatus(v)
+	})
+}
+
+// UpdateCurrentStatus sets the "current_status" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateCurrentStatus() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateCurrentStatus()
+	})
+}
+
+// ClearCurrentStatus clears the value of the "current_status" field.
+func (u *CharacterUpsertOne) ClearCurrentStatus() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearCurrentStatus()
+	})
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (u *CharacterUpsertOne) SetStateVersioned(v bool) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetStateVersioned(v)
+	})
+}
+
+// UpdateStateVersioned sets the "state_versioned" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateStateVersioned() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateStateVersioned()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *CharacterUpsertOne) SetCreatedAt(v time.Time) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateCreatedAt() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *CharacterUpsertOne) SetUpdatedAt(v time.Time) *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *CharacterUpsertOne) UpdateUpdatedAt() *CharacterUpsertOne {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *CharacterUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for CharacterCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *CharacterUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *CharacterUpsertOne) ID(ctx context.Context) (id int, err error) {
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *CharacterUpsertOne) IDX(ctx context.Context) int {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // CharacterCreateBulk is the builder for creating many Character entities in bulk.
 type CharacterCreateBulk struct {
 	config
 	err      error
 	builders []*CharacterCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Character entities in the database.
@@ -458,6 +961,7 @@ func (_c *CharacterCreateBulk) Save(ctx context.Context) ([]*Character, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -508,6 +1012,313 @@ func (_c *CharacterCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *CharacterCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Character.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.CharacterUpsert) {
+//			SetNovelID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *CharacterCreateBulk) OnConflict(opts ...sql.ConflictOption) *CharacterUpsertBulk {
+	_c.conflict = opts
+	return &CharacterUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Character.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *CharacterCreateBulk) OnConflictColumns(columns ...string) *CharacterUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &CharacterUpsertBulk{
+		create: _c,
+	}
+}
+
+// CharacterUpsertBulk is the builder for "upsert"-ing
+// a bulk of Character nodes.
+type CharacterUpsertBulk struct {
+	create *CharacterCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Character.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *CharacterUpsertBulk) UpdateNewValues() *CharacterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Character.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *CharacterUpsertBulk) Ignore() *CharacterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *CharacterUpsertBulk) DoNothing() *CharacterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the CharacterCreateBulk.OnConflict
+// documentation for more info.
+func (u *CharacterUpsertBulk) Update(set func(*CharacterUpsert)) *CharacterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&CharacterUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *CharacterUpsertBulk) SetNovelID(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetNovelID(v)
+	})
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateNovelID() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateNovelID()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *CharacterUpsertBulk) SetName(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateName() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetGender sets the "gender" field.
+func (u *CharacterUpsertBulk) SetGender(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetGender(v)
+	})
+}
+
+// UpdateGender sets the "gender" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateGender() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateGender()
+	})
+}
+
+// ClearGender clears the value of the "gender" field.
+func (u *CharacterUpsertBulk) ClearGender() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearGender()
+	})
+}
+
+// SetAge sets the "age" field.
+func (u *CharacterUpsertBulk) SetAge(v int) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetAge(v)
+	})
+}
+
+// AddAge adds v to the "age" field.
+func (u *CharacterUpsertBulk) AddAge(v int) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.AddAge(v)
+	})
+}
+
+// UpdateAge sets the "age" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateAge() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateAge()
+	})
+}
+
+// ClearAge clears the value of the "age" field.
+func (u *CharacterUpsertBulk) ClearAge() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearAge()
+	})
+}
+
+// SetAppearance sets the "appearance" field.
+func (u *CharacterUpsertBulk) SetAppearance(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetAppearance(v)
+	})
+}
+
+// UpdateAppearance sets the "appearance" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateAppearance() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateAppearance()
+	})
+}
+
+// ClearAppearance clears the value of the "appearance" field.
+func (u *CharacterUpsertBulk) ClearAppearance() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearAppearance()
+	})
+}
+
+// SetPersonality sets the "personality" field.
+func (u *CharacterUpsertBulk) SetPersonality(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetPersonality(v)
+	})
+}
+
+// UpdatePersonality sets the "personality" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdatePersonality() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdatePersonality()
+	})
+}
+
+// ClearPersonality clears the value of the "personality" field.
+func (u *CharacterUpsertBulk) ClearPersonality() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearPersonality()
+	})
+}
+
+// SetBackground sets the "background" field.
+func (u *CharacterUpsertBulk) SetBackground(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetBackground(v)
+	})
+}
+
+// UpdateBackground sets the "background" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateBackground() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateBackground()
+	})
+}
+
+// ClearBackground clears the value of the "background" field.
+func (u *CharacterUpsertBulk) ClearBackground() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearBackground()
+	})
+}
+
+// SetCurrentStatus sets the "current_status" field.
+func (u *CharacterUpsertBulk) SetCurrentStatus(v string) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetCurrentStatus(v)
+	})
+}
+
+// UpdateCurrentStatus sets the "current_status" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateCurrentStatus() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateCurrentStatus()
+	})
+}
+
+// ClearCurrentStatus clears the value of the "current_status" field.
+func (u *CharacterUpsertBulk) ClearCurrentStatus() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.ClearCurrentStatus()
+	})
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (u *CharacterUpsertBulk) SetStateVersioned(v bool) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetStateVersioned(v)
+	})
+}
+
+// UpdateStateVersioned sets the "state_versioned" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateStateVersioned() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateStateVersioned()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *CharacterUpsertBulk) SetCreatedAt(v time.Time) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateCreatedAt() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *CharacterUpsertBulk) SetUpdatedAt(v time.Time) *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *CharacterUpsertBulk) UpdateUpdatedAt() *CharacterUpsertBulk {
+	return u.Update(func(s *CharacterUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *CharacterUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the CharacterCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for CharacterCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *CharacterUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

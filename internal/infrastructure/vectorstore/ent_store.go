@@ -45,18 +45,40 @@ func (s *EntVectorStore) Add(ctx context.Context, entries []*memory.MemoryEntry)
 	if err := validateEntries(entries); err != nil {
 		return err
 	}
-	bulk := make([]*ent.MemoryEntryCreate, len(entries))
-	for i, entry := range entries {
-		bulk[i] = s.client.MemoryEntry.Create().
+	tx, err := s.client.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("start memory transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	client := tx.Client()
+	for _, entry := range entries {
+		create := client.MemoryEntry.Create().
 			SetNovelID(entry.NovelID).
 			SetContent(entry.Content).
 			SetMetadata(entry.Metadata).
 			SetEmbedding(entry.Embedding)
+		if entry.DedupeKey != "" {
+			if err := create.SetDedupeKey(entry.DedupeKey).
+				OnConflictColumns(memoryentry.FieldDedupeKey).
+				UpdateNewValues().
+				Exec(ctx); err != nil {
+				return fmt.Errorf("upsert memory entry: %w", err)
+			}
+			continue
+		}
+		if _, err := create.Save(ctx); err != nil {
+			return fmt.Errorf("create memory entry: %w", err)
+		}
 	}
-	_, err := s.client.MemoryEntry.CreateBulk(bulk...).Save(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to save memory entries to ent: %w", err)
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit memory entries: %w", err)
 	}
+	committed = true
 	return nil
 }
 
@@ -113,6 +135,7 @@ func (s *EntVectorStore) Search(
 	for _, row := range rows {
 		entry := &memory.MemoryEntry{
 			ID:        fmt.Sprintf("%d", row.ID),
+			DedupeKey: row.DedupeKey,
 			NovelID:   row.NovelID,
 			Content:   row.Content,
 			Metadata:  row.Metadata,

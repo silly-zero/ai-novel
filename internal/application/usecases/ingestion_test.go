@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/ai-novel/studio/internal/domain/events"
@@ -84,7 +85,10 @@ func TestHandleChapterGeneratedStoresGenerationMetadata(t *testing.T) {
 	metadata := store.entries[0].Metadata
 	if metadata["generation_id"] != "generation-1" ||
 		metadata["chapter_id"] != "11" || metadata["chapter_index"] != 4 ||
-		metadata["type"] != "plot_summary" {
+		metadata["chapter_status"] != "Draft" || metadata["type"] != "plot_summary" {
 		t.Fatalf("metadata = %#v", metadata)
+	}
+	if len(store.entries[0].DedupeKey) != 64 || strings.ContainsRune(store.entries[0].DedupeKey, '\x00') {
+		t.Fatalf("DedupeKey = %q", store.entries[0].DedupeKey)
 	}
 }

@@ -2,6 +2,7 @@ package usecases
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"time"
@@ -53,8 +54,11 @@ func (uc *IngestionUseCase) HandleChapterGenerated(ctx context.Context, event ev
 	}
 
 	// 3. 存入向量数据库
+	dedupeSource := fmt.Sprintf("%s:%s:%s:%s", e.NovelID, e.ChapterID, e.GenerationID, "plot_summary")
+	dedupeKey := fmt.Sprintf("%x", sha256.Sum256([]byte(dedupeSource)))
 	entry := &memory.MemoryEntry{
 		ID:        fmt.Sprintf("mem_%d", time.Now().UnixNano()),
+		DedupeKey: dedupeKey,
 		NovelID:   e.NovelID,
 		Content:   summary,
 		Embedding: vector,

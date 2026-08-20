@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/worldsetting"
@@ -19,6 +20,7 @@ type WorldSettingCreate struct {
 	config
 	mutation *WorldSettingMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetNovelID sets the "novel_id" field.
@@ -227,6 +229,7 @@ func (_c *WorldSettingCreate) createSpec() (*WorldSetting, *sqlgraph.CreateSpec)
 		_node = &WorldSetting{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(worldsetting.Table, sqlgraph.NewFieldSpec(worldsetting.FieldID, field.TypeInt))
 	)
+	_spec.OnConflict = _c.conflict
 	if value, ok := _c.mutation.NovelID(); ok {
 		_spec.SetField(worldsetting.FieldNovelID, field.TypeString, value)
 		_node.NovelID = value
@@ -282,11 +285,381 @@ func (_c *WorldSettingCreate) createSpec() (*WorldSetting, *sqlgraph.CreateSpec)
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.WorldSetting.Create().
+//		SetNovelID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.WorldSettingUpsert) {
+//			SetNovelID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *WorldSettingCreate) OnConflict(opts ...sql.ConflictOption) *WorldSettingUpsertOne {
+	_c.conflict = opts
+	return &WorldSettingUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.WorldSetting.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *WorldSettingCreate) OnConflictColumns(columns ...string) *WorldSettingUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &WorldSettingUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// WorldSettingUpsertOne is the builder for "upsert"-ing
+	//  one WorldSetting node.
+	WorldSettingUpsertOne struct {
+		create *WorldSettingCreate
+	}
+
+	// WorldSettingUpsert is the "OnConflict" setter.
+	WorldSettingUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetNovelID sets the "novel_id" field.
+func (u *WorldSettingUpsert) SetNovelID(v string) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldNovelID, v)
+	return u
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateNovelID() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldNovelID)
+	return u
+}
+
+// SetCategory sets the "category" field.
+func (u *WorldSettingUpsert) SetCategory(v string) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldCategory, v)
+	return u
+}
+
+// UpdateCategory sets the "category" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateCategory() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldCategory)
+	return u
+}
+
+// SetName sets the "name" field.
+func (u *WorldSettingUpsert) SetName(v string) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldName, v)
+	return u
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateName() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldName)
+	return u
+}
+
+// SetDescription sets the "description" field.
+func (u *WorldSettingUpsert) SetDescription(v string) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldDescription, v)
+	return u
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateDescription() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldDescription)
+	return u
+}
+
+// SetCurrentState sets the "current_state" field.
+func (u *WorldSettingUpsert) SetCurrentState(v string) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldCurrentState, v)
+	return u
+}
+
+// UpdateCurrentState sets the "current_state" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateCurrentState() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldCurrentState)
+	return u
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (u *WorldSettingUpsert) SetStateVersioned(v bool) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldStateVersioned, v)
+	return u
+}
+
+// UpdateStateVersioned sets the "state_versioned" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateStateVersioned() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldStateVersioned)
+	return u
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *WorldSettingUpsert) SetMetadata(v map[string]interface{}) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldMetadata, v)
+	return u
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateMetadata() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldMetadata)
+	return u
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *WorldSettingUpsert) ClearMetadata() *WorldSettingUpsert {
+	u.SetNull(worldsetting.FieldMetadata)
+	return u
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *WorldSettingUpsert) SetCreatedAt(v time.Time) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldCreatedAt, v)
+	return u
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateCreatedAt() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldCreatedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *WorldSettingUpsert) SetUpdatedAt(v time.Time) *WorldSettingUpsert {
+	u.Set(worldsetting.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *WorldSettingUpsert) UpdateUpdatedAt() *WorldSettingUpsert {
+	u.SetExcluded(worldsetting.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
+// Using this option is equivalent to using:
+//
+//	client.WorldSetting.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *WorldSettingUpsertOne) UpdateNewValues() *WorldSettingUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.WorldSetting.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *WorldSettingUpsertOne) Ignore() *WorldSettingUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *WorldSettingUpsertOne) DoNothing() *WorldSettingUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the WorldSettingCreate.OnConflict
+// documentation for more info.
+func (u *WorldSettingUpsertOne) Update(set func(*WorldSettingUpsert)) *WorldSettingUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&WorldSettingUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *WorldSettingUpsertOne) SetNovelID(v string) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetNovelID(v)
+	})
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateNovelID() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateNovelID()
+	})
+}
+
+// SetCategory sets the "category" field.
+func (u *WorldSettingUpsertOne) SetCategory(v string) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetCategory(v)
+	})
+}
+
+// UpdateCategory sets the "category" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateCategory() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateCategory()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *WorldSettingUpsertOne) SetName(v string) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateName() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetDescription sets the "description" field.
+func (u *WorldSettingUpsertOne) SetDescription(v string) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetDescription(v)
+	})
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateDescription() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateDescription()
+	})
+}
+
+// SetCurrentState sets the "current_state" field.
+func (u *WorldSettingUpsertOne) SetCurrentState(v string) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetCurrentState(v)
+	})
+}
+
+// UpdateCurrentState sets the "current_state" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateCurrentState() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateCurrentState()
+	})
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (u *WorldSettingUpsertOne) SetStateVersioned(v bool) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetStateVersioned(v)
+	})
+}
+
+// UpdateStateVersioned sets the "state_versioned" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateStateVersioned() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateStateVersioned()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *WorldSettingUpsertOne) SetMetadata(v map[string]interface{}) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateMetadata() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *WorldSettingUpsertOne) ClearMetadata() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.ClearMetadata()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *WorldSettingUpsertOne) SetCreatedAt(v time.Time) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateCreatedAt() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *WorldSettingUpsertOne) SetUpdatedAt(v time.Time) *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *WorldSettingUpsertOne) UpdateUpdatedAt() *WorldSettingUpsertOne {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *WorldSettingUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for WorldSettingCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *WorldSettingUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *WorldSettingUpsertOne) ID(ctx context.Context) (id int, err error) {
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *WorldSettingUpsertOne) IDX(ctx context.Context) int {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // WorldSettingCreateBulk is the builder for creating many WorldSetting entities in bulk.
 type WorldSettingCreateBulk struct {
 	config
 	err      error
 	builders []*WorldSettingCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the WorldSetting entities in the database.
@@ -316,6 +689,7 @@ func (_c *WorldSettingCreateBulk) Save(ctx context.Context) ([]*WorldSetting, er
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -366,6 +740,243 @@ func (_c *WorldSettingCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *WorldSettingCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.WorldSetting.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.WorldSettingUpsert) {
+//			SetNovelID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *WorldSettingCreateBulk) OnConflict(opts ...sql.ConflictOption) *WorldSettingUpsertBulk {
+	_c.conflict = opts
+	return &WorldSettingUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.WorldSetting.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *WorldSettingCreateBulk) OnConflictColumns(columns ...string) *WorldSettingUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &WorldSettingUpsertBulk{
+		create: _c,
+	}
+}
+
+// WorldSettingUpsertBulk is the builder for "upsert"-ing
+// a bulk of WorldSetting nodes.
+type WorldSettingUpsertBulk struct {
+	create *WorldSettingCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.WorldSetting.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *WorldSettingUpsertBulk) UpdateNewValues() *WorldSettingUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.WorldSetting.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *WorldSettingUpsertBulk) Ignore() *WorldSettingUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *WorldSettingUpsertBulk) DoNothing() *WorldSettingUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the WorldSettingCreateBulk.OnConflict
+// documentation for more info.
+func (u *WorldSettingUpsertBulk) Update(set func(*WorldSettingUpsert)) *WorldSettingUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&WorldSettingUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *WorldSettingUpsertBulk) SetNovelID(v string) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetNovelID(v)
+	})
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateNovelID() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateNovelID()
+	})
+}
+
+// SetCategory sets the "category" field.
+func (u *WorldSettingUpsertBulk) SetCategory(v string) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetCategory(v)
+	})
+}
+
+// UpdateCategory sets the "category" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateCategory() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateCategory()
+	})
+}
+
+// SetName sets the "name" field.
+func (u *WorldSettingUpsertBulk) SetName(v string) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetName(v)
+	})
+}
+
+// UpdateName sets the "name" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateName() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateName()
+	})
+}
+
+// SetDescription sets the "description" field.
+func (u *WorldSettingUpsertBulk) SetDescription(v string) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetDescription(v)
+	})
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateDescription() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateDescription()
+	})
+}
+
+// SetCurrentState sets the "current_state" field.
+func (u *WorldSettingUpsertBulk) SetCurrentState(v string) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetCurrentState(v)
+	})
+}
+
+// UpdateCurrentState sets the "current_state" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateCurrentState() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateCurrentState()
+	})
+}
+
+// SetStateVersioned sets the "state_versioned" field.
+func (u *WorldSettingUpsertBulk) SetStateVersioned(v bool) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetStateVersioned(v)
+	})
+}
+
+// UpdateStateVersioned sets the "state_versioned" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateStateVersioned() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateStateVersioned()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *WorldSettingUpsertBulk) SetMetadata(v map[string]interface{}) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateMetadata() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// ClearMetadata clears the value of the "metadata" field.
+func (u *WorldSettingUpsertBulk) ClearMetadata() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.ClearMetadata()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *WorldSettingUpsertBulk) SetCreatedAt(v time.Time) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateCreatedAt() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *WorldSettingUpsertBulk) SetUpdatedAt(v time.Time) *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *WorldSettingUpsertBulk) UpdateUpdatedAt() *WorldSettingUpsertBulk {
+	return u.Update(func(s *WorldSettingUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *WorldSettingUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the WorldSettingCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for WorldSettingCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *WorldSettingUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

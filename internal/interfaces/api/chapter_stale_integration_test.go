@@ -102,8 +102,9 @@ func TestChapterRewriteMarksFollowingChaptersStale(t *testing.T) {
 	if rows[0].Status != string(domain.StatusStale) || rows[1].Status != string(domain.StatusStale) || rows[2].Status != string(domain.StatusStale) {
 		t.Fatalf("statuses after rewrite = %q, %q, %q", rows[0].Status, rows[1].Status, rows[2].Status)
 	}
-	if rows[0].LastBeat != "" || len(rows[0].OpenLoops) != 0 || rows[0].NextAction != "" {
-		t.Fatalf("rewritten chapter retained continuity: %#v", rows[0])
+	if rows[0].LastBeat != "" || len(rows[0].OpenLoops) != 0 || rows[0].NextAction != "" ||
+		rows[0].DerivedStatus != string(domain.DerivedStatusFailed) || rows[0].DerivedGenerationID != "" {
+		t.Fatalf("rewritten chapter retained derived state: %#v", rows[0])
 	}
 	requestedDraft := string(domain.StatusDraft)
 	if _, err := updateChapterWithIntegrity(ctx, client, chapters[1].ID, UpdateChapterRequest{Status: &requestedDraft}); !errors.Is(err, errGenerationEarlierChapterStale) {

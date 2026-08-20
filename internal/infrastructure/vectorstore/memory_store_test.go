@@ -14,6 +14,28 @@ import (
 	"github.com/ai-novel/studio/internal/domain/memory"
 )
 
+func TestMemoryVectorStoreAddDeduplicatesOnlyByNonEmptyKey(t *testing.T) {
+	store := NewMemoryVectorStore()
+	entries := []*memory.MemoryEntry{
+		{DedupeKey: "same", NovelID: "novel", Content: "old", Metadata: map[string]any{"chapter_id": "1"}, Embedding: []float32{1}},
+		{DedupeKey: "other", NovelID: "novel", Content: "other", Metadata: map[string]any{"chapter_id": "2"}, Embedding: []float32{1}},
+	}
+	if err := store.Add(context.Background(), entries); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Add(context.Background(), []*memory.MemoryEntry{
+		{DedupeKey: "same", NovelID: "changed", Content: "new", Metadata: map[string]any{"chapter_id": "changed"}, Embedding: []float32{1}},
+		{DedupeKey: "different", NovelID: "novel", Content: "different", Metadata: map[string]any{"chapter_id": "2"}, Embedding: []float32{1}},
+		{NovelID: "novel", Content: "unkeyed-a", Embedding: []float32{1}},
+		{NovelID: "novel", Content: "unkeyed-b", Embedding: []float32{1}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.entries) != 5 || store.entries[0].Content != "new" {
+		t.Fatalf("entries = %#v", store.entries)
+	}
+}
+
 func TestChapterBoundaryPredicateBuildsSafePostgresExpression(t *testing.T) {
 	query, args := sql.Dialect(dialect.Postgres).
 		Select("*").

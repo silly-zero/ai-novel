@@ -13,6 +13,8 @@ const (
 	Label = "memory_entry"
 	// FieldID holds the string denoting the id field in the database.
 	FieldID = "id"
+	// FieldDedupeKey holds the string denoting the dedupe_key field in the database.
+	FieldDedupeKey = "dedupe_key"
 	// FieldNovelID holds the string denoting the novel_id field in the database.
 	FieldNovelID = "novel_id"
 	// FieldContent holds the string denoting the content field in the database.
@@ -30,6 +32,7 @@ const (
 // Columns holds all SQL columns for memoryentry fields.
 var Columns = []string{
 	FieldID,
+	FieldDedupeKey,
 	FieldNovelID,
 	FieldContent,
 	FieldMetadata,
@@ -58,6 +61,11 @@ type OrderOption func(*sql.Selector)
 // ByID orders the results by the id field.
 func ByID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldID, opts...).ToFunc()
+}
+
+// ByDedupeKey orders the results by the dedupe_key field.
+func ByDedupeKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDedupeKey, opts...).ToFunc()
 }
 
 // ByNovelID orders the results by the novel_id field.

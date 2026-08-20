@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
@@ -20,6 +21,7 @@ type RelationshipStateVersionCreate struct {
 	config
 	mutation *RelationshipStateVersionMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetChapterID sets the "chapter_id" field.
@@ -285,6 +287,7 @@ func (_c *RelationshipStateVersionCreate) createSpec() (*RelationshipStateVersio
 		_node = &RelationshipStateVersion{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(relationshipstateversion.Table, sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt))
 	)
+	_spec.OnConflict = _c.conflict
 	if value, ok := _c.mutation.ChapterIndex(); ok {
 		_spec.SetField(relationshipstateversion.FieldChapterIndex, field.TypeInt, value)
 		_node.ChapterIndex = value
@@ -375,11 +378,472 @@ func (_c *RelationshipStateVersionCreate) createSpec() (*RelationshipStateVersio
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.RelationshipStateVersion.Create().
+//		SetChapterID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.RelationshipStateVersionUpsert) {
+//			SetChapterID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *RelationshipStateVersionCreate) OnConflict(opts ...sql.ConflictOption) *RelationshipStateVersionUpsertOne {
+	_c.conflict = opts
+	return &RelationshipStateVersionUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.RelationshipStateVersion.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *RelationshipStateVersionCreate) OnConflictColumns(columns ...string) *RelationshipStateVersionUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &RelationshipStateVersionUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// RelationshipStateVersionUpsertOne is the builder for "upsert"-ing
+	//  one RelationshipStateVersion node.
+	RelationshipStateVersionUpsertOne struct {
+		create *RelationshipStateVersionCreate
+	}
+
+	// RelationshipStateVersionUpsert is the "OnConflict" setter.
+	RelationshipStateVersionUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetChapterID sets the "chapter_id" field.
+func (u *RelationshipStateVersionUpsert) SetChapterID(v int) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldChapterID, v)
+	return u
+}
+
+// UpdateChapterID sets the "chapter_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateChapterID() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldChapterID)
+	return u
+}
+
+// SetSourceCharacterID sets the "source_character_id" field.
+func (u *RelationshipStateVersionUpsert) SetSourceCharacterID(v int) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldSourceCharacterID, v)
+	return u
+}
+
+// UpdateSourceCharacterID sets the "source_character_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateSourceCharacterID() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldSourceCharacterID)
+	return u
+}
+
+// SetTargetCharacterID sets the "target_character_id" field.
+func (u *RelationshipStateVersionUpsert) SetTargetCharacterID(v int) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldTargetCharacterID, v)
+	return u
+}
+
+// UpdateTargetCharacterID sets the "target_character_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateTargetCharacterID() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldTargetCharacterID)
+	return u
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (u *RelationshipStateVersionUpsert) SetChapterIndex(v int) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldChapterIndex, v)
+	return u
+}
+
+// UpdateChapterIndex sets the "chapter_index" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateChapterIndex() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldChapterIndex)
+	return u
+}
+
+// AddChapterIndex adds v to the "chapter_index" field.
+func (u *RelationshipStateVersionUpsert) AddChapterIndex(v int) *RelationshipStateVersionUpsert {
+	u.Add(relationshipstateversion.FieldChapterIndex, v)
+	return u
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (u *RelationshipStateVersionUpsert) SetGenerationID(v string) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldGenerationID, v)
+	return u
+}
+
+// UpdateGenerationID sets the "generation_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateGenerationID() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldGenerationID)
+	return u
+}
+
+// SetRelationType sets the "relation_type" field.
+func (u *RelationshipStateVersionUpsert) SetRelationType(v string) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldRelationType, v)
+	return u
+}
+
+// UpdateRelationType sets the "relation_type" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateRelationType() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldRelationType)
+	return u
+}
+
+// SetDescription sets the "description" field.
+func (u *RelationshipStateVersionUpsert) SetDescription(v string) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldDescription, v)
+	return u
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateDescription() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldDescription)
+	return u
+}
+
+// ClearDescription clears the value of the "description" field.
+func (u *RelationshipStateVersionUpsert) ClearDescription() *RelationshipStateVersionUpsert {
+	u.SetNull(relationshipstateversion.FieldDescription)
+	return u
+}
+
+// SetActive sets the "active" field.
+func (u *RelationshipStateVersionUpsert) SetActive(v bool) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldActive, v)
+	return u
+}
+
+// UpdateActive sets the "active" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateActive() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldActive)
+	return u
+}
+
+// SetValid sets the "valid" field.
+func (u *RelationshipStateVersionUpsert) SetValid(v bool) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldValid, v)
+	return u
+}
+
+// UpdateValid sets the "valid" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateValid() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldValid)
+	return u
+}
+
+// SetOperation sets the "operation" field.
+func (u *RelationshipStateVersionUpsert) SetOperation(v relationshipstateversion.Operation) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldOperation, v)
+	return u
+}
+
+// UpdateOperation sets the "operation" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateOperation() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldOperation)
+	return u
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *RelationshipStateVersionUpsert) SetCreatedAt(v time.Time) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldCreatedAt, v)
+	return u
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateCreatedAt() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldCreatedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *RelationshipStateVersionUpsert) SetUpdatedAt(v time.Time) *RelationshipStateVersionUpsert {
+	u.Set(relationshipstateversion.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsert) UpdateUpdatedAt() *RelationshipStateVersionUpsert {
+	u.SetExcluded(relationshipstateversion.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
+// Using this option is equivalent to using:
+//
+//	client.RelationshipStateVersion.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *RelationshipStateVersionUpsertOne) UpdateNewValues() *RelationshipStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.RelationshipStateVersion.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *RelationshipStateVersionUpsertOne) Ignore() *RelationshipStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *RelationshipStateVersionUpsertOne) DoNothing() *RelationshipStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the RelationshipStateVersionCreate.OnConflict
+// documentation for more info.
+func (u *RelationshipStateVersionUpsertOne) Update(set func(*RelationshipStateVersionUpsert)) *RelationshipStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&RelationshipStateVersionUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (u *RelationshipStateVersionUpsertOne) SetChapterID(v int) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetChapterID(v)
+	})
+}
+
+// UpdateChapterID sets the "chapter_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateChapterID() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateChapterID()
+	})
+}
+
+// SetSourceCharacterID sets the "source_character_id" field.
+func (u *RelationshipStateVersionUpsertOne) SetSourceCharacterID(v int) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetSourceCharacterID(v)
+	})
+}
+
+// UpdateSourceCharacterID sets the "source_character_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateSourceCharacterID() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateSourceCharacterID()
+	})
+}
+
+// SetTargetCharacterID sets the "target_character_id" field.
+func (u *RelationshipStateVersionUpsertOne) SetTargetCharacterID(v int) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetTargetCharacterID(v)
+	})
+}
+
+// UpdateTargetCharacterID sets the "target_character_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateTargetCharacterID() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateTargetCharacterID()
+	})
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (u *RelationshipStateVersionUpsertOne) SetChapterIndex(v int) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetChapterIndex(v)
+	})
+}
+
+// AddChapterIndex adds v to the "chapter_index" field.
+func (u *RelationshipStateVersionUpsertOne) AddChapterIndex(v int) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.AddChapterIndex(v)
+	})
+}
+
+// UpdateChapterIndex sets the "chapter_index" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateChapterIndex() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateChapterIndex()
+	})
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (u *RelationshipStateVersionUpsertOne) SetGenerationID(v string) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetGenerationID(v)
+	})
+}
+
+// UpdateGenerationID sets the "generation_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateGenerationID() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateGenerationID()
+	})
+}
+
+// SetRelationType sets the "relation_type" field.
+func (u *RelationshipStateVersionUpsertOne) SetRelationType(v string) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetRelationType(v)
+	})
+}
+
+// UpdateRelationType sets the "relation_type" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateRelationType() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateRelationType()
+	})
+}
+
+// SetDescription sets the "description" field.
+func (u *RelationshipStateVersionUpsertOne) SetDescription(v string) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetDescription(v)
+	})
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateDescription() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateDescription()
+	})
+}
+
+// ClearDescription clears the value of the "description" field.
+func (u *RelationshipStateVersionUpsertOne) ClearDescription() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.ClearDescription()
+	})
+}
+
+// SetActive sets the "active" field.
+func (u *RelationshipStateVersionUpsertOne) SetActive(v bool) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetActive(v)
+	})
+}
+
+// UpdateActive sets the "active" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateActive() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateActive()
+	})
+}
+
+// SetValid sets the "valid" field.
+func (u *RelationshipStateVersionUpsertOne) SetValid(v bool) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetValid(v)
+	})
+}
+
+// UpdateValid sets the "valid" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateValid() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateValid()
+	})
+}
+
+// SetOperation sets the "operation" field.
+func (u *RelationshipStateVersionUpsertOne) SetOperation(v relationshipstateversion.Operation) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetOperation(v)
+	})
+}
+
+// UpdateOperation sets the "operation" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateOperation() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateOperation()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *RelationshipStateVersionUpsertOne) SetCreatedAt(v time.Time) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateCreatedAt() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *RelationshipStateVersionUpsertOne) SetUpdatedAt(v time.Time) *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertOne) UpdateUpdatedAt() *RelationshipStateVersionUpsertOne {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *RelationshipStateVersionUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for RelationshipStateVersionCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *RelationshipStateVersionUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *RelationshipStateVersionUpsertOne) ID(ctx context.Context) (id int, err error) {
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *RelationshipStateVersionUpsertOne) IDX(ctx context.Context) int {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // RelationshipStateVersionCreateBulk is the builder for creating many RelationshipStateVersion entities in bulk.
 type RelationshipStateVersionCreateBulk struct {
 	config
 	err      error
 	builders []*RelationshipStateVersionCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the RelationshipStateVersion entities in the database.
@@ -409,6 +873,7 @@ func (_c *RelationshipStateVersionCreateBulk) Save(ctx context.Context) ([]*Rela
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -459,6 +924,292 @@ func (_c *RelationshipStateVersionCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *RelationshipStateVersionCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.RelationshipStateVersion.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.RelationshipStateVersionUpsert) {
+//			SetChapterID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *RelationshipStateVersionCreateBulk) OnConflict(opts ...sql.ConflictOption) *RelationshipStateVersionUpsertBulk {
+	_c.conflict = opts
+	return &RelationshipStateVersionUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.RelationshipStateVersion.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *RelationshipStateVersionCreateBulk) OnConflictColumns(columns ...string) *RelationshipStateVersionUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &RelationshipStateVersionUpsertBulk{
+		create: _c,
+	}
+}
+
+// RelationshipStateVersionUpsertBulk is the builder for "upsert"-ing
+// a bulk of RelationshipStateVersion nodes.
+type RelationshipStateVersionUpsertBulk struct {
+	create *RelationshipStateVersionCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.RelationshipStateVersion.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *RelationshipStateVersionUpsertBulk) UpdateNewValues() *RelationshipStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.RelationshipStateVersion.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *RelationshipStateVersionUpsertBulk) Ignore() *RelationshipStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *RelationshipStateVersionUpsertBulk) DoNothing() *RelationshipStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the RelationshipStateVersionCreateBulk.OnConflict
+// documentation for more info.
+func (u *RelationshipStateVersionUpsertBulk) Update(set func(*RelationshipStateVersionUpsert)) *RelationshipStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&RelationshipStateVersionUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (u *RelationshipStateVersionUpsertBulk) SetChapterID(v int) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetChapterID(v)
+	})
+}
+
+// UpdateChapterID sets the "chapter_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateChapterID() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateChapterID()
+	})
+}
+
+// SetSourceCharacterID sets the "source_character_id" field.
+func (u *RelationshipStateVersionUpsertBulk) SetSourceCharacterID(v int) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetSourceCharacterID(v)
+	})
+}
+
+// UpdateSourceCharacterID sets the "source_character_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateSourceCharacterID() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateSourceCharacterID()
+	})
+}
+
+// SetTargetCharacterID sets the "target_character_id" field.
+func (u *RelationshipStateVersionUpsertBulk) SetTargetCharacterID(v int) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetTargetCharacterID(v)
+	})
+}
+
+// UpdateTargetCharacterID sets the "target_character_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateTargetCharacterID() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateTargetCharacterID()
+	})
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (u *RelationshipStateVersionUpsertBulk) SetChapterIndex(v int) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetChapterIndex(v)
+	})
+}
+
+// AddChapterIndex adds v to the "chapter_index" field.
+func (u *RelationshipStateVersionUpsertBulk) AddChapterIndex(v int) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.AddChapterIndex(v)
+	})
+}
+
+// UpdateChapterIndex sets the "chapter_index" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateChapterIndex() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateChapterIndex()
+	})
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (u *RelationshipStateVersionUpsertBulk) SetGenerationID(v string) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetGenerationID(v)
+	})
+}
+
+// UpdateGenerationID sets the "generation_id" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateGenerationID() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateGenerationID()
+	})
+}
+
+// SetRelationType sets the "relation_type" field.
+func (u *RelationshipStateVersionUpsertBulk) SetRelationType(v string) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetRelationType(v)
+	})
+}
+
+// UpdateRelationType sets the "relation_type" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateRelationType() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateRelationType()
+	})
+}
+
+// SetDescription sets the "description" field.
+func (u *RelationshipStateVersionUpsertBulk) SetDescription(v string) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetDescription(v)
+	})
+}
+
+// UpdateDescription sets the "description" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateDescription() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateDescription()
+	})
+}
+
+// ClearDescription clears the value of the "description" field.
+func (u *RelationshipStateVersionUpsertBulk) ClearDescription() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.ClearDescription()
+	})
+}
+
+// SetActive sets the "active" field.
+func (u *RelationshipStateVersionUpsertBulk) SetActive(v bool) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetActive(v)
+	})
+}
+
+// UpdateActive sets the "active" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateActive() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateActive()
+	})
+}
+
+// SetValid sets the "valid" field.
+func (u *RelationshipStateVersionUpsertBulk) SetValid(v bool) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetValid(v)
+	})
+}
+
+// UpdateValid sets the "valid" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateValid() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateValid()
+	})
+}
+
+// SetOperation sets the "operation" field.
+func (u *RelationshipStateVersionUpsertBulk) SetOperation(v relationshipstateversion.Operation) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetOperation(v)
+	})
+}
+
+// UpdateOperation sets the "operation" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateOperation() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateOperation()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *RelationshipStateVersionUpsertBulk) SetCreatedAt(v time.Time) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateCreatedAt() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *RelationshipStateVersionUpsertBulk) SetUpdatedAt(v time.Time) *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *RelationshipStateVersionUpsertBulk) UpdateUpdatedAt() *RelationshipStateVersionUpsertBulk {
+	return u.Update(func(s *RelationshipStateVersionUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *RelationshipStateVersionUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the RelationshipStateVersionCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for RelationshipStateVersionCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *RelationshipStateVersionUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

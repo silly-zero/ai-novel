@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/memoryentry"
@@ -18,6 +19,21 @@ type MemoryEntryCreate struct {
 	config
 	mutation *MemoryEntryMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
+}
+
+// SetDedupeKey sets the "dedupe_key" field.
+func (_c *MemoryEntryCreate) SetDedupeKey(v string) *MemoryEntryCreate {
+	_c.mutation.SetDedupeKey(v)
+	return _c
+}
+
+// SetNillableDedupeKey sets the "dedupe_key" field if the given value is not nil.
+func (_c *MemoryEntryCreate) SetNillableDedupeKey(v *string) *MemoryEntryCreate {
+	if v != nil {
+		_c.SetDedupeKey(*v)
+	}
+	return _c
 }
 
 // SetNovelID sets the "novel_id" field.
@@ -142,6 +158,11 @@ func (_c *MemoryEntryCreate) createSpec() (*MemoryEntry, *sqlgraph.CreateSpec) {
 		_node = &MemoryEntry{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(memoryentry.Table, sqlgraph.NewFieldSpec(memoryentry.FieldID, field.TypeInt))
 	)
+	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.DedupeKey(); ok {
+		_spec.SetField(memoryentry.FieldDedupeKey, field.TypeString, value)
+		_node.DedupeKey = value
+	}
 	if value, ok := _c.mutation.NovelID(); ok {
 		_spec.SetField(memoryentry.FieldNovelID, field.TypeString, value)
 		_node.NovelID = value
@@ -165,11 +186,303 @@ func (_c *MemoryEntryCreate) createSpec() (*MemoryEntry, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.MemoryEntry.Create().
+//		SetDedupeKey(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MemoryEntryUpsert) {
+//			SetDedupeKey(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MemoryEntryCreate) OnConflict(opts ...sql.ConflictOption) *MemoryEntryUpsertOne {
+	_c.conflict = opts
+	return &MemoryEntryUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.MemoryEntry.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MemoryEntryCreate) OnConflictColumns(columns ...string) *MemoryEntryUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MemoryEntryUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// MemoryEntryUpsertOne is the builder for "upsert"-ing
+	//  one MemoryEntry node.
+	MemoryEntryUpsertOne struct {
+		create *MemoryEntryCreate
+	}
+
+	// MemoryEntryUpsert is the "OnConflict" setter.
+	MemoryEntryUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetDedupeKey sets the "dedupe_key" field.
+func (u *MemoryEntryUpsert) SetDedupeKey(v string) *MemoryEntryUpsert {
+	u.Set(memoryentry.FieldDedupeKey, v)
+	return u
+}
+
+// UpdateDedupeKey sets the "dedupe_key" field to the value that was provided on create.
+func (u *MemoryEntryUpsert) UpdateDedupeKey() *MemoryEntryUpsert {
+	u.SetExcluded(memoryentry.FieldDedupeKey)
+	return u
+}
+
+// ClearDedupeKey clears the value of the "dedupe_key" field.
+func (u *MemoryEntryUpsert) ClearDedupeKey() *MemoryEntryUpsert {
+	u.SetNull(memoryentry.FieldDedupeKey)
+	return u
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *MemoryEntryUpsert) SetNovelID(v string) *MemoryEntryUpsert {
+	u.Set(memoryentry.FieldNovelID, v)
+	return u
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *MemoryEntryUpsert) UpdateNovelID() *MemoryEntryUpsert {
+	u.SetExcluded(memoryentry.FieldNovelID)
+	return u
+}
+
+// SetContent sets the "content" field.
+func (u *MemoryEntryUpsert) SetContent(v string) *MemoryEntryUpsert {
+	u.Set(memoryentry.FieldContent, v)
+	return u
+}
+
+// UpdateContent sets the "content" field to the value that was provided on create.
+func (u *MemoryEntryUpsert) UpdateContent() *MemoryEntryUpsert {
+	u.SetExcluded(memoryentry.FieldContent)
+	return u
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *MemoryEntryUpsert) SetMetadata(v map[string]interface{}) *MemoryEntryUpsert {
+	u.Set(memoryentry.FieldMetadata, v)
+	return u
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *MemoryEntryUpsert) UpdateMetadata() *MemoryEntryUpsert {
+	u.SetExcluded(memoryentry.FieldMetadata)
+	return u
+}
+
+// SetEmbedding sets the "embedding" field.
+func (u *MemoryEntryUpsert) SetEmbedding(v []float32) *MemoryEntryUpsert {
+	u.Set(memoryentry.FieldEmbedding, v)
+	return u
+}
+
+// UpdateEmbedding sets the "embedding" field to the value that was provided on create.
+func (u *MemoryEntryUpsert) UpdateEmbedding() *MemoryEntryUpsert {
+	u.SetExcluded(memoryentry.FieldEmbedding)
+	return u
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *MemoryEntryUpsert) SetCreatedAt(v time.Time) *MemoryEntryUpsert {
+	u.Set(memoryentry.FieldCreatedAt, v)
+	return u
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *MemoryEntryUpsert) UpdateCreatedAt() *MemoryEntryUpsert {
+	u.SetExcluded(memoryentry.FieldCreatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
+// Using this option is equivalent to using:
+//
+//	client.MemoryEntry.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *MemoryEntryUpsertOne) UpdateNewValues() *MemoryEntryUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.MemoryEntry.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *MemoryEntryUpsertOne) Ignore() *MemoryEntryUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MemoryEntryUpsertOne) DoNothing() *MemoryEntryUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MemoryEntryCreate.OnConflict
+// documentation for more info.
+func (u *MemoryEntryUpsertOne) Update(set func(*MemoryEntryUpsert)) *MemoryEntryUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MemoryEntryUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetDedupeKey sets the "dedupe_key" field.
+func (u *MemoryEntryUpsertOne) SetDedupeKey(v string) *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetDedupeKey(v)
+	})
+}
+
+// UpdateDedupeKey sets the "dedupe_key" field to the value that was provided on create.
+func (u *MemoryEntryUpsertOne) UpdateDedupeKey() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateDedupeKey()
+	})
+}
+
+// ClearDedupeKey clears the value of the "dedupe_key" field.
+func (u *MemoryEntryUpsertOne) ClearDedupeKey() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.ClearDedupeKey()
+	})
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *MemoryEntryUpsertOne) SetNovelID(v string) *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetNovelID(v)
+	})
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *MemoryEntryUpsertOne) UpdateNovelID() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateNovelID()
+	})
+}
+
+// SetContent sets the "content" field.
+func (u *MemoryEntryUpsertOne) SetContent(v string) *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetContent(v)
+	})
+}
+
+// UpdateContent sets the "content" field to the value that was provided on create.
+func (u *MemoryEntryUpsertOne) UpdateContent() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateContent()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *MemoryEntryUpsertOne) SetMetadata(v map[string]interface{}) *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *MemoryEntryUpsertOne) UpdateMetadata() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// SetEmbedding sets the "embedding" field.
+func (u *MemoryEntryUpsertOne) SetEmbedding(v []float32) *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetEmbedding(v)
+	})
+}
+
+// UpdateEmbedding sets the "embedding" field to the value that was provided on create.
+func (u *MemoryEntryUpsertOne) UpdateEmbedding() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateEmbedding()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *MemoryEntryUpsertOne) SetCreatedAt(v time.Time) *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *MemoryEntryUpsertOne) UpdateCreatedAt() *MemoryEntryUpsertOne {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MemoryEntryUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MemoryEntryCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MemoryEntryUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *MemoryEntryUpsertOne) ID(ctx context.Context) (id int, err error) {
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *MemoryEntryUpsertOne) IDX(ctx context.Context) int {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // MemoryEntryCreateBulk is the builder for creating many MemoryEntry entities in bulk.
 type MemoryEntryCreateBulk struct {
 	config
 	err      error
 	builders []*MemoryEntryCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the MemoryEntry entities in the database.
@@ -199,6 +512,7 @@ func (_c *MemoryEntryCreateBulk) Save(ctx context.Context) ([]*MemoryEntry, erro
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -249,6 +563,201 @@ func (_c *MemoryEntryCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *MemoryEntryCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.MemoryEntry.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.MemoryEntryUpsert) {
+//			SetDedupeKey(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *MemoryEntryCreateBulk) OnConflict(opts ...sql.ConflictOption) *MemoryEntryUpsertBulk {
+	_c.conflict = opts
+	return &MemoryEntryUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.MemoryEntry.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *MemoryEntryCreateBulk) OnConflictColumns(columns ...string) *MemoryEntryUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &MemoryEntryUpsertBulk{
+		create: _c,
+	}
+}
+
+// MemoryEntryUpsertBulk is the builder for "upsert"-ing
+// a bulk of MemoryEntry nodes.
+type MemoryEntryUpsertBulk struct {
+	create *MemoryEntryCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.MemoryEntry.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *MemoryEntryUpsertBulk) UpdateNewValues() *MemoryEntryUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.MemoryEntry.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *MemoryEntryUpsertBulk) Ignore() *MemoryEntryUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *MemoryEntryUpsertBulk) DoNothing() *MemoryEntryUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the MemoryEntryCreateBulk.OnConflict
+// documentation for more info.
+func (u *MemoryEntryUpsertBulk) Update(set func(*MemoryEntryUpsert)) *MemoryEntryUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&MemoryEntryUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetDedupeKey sets the "dedupe_key" field.
+func (u *MemoryEntryUpsertBulk) SetDedupeKey(v string) *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetDedupeKey(v)
+	})
+}
+
+// UpdateDedupeKey sets the "dedupe_key" field to the value that was provided on create.
+func (u *MemoryEntryUpsertBulk) UpdateDedupeKey() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateDedupeKey()
+	})
+}
+
+// ClearDedupeKey clears the value of the "dedupe_key" field.
+func (u *MemoryEntryUpsertBulk) ClearDedupeKey() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.ClearDedupeKey()
+	})
+}
+
+// SetNovelID sets the "novel_id" field.
+func (u *MemoryEntryUpsertBulk) SetNovelID(v string) *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetNovelID(v)
+	})
+}
+
+// UpdateNovelID sets the "novel_id" field to the value that was provided on create.
+func (u *MemoryEntryUpsertBulk) UpdateNovelID() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateNovelID()
+	})
+}
+
+// SetContent sets the "content" field.
+func (u *MemoryEntryUpsertBulk) SetContent(v string) *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetContent(v)
+	})
+}
+
+// UpdateContent sets the "content" field to the value that was provided on create.
+func (u *MemoryEntryUpsertBulk) UpdateContent() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateContent()
+	})
+}
+
+// SetMetadata sets the "metadata" field.
+func (u *MemoryEntryUpsertBulk) SetMetadata(v map[string]interface{}) *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetMetadata(v)
+	})
+}
+
+// UpdateMetadata sets the "metadata" field to the value that was provided on create.
+func (u *MemoryEntryUpsertBulk) UpdateMetadata() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateMetadata()
+	})
+}
+
+// SetEmbedding sets the "embedding" field.
+func (u *MemoryEntryUpsertBulk) SetEmbedding(v []float32) *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetEmbedding(v)
+	})
+}
+
+// UpdateEmbedding sets the "embedding" field to the value that was provided on create.
+func (u *MemoryEntryUpsertBulk) UpdateEmbedding() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateEmbedding()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *MemoryEntryUpsertBulk) SetCreatedAt(v time.Time) *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *MemoryEntryUpsertBulk) UpdateCreatedAt() *MemoryEntryUpsertBulk {
+	return u.Update(func(s *MemoryEntryUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *MemoryEntryUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the MemoryEntryCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for MemoryEntryCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *MemoryEntryUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

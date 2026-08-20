@@ -24,6 +24,10 @@ const (
 	FieldOrder = "order"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldDerivedStatus holds the string denoting the derived_status field in the database.
+	FieldDerivedStatus = "derived_status"
+	// FieldDerivedGenerationID holds the string denoting the derived_generation_id field in the database.
+	FieldDerivedGenerationID = "derived_generation_id"
 	// FieldLastBeat holds the string denoting the last_beat field in the database.
 	FieldLastBeat = "last_beat"
 	// FieldOpenLoops holds the string denoting the open_loops field in the database.
@@ -82,6 +86,8 @@ var Columns = []string{
 	FieldWordCount,
 	FieldOrder,
 	FieldStatus,
+	FieldDerivedStatus,
+	FieldDerivedGenerationID,
 	FieldLastBeat,
 	FieldOpenLoops,
 	FieldNextAction,
@@ -113,6 +119,10 @@ func ValidColumn(column string) bool {
 var (
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
+	// DefaultDerivedStatus holds the default value on creation for the "derived_status" field.
+	DefaultDerivedStatus string
+	// DefaultDerivedGenerationID holds the default value on creation for the "derived_generation_id" field.
+	DefaultDerivedGenerationID string
 	// DefaultLastBeat holds the default value on creation for the "last_beat" field.
 	DefaultLastBeat string
 	// DefaultNextAction holds the default value on creation for the "next_action" field.
@@ -156,6 +166,16 @@ func ByOrder(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByDerivedStatus orders the results by the derived_status field.
+func ByDerivedStatus(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDerivedStatus, opts...).ToFunc()
+}
+
+// ByDerivedGenerationID orders the results by the derived_generation_id field.
+func ByDerivedGenerationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDerivedGenerationID, opts...).ToFunc()
 }
 
 // ByLastBeat orders the results by the last_beat field.

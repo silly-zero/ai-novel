@@ -54,6 +54,11 @@ func IDLTE(id int) predicate.MemoryEntry {
 	return predicate.MemoryEntry(sql.FieldLTE(FieldID, id))
 }
 
+// DedupeKey applies equality check predicate on the "dedupe_key" field. It's identical to DedupeKeyEQ.
+func DedupeKey(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldEQ(FieldDedupeKey, v))
+}
+
 // NovelID applies equality check predicate on the "novel_id" field. It's identical to NovelIDEQ.
 func NovelID(v string) predicate.MemoryEntry {
 	return predicate.MemoryEntry(sql.FieldEQ(FieldNovelID, v))
@@ -67,6 +72,81 @@ func Content(v string) predicate.MemoryEntry {
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.MemoryEntry {
 	return predicate.MemoryEntry(sql.FieldEQ(FieldCreatedAt, v))
+}
+
+// DedupeKeyEQ applies the EQ predicate on the "dedupe_key" field.
+func DedupeKeyEQ(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldEQ(FieldDedupeKey, v))
+}
+
+// DedupeKeyNEQ applies the NEQ predicate on the "dedupe_key" field.
+func DedupeKeyNEQ(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldNEQ(FieldDedupeKey, v))
+}
+
+// DedupeKeyIn applies the In predicate on the "dedupe_key" field.
+func DedupeKeyIn(vs ...string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldIn(FieldDedupeKey, vs...))
+}
+
+// DedupeKeyNotIn applies the NotIn predicate on the "dedupe_key" field.
+func DedupeKeyNotIn(vs ...string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldNotIn(FieldDedupeKey, vs...))
+}
+
+// DedupeKeyGT applies the GT predicate on the "dedupe_key" field.
+func DedupeKeyGT(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldGT(FieldDedupeKey, v))
+}
+
+// DedupeKeyGTE applies the GTE predicate on the "dedupe_key" field.
+func DedupeKeyGTE(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldGTE(FieldDedupeKey, v))
+}
+
+// DedupeKeyLT applies the LT predicate on the "dedupe_key" field.
+func DedupeKeyLT(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldLT(FieldDedupeKey, v))
+}
+
+// DedupeKeyLTE applies the LTE predicate on the "dedupe_key" field.
+func DedupeKeyLTE(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldLTE(FieldDedupeKey, v))
+}
+
+// DedupeKeyContains applies the Contains predicate on the "dedupe_key" field.
+func DedupeKeyContains(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldContains(FieldDedupeKey, v))
+}
+
+// DedupeKeyHasPrefix applies the HasPrefix predicate on the "dedupe_key" field.
+func DedupeKeyHasPrefix(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldHasPrefix(FieldDedupeKey, v))
+}
+
+// DedupeKeyHasSuffix applies the HasSuffix predicate on the "dedupe_key" field.
+func DedupeKeyHasSuffix(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldHasSuffix(FieldDedupeKey, v))
+}
+
+// DedupeKeyIsNil applies the IsNil predicate on the "dedupe_key" field.
+func DedupeKeyIsNil() predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldIsNull(FieldDedupeKey))
+}
+
+// DedupeKeyNotNil applies the NotNil predicate on the "dedupe_key" field.
+func DedupeKeyNotNil() predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldNotNull(FieldDedupeKey))
+}
+
+// DedupeKeyEqualFold applies the EqualFold predicate on the "dedupe_key" field.
+func DedupeKeyEqualFold(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldEqualFold(FieldDedupeKey, v))
+}
+
+// DedupeKeyContainsFold applies the ContainsFold predicate on the "dedupe_key" field.
+func DedupeKeyContainsFold(v string) predicate.MemoryEntry {
+	return predicate.MemoryEntry(sql.FieldContainsFold(FieldDedupeKey, v))
 }
 
 // NovelIDEQ applies the EQ predicate on the "novel_id" field.

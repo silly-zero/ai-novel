@@ -38,19 +38,21 @@ type generationEngine interface {
 }
 
 type generationChapterTarget struct {
-	ID                 int
-	NovelID            int
-	Title              string
-	Content            string
-	WordCount          int
-	Order              int
-	Status             string
-	LastBeat           string
-	OpenLoops          []string
-	NextAction         string
-	PreviousContinuity agents.ContinuityPacket
-	UpdatedAt          time.Time
-	NovelUpdatedAt     time.Time
+	ID                  int
+	NovelID             int
+	Title               string
+	Content             string
+	WordCount           int
+	Order               int
+	Status              string
+	DerivedStatus       string
+	DerivedGenerationID string
+	LastBeat            string
+	OpenLoops           []string
+	NextAction          string
+	PreviousContinuity  agents.ContinuityPacket
+	UpdatedAt           time.Time
+	NovelUpdatedAt      time.Time
 }
 
 type generationChapterStore interface {
@@ -63,11 +65,12 @@ type entGenerationChapterStore struct {
 }
 
 var (
-	errGenerationChapterChanged         = errors.New("chapter changed during generation")
-	errGenerationPreviousChapterMissing = errors.New("previous chapter is required before generation")
-	errChapterOrderOccupied             = errors.New("chapter order is already occupied")
-	errChapterHasSuccessor              = errors.New("chapter has a successor and cannot be moved or deleted")
-	errGenerationEarlierChapterStale    = errors.New("an earlier chapter is stale and must be regenerated first")
+	errGenerationChapterChanged          = errors.New("chapter changed during generation")
+	errGenerationPreviousChapterMissing  = errors.New("previous chapter is required before generation")
+	errChapterOrderOccupied              = errors.New("chapter order is already occupied")
+	errChapterHasSuccessor               = errors.New("chapter has a successor and cannot be moved or deleted")
+	errGenerationEarlierChapterStale     = errors.New("an earlier chapter is stale and must be regenerated first")
+	errGenerationPreviousDerivedNotReady = errors.New("previous chapter derived data is not ready")
 )
 
 type generationPreviousChapterMissingError struct {
@@ -314,6 +317,9 @@ func preparePreviousContinuity(
 	if previous.Status == string(domain.StatusStale) {
 		return agents.ContinuityPacket{}, fmt.Errorf("%w: chapter %d", errGenerationEarlierChapterStale, previousOrder)
 	}
+	if previous.DerivedStatus != string(domain.DerivedStatusReady) {
+		return agents.ContinuityPacket{}, fmt.Errorf("%w: chapter %d", errGenerationPreviousDerivedNotReady, previousOrder)
+	}
 	packet := agents.ContinuityPacket{
 		LastBeat:   strings.TrimSpace(previous.LastBeat),
 		OpenLoops:  append([]string(nil), previous.OpenLoops...),
@@ -435,6 +441,7 @@ func (s *entGenerationChapterStore) createGenerationChapter(
 
 func isChapterIntegrityConflict(err error) bool {
 	return errors.Is(err, errGenerationPreviousChapterMissing) ||
+		errors.Is(err, errGenerationPreviousDerivedNotReady) ||
 		errors.Is(err, errGenerationEarlierChapterStale) ||
 		errors.Is(err, errChapterOrderOccupied) ||
 		errors.Is(err, errChapterHasSuccessor)
@@ -740,7 +747,10 @@ func markFollowingChaptersStale(
 		chapter.IDNEQ(excludeChapterID),
 		chapter.OrderGT(chapterOrder),
 		chapter.HasNovelWith(novel.ID(novelID)),
-	).SetStatus(string(domain.StatusStale)).Save(ctx); err != nil {
+	).SetStatus(string(domain.StatusStale)).
+		SetDerivedStatus(string(domain.DerivedStatusFailed)).
+		SetDerivedGenerationID("").
+		Save(ctx); err != nil {
 		return err
 	}
 	if err := invalidateChapterDerivedData(ctx, client, novelID, staleRows); err != nil {
@@ -879,6 +889,8 @@ func updateChapterWithIntegrity(
 	}
 	if targetInvalidated {
 		update.SetStatus(string(domain.StatusStale)).
+			SetDerivedStatus(string(domain.DerivedStatusFailed)).
+			SetDerivedGenerationID("").
 			SetLastBeat("").SetOpenLoops([]string{}).SetNextAction("")
 	}
 	row, err = update.Save(ctx)
@@ -1103,6 +1115,8 @@ func (s *entGenerationChapterStore) Save(
 			chapter.WordCountEQ(target.WordCount),
 			chapter.OrderEQ(target.Order),
 			chapter.StatusEQ(target.Status),
+			chapter.DerivedStatusEQ(target.DerivedStatus),
+			chapter.DerivedGenerationIDEQ(target.DerivedGenerationID),
 			chapter.LastBeatEQ(target.LastBeat),
 			predicate.Chapter(func(selector *sql.Selector) {
 				openLoopsPredicate := sqljson.ValueEQ(chapter.FieldOpenLoops, target.OpenLoops)
@@ -1120,6 +1134,8 @@ func (s *entGenerationChapterStore) Save(
 		SetContent(state.Draft).
 		SetWordCount(wordCountOf(state.Draft)).
 		SetStatus("Draft").
+		SetDerivedStatus(string(domain.DerivedStatusPending)).
+		SetDerivedGenerationID(state.GenerationID).
 		SetLastBeat(state.Continuity.LastBeat).
 		SetOpenLoops(state.Continuity.OpenLoops).
 		SetNextAction(state.Continuity.NextAction).
@@ -1141,6 +1157,38 @@ func (s *entGenerationChapterStore) Save(
 	}
 	committed = true
 	return nil
+}
+
+func (s *Server) setChapterDerivedStatus(
+	ctx context.Context,
+	chapterID int,
+	generationID string,
+	status domain.DerivedStatus,
+) error {
+	if s.db == nil {
+		return nil
+	}
+	return setChapterDerivedStatus(ctx, s.db, chapterID, generationID, status)
+}
+
+func setChapterDerivedStatus(
+	ctx context.Context,
+	client *ent.Client,
+	chapterID int,
+	generationID string,
+	status domain.DerivedStatus,
+) error {
+	if chapterID <= 0 || strings.TrimSpace(generationID) == "" {
+		return errors.New("invalid derived status target")
+	}
+	_, err := client.Chapter.UpdateOneID(chapterID).Where(
+		chapter.DerivedStatusEQ(string(domain.DerivedStatusPending)),
+		chapter.DerivedGenerationIDEQ(generationID),
+	).SetDerivedStatus(string(status)).Save(ctx)
+	if ent.IsNotFound(err) {
+		return errGenerationChapterChanged
+	}
+	return err
 }
 
 func validateGenerationChapterSave(
@@ -1198,16 +1246,18 @@ func generationNovelUpdatedAt(
 
 func generationChapterTargetFromRow(row *ent.Chapter) *generationChapterTarget {
 	return &generationChapterTarget{
-		ID:         row.ID,
-		Title:      row.Title,
-		Content:    row.Content,
-		WordCount:  row.WordCount,
-		Order:      row.Order,
-		Status:     row.Status,
-		LastBeat:   row.LastBeat,
-		OpenLoops:  append([]string(nil), row.OpenLoops...),
-		NextAction: row.NextAction,
-		UpdatedAt:  row.UpdatedAt,
+		ID:                  row.ID,
+		Title:               row.Title,
+		Content:             row.Content,
+		WordCount:           row.WordCount,
+		Order:               row.Order,
+		Status:              row.Status,
+		DerivedStatus:       row.DerivedStatus,
+		DerivedGenerationID: row.DerivedGenerationID,
+		LastBeat:            row.LastBeat,
+		OpenLoops:           append([]string(nil), row.OpenLoops...),
+		NextAction:          row.NextAction,
+		UpdatedAt:           row.UpdatedAt,
 	}
 }
 
@@ -1463,6 +1513,7 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	s.router.Get("/api/v1/chapters/{id}", s.HandleGetChapter)
 	s.router.Put("/api/v1/chapters/{id}", s.HandleUpdateChapter)
 	s.router.Delete("/api/v1/chapters/{id}", s.HandleDeleteChapter)
+	s.router.Post("/api/v1/chapters/{id}/derived/retry", s.HandleRetryChapterDerived)
 	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Post("/api/v1/novels/{id}/generate/cancel", s.HandleCancelGeneration)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
@@ -1493,15 +1544,16 @@ type NovelDetail struct {
 }
 
 type ChapterItem struct {
-	ID        string    `json:"id"`
-	NovelID   string    `json:"novel_id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	WordCount int       `json:"word_count"`
-	Order     int       `json:"order"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	NovelID       string    `json:"novel_id"`
+	Title         string    `json:"title"`
+	Content       string    `json:"content"`
+	WordCount     int       `json:"word_count"`
+	Order         int       `json:"order"`
+	Status        string    `json:"status"`
+	DerivedStatus string    `json:"derived_status"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type CreateNovelRequest struct {
@@ -1714,15 +1766,16 @@ func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 	chapters := make([]ChapterItem, 0, len(row.Edges.Chapters))
 	for _, c := range row.Edges.Chapters {
 		chapters = append(chapters, ChapterItem{
-			ID:        fmt.Sprintf("%d", c.ID),
-			NovelID:   item.ID,
-			Title:     c.Title,
-			Content:   c.Content,
-			WordCount: c.WordCount,
-			Order:     c.Order,
-			Status:    c.Status,
-			CreatedAt: c.CreatedAt,
-			UpdatedAt: c.UpdatedAt,
+			ID:            fmt.Sprintf("%d", c.ID),
+			NovelID:       item.ID,
+			Title:         c.Title,
+			Content:       c.Content,
+			WordCount:     c.WordCount,
+			Order:         c.Order,
+			Status:        c.Status,
+			DerivedStatus: c.DerivedStatus,
+			CreatedAt:     c.CreatedAt,
+			UpdatedAt:     c.UpdatedAt,
 		})
 	}
 
@@ -1829,15 +1882,16 @@ func (s *Server) HandleListChapters(w http.ResponseWriter, r *http.Request) {
 	items := make([]ChapterItem, 0, len(rows))
 	for _, c := range rows {
 		items = append(items, ChapterItem{
-			ID:        fmt.Sprintf("%d", c.ID),
-			NovelID:   fmt.Sprintf("%d", novelID),
-			Title:     c.Title,
-			Content:   c.Content,
-			WordCount: c.WordCount,
-			Order:     c.Order,
-			Status:    c.Status,
-			CreatedAt: c.CreatedAt,
-			UpdatedAt: c.UpdatedAt,
+			ID:            fmt.Sprintf("%d", c.ID),
+			NovelID:       fmt.Sprintf("%d", novelID),
+			Title:         c.Title,
+			Content:       c.Content,
+			WordCount:     c.WordCount,
+			Order:         c.Order,
+			Status:        c.Status,
+			DerivedStatus: c.DerivedStatus,
+			CreatedAt:     c.CreatedAt,
+			UpdatedAt:     c.UpdatedAt,
 		})
 	}
 
@@ -1878,15 +1932,16 @@ func (s *Server) HandleGetChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := ChapterItem{
-		ID:        fmt.Sprintf("%d", row.ID),
-		NovelID:   novelID,
-		Title:     row.Title,
-		Content:   row.Content,
-		WordCount: row.WordCount,
-		Order:     row.Order,
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
+		ID:            fmt.Sprintf("%d", row.ID),
+		NovelID:       novelID,
+		Title:         row.Title,
+		Content:       row.Content,
+		WordCount:     row.WordCount,
+		Order:         row.Order,
+		Status:        row.Status,
+		DerivedStatus: row.DerivedStatus,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
@@ -1946,15 +2001,16 @@ func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	item := ChapterItem{
-		ID:        fmt.Sprintf("%d", row.ID),
-		NovelID:   fmt.Sprintf("%d", novelID),
-		Title:     row.Title,
-		Content:   row.Content,
-		WordCount: row.WordCount,
-		Order:     row.Order,
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
+		ID:            fmt.Sprintf("%d", row.ID),
+		NovelID:       fmt.Sprintf("%d", novelID),
+		Title:         row.Title,
+		Content:       row.Content,
+		WordCount:     row.WordCount,
+		Order:         row.Order,
+		Status:        row.Status,
+		DerivedStatus: row.DerivedStatus,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}
 
 	w.WriteHeader(http.StatusCreated)
@@ -2024,18 +2080,91 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	item := ChapterItem{
-		ID:        fmt.Sprintf("%d", row.ID),
-		NovelID:   novelID,
-		Title:     row.Title,
-		Content:   row.Content,
-		WordCount: row.WordCount,
-		Order:     row.Order,
-		Status:    row.Status,
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
+		ID:            fmt.Sprintf("%d", row.ID),
+		NovelID:       novelID,
+		Title:         row.Title,
+		Content:       row.Content,
+		WordCount:     row.WordCount,
+		Order:         row.Order,
+		Status:        row.Status,
+		DerivedStatus: row.DerivedStatus,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
+}
+
+func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil || s.engine == nil {
+		http.Error(w, "server not configured", http.StatusInternalServerError)
+		return
+	}
+	chapterID, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	row, err := s.db.Chapter.Query().Where(chapter.ID(chapterID)).WithNovel().Only(r.Context())
+	if err != nil {
+		if ent.IsNotFound(err) {
+			http.Error(w, "chapter not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	novelRow, err := row.Edges.NovelOrErr()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !s.generationGuard.acquireMutation(novelRow.ID) {
+		http.Error(w, "该小说正在生成或修改，不能重试派生处理", http.StatusConflict)
+		return
+	}
+	defer s.generationGuard.releaseMutation(novelRow.ID)
+	if row.Status == string(domain.StatusStale) ||
+		(row.DerivedStatus != string(domain.DerivedStatusFailed) && row.DerivedStatus != string(domain.DerivedStatusPending)) ||
+		strings.TrimSpace(row.DerivedGenerationID) == "" {
+		http.Error(w, "chapter derived data is not failed", http.StatusConflict)
+		return
+	}
+	generationID := row.DerivedGenerationID
+	updated, err := s.db.Chapter.UpdateOneID(row.ID).Where(
+		chapter.DerivedStatusIn(string(domain.DerivedStatusFailed), string(domain.DerivedStatusPending)),
+		chapter.DerivedGenerationIDEQ(generationID),
+	).SetDerivedStatus(string(domain.DerivedStatusPending)).Save(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), chapterMutationHTTPStatus(err))
+		return
+	}
+	state := &agents.GenerationState{
+		GenerationID: generationID,
+		NovelID:      strconv.Itoa(novelRow.ID),
+		ChapterID:    strconv.Itoa(updated.ID),
+		ChapterIndex: updated.Order,
+		Draft:        updated.Content,
+	}
+	retryCtx, retryCancel := context.WithTimeout(s.lifecycleCtx, s.config.GenerationTimeout)
+	defer retryCancel()
+	publishErr := s.engine.PublishChapterGenerated(retryCtx, state)
+	status := domain.DerivedStatusReady
+	if publishErr != nil {
+		status = domain.DerivedStatusFailed
+	}
+	statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
+	statusErr := setChapterDerivedStatus(statusCtx, s.db, updated.ID, generationID, status)
+	statusCancel()
+	if publishErr != nil || statusErr != nil {
+		http.Error(w, fmt.Sprintf("retry chapter derived data: %v", errors.Join(publishErr, statusErr)), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"chapter_id":     strconv.Itoa(updated.ID),
+		"derived_status": string(domain.DerivedStatusReady),
+	})
 }
 
 func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
@@ -2585,17 +2714,28 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 					Message:      message,
 				}
 			} else {
-				if publishErr := s.engine.PublishChapterGenerated(
-					postprocessCtx,
-					finalState,
-				); publishErr != nil {
-					log.Printf(
-						"[Generation] 记忆处理失败: generation_id=%s novel_id=%s chapter_id=%s error=%v",
-						generationID,
-						novelID,
-						finalState.ChapterID,
-						publishErr,
-					)
+				publishErr := s.engine.PublishChapterGenerated(postprocessCtx, finalState)
+				derivedStatus := domain.DerivedStatusReady
+				if publishErr != nil {
+					derivedStatus = domain.DerivedStatusFailed
+				}
+				statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
+				statusErr := s.setChapterDerivedStatus(
+					statusCtx,
+					chapterTarget.ID,
+					generationID,
+					derivedStatus,
+				)
+				statusCancel()
+				if publishErr != nil || statusErr != nil {
+					result = generationResult{
+						GenerationID: generationID,
+						Status:       generationStatusError,
+						Message: fmt.Sprintf(
+							"update chapter derived data: %v",
+							errors.Join(publishErr, statusErr),
+						),
+					}
 				}
 			}
 		}

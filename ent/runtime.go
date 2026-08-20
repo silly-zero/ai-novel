@@ -27,20 +27,28 @@ func init() {
 	chapterDescStatus := chapterFields[4].Descriptor()
 	// chapter.DefaultStatus holds the default value on creation for the status field.
 	chapter.DefaultStatus = chapterDescStatus.Default.(string)
+	// chapterDescDerivedStatus is the schema descriptor for derived_status field.
+	chapterDescDerivedStatus := chapterFields[5].Descriptor()
+	// chapter.DefaultDerivedStatus holds the default value on creation for the derived_status field.
+	chapter.DefaultDerivedStatus = chapterDescDerivedStatus.Default.(string)
+	// chapterDescDerivedGenerationID is the schema descriptor for derived_generation_id field.
+	chapterDescDerivedGenerationID := chapterFields[6].Descriptor()
+	// chapter.DefaultDerivedGenerationID holds the default value on creation for the derived_generation_id field.
+	chapter.DefaultDerivedGenerationID = chapterDescDerivedGenerationID.Default.(string)
 	// chapterDescLastBeat is the schema descriptor for last_beat field.
-	chapterDescLastBeat := chapterFields[5].Descriptor()
+	chapterDescLastBeat := chapterFields[7].Descriptor()
 	// chapter.DefaultLastBeat holds the default value on creation for the last_beat field.
 	chapter.DefaultLastBeat = chapterDescLastBeat.Default.(string)
 	// chapterDescNextAction is the schema descriptor for next_action field.
-	chapterDescNextAction := chapterFields[7].Descriptor()
+	chapterDescNextAction := chapterFields[9].Descriptor()
 	// chapter.DefaultNextAction holds the default value on creation for the next_action field.
 	chapter.DefaultNextAction = chapterDescNextAction.Default.(string)
 	// chapterDescCreatedAt is the schema descriptor for created_at field.
-	chapterDescCreatedAt := chapterFields[8].Descriptor()
+	chapterDescCreatedAt := chapterFields[10].Descriptor()
 	// chapter.DefaultCreatedAt holds the default value on creation for the created_at field.
 	chapter.DefaultCreatedAt = chapterDescCreatedAt.Default.(func() time.Time)
 	// chapterDescUpdatedAt is the schema descriptor for updated_at field.
-	chapterDescUpdatedAt := chapterFields[9].Descriptor()
+	chapterDescUpdatedAt := chapterFields[11].Descriptor()
 	// chapter.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	chapter.DefaultUpdatedAt = chapterDescUpdatedAt.Default.(func() time.Time)
 	// chapter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -92,7 +100,7 @@ func init() {
 	memoryentryFields := schema.MemoryEntry{}.Fields()
 	_ = memoryentryFields
 	// memoryentryDescCreatedAt is the schema descriptor for created_at field.
-	memoryentryDescCreatedAt := memoryentryFields[4].Descriptor()
+	memoryentryDescCreatedAt := memoryentryFields[5].Descriptor()
 	// memoryentry.DefaultCreatedAt holds the default value on creation for the created_at field.
 	memoryentry.DefaultCreatedAt = memoryentryDescCreatedAt.Default.(func() time.Time)
 	novelFields := schema.Novel{}.Fields()

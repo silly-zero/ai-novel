@@ -732,6 +732,22 @@ func TestPreparePreviousContinuityRejectsStalePreviousChapter(t *testing.T) {
 	}
 }
 
+func TestPreparePreviousContinuityRejectsDerivedNotReady(t *testing.T) {
+	for _, status := range []domain.DerivedStatus{domain.DerivedStatusPending, domain.DerivedStatusFailed} {
+		t.Run(string(status), func(t *testing.T) {
+			packet, err := preparePreviousContinuity(
+				context.Background(), 7, 3,
+				func(context.Context, int, int) (*ent.Chapter, error) {
+					return &ent.Chapter{DerivedStatus: string(status), LastBeat: "旧", NextAction: "旧"}, nil
+				},
+			)
+			if !packet.IsEmpty() || !errors.Is(err, errGenerationPreviousDerivedNotReady) {
+				t.Fatalf("packet=%#v error=%v", packet, err)
+			}
+		})
+	}
+}
+
 func TestPreparePreviousContinuityCopiesPreviousPacket(t *testing.T) {
 	loops := []string{"线索一", "线索二"}
 	packet, err := preparePreviousContinuity(
@@ -740,9 +756,10 @@ func TestPreparePreviousContinuityCopiesPreviousPacket(t *testing.T) {
 		3,
 		func(context.Context, int, int) (*ent.Chapter, error) {
 			return &ent.Chapter{
-				LastBeat:   "  最后动作  ",
-				OpenLoops:  loops,
-				NextAction: "  继续追查  ",
+				DerivedStatus: string(domain.DerivedStatusReady),
+				LastBeat:      "  最后动作  ",
+				OpenLoops:     loops,
+				NextAction:    "  继续追查  ",
 			}, nil
 		},
 	)
@@ -764,7 +781,7 @@ func TestPreparePreviousContinuityRejectsInvalidPacket(t *testing.T) {
 		7,
 		3,
 		func(context.Context, int, int) (*ent.Chapter, error) {
-			return &ent.Chapter{}, nil
+			return &ent.Chapter{DerivedStatus: string(domain.DerivedStatusReady)}, nil
 		},
 	)
 	if err == nil || !strings.Contains(err.Error(), "last_beat is required") {
@@ -831,7 +848,7 @@ func TestPrepareNewGenerationChapterAttachesPreviousContinuity(t *testing.T) {
 		},
 		func(context.Context, int, int) (*ent.Chapter, error) {
 			events = append(events, "lookup")
-			return &ent.Chapter{LastBeat: "结尾", NextAction: "行动"}, nil
+			return &ent.Chapter{DerivedStatus: string(domain.DerivedStatusReady), LastBeat: "结尾", NextAction: "行动"}, nil
 		},
 		func(_ context.Context, novelID int, order int) (*ent.Chapter, error) {
 			events = append(events, "create")
@@ -857,7 +874,7 @@ func TestPrepareNewGenerationChapterReusesTargetAfterLock(t *testing.T) {
 			return &ent.Chapter{ID: 11, Order: 3}, nil
 		},
 		func(context.Context, int, int) (*ent.Chapter, error) {
-			return &ent.Chapter{LastBeat: "结尾", NextAction: "行动"}, nil
+			return &ent.Chapter{DerivedStatus: string(domain.DerivedStatusReady), LastBeat: "结尾", NextAction: "行动"}, nil
 		},
 		func(context.Context, int, int) (*ent.Chapter, error) {
 			createCalled = true
@@ -1677,7 +1694,7 @@ func TestHandleGenerateChapterKeepsLeaseUntilSaveAndPublishComplete(t *testing.T
 	}
 }
 
-func TestHandleGenerateChapterMemoryFailureKeepsSuccessAndReleasesLease(t *testing.T) {
+func TestHandleGenerateChapterDerivedFailureUsesErrorAndReleasesLease(t *testing.T) {
 	store := &generationChapterStoreFake{}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
@@ -1699,9 +1716,9 @@ func TestHandleGenerateChapterMemoryFailureKeepsSuccessAndReleasesLease(t *testi
 	)
 
 	body := first.Body.String()
-	if !strings.Contains(body, `"status":"success"`) ||
-		strings.Contains(body, `"status":"error"`) {
-		t.Fatalf("memory failure changed chapter terminal: %s", body)
+	if !strings.Contains(body, `"status":"error"`) ||
+		!strings.Contains(body, "update chapter derived data") {
+		t.Fatalf("derived failure terminal: %s", body)
 	}
 
 	second := httptest.NewRecorder()

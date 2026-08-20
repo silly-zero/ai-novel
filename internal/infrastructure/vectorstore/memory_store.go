@@ -32,7 +32,21 @@ func (s *MemoryVectorStore) Add(ctx context.Context, entries []*memory.MemoryEnt
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.entries = append(s.entries, entries...)
+	for _, entry := range entries {
+		replaced := false
+		if entry.DedupeKey != "" {
+			for index, existing := range s.entries {
+				if existing != nil && existing.DedupeKey == entry.DedupeKey {
+					s.entries[index] = entry
+					replaced = true
+					break
+				}
+			}
+		}
+		if !replaced {
+			s.entries = append(s.entries, entry)
+		}
+	}
 	return nil
 }
 

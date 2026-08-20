@@ -40,6 +40,14 @@ const (
 	StatusStale      Status = "Stale"      // 前文已变更，待重生成
 )
 
+type DerivedStatus string
+
+const (
+	DerivedStatusPending DerivedStatus = "Pending"
+	DerivedStatusReady   DerivedStatus = "Ready"
+	DerivedStatusFailed  DerivedStatus = "Failed"
+)
+
 // Repository 定义了小说的持久化接口，具体实现在 infrastructure 层
 type Repository interface {
 	SaveNovel(ctx context.Context, n *Novel) error

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
@@ -20,6 +21,7 @@ type WorldStateVersionCreate struct {
 	config
 	mutation *WorldStateVersionMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetWorldSettingID sets the "world_setting_id" field.
@@ -226,6 +228,7 @@ func (_c *WorldStateVersionCreate) createSpec() (*WorldStateVersion, *sqlgraph.C
 		_node = &WorldStateVersion{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(worldstateversion.Table, sqlgraph.NewFieldSpec(worldstateversion.FieldID, field.TypeInt))
 	)
+	_spec.OnConflict = _c.conflict
 	if value, ok := _c.mutation.ChapterIndex(); ok {
 		_spec.SetField(worldstateversion.FieldChapterIndex, field.TypeInt, value)
 		_node.ChapterIndex = value
@@ -287,11 +290,355 @@ func (_c *WorldStateVersionCreate) createSpec() (*WorldStateVersion, *sqlgraph.C
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.WorldStateVersion.Create().
+//		SetWorldSettingID(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.WorldStateVersionUpsert) {
+//			SetWorldSettingID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *WorldStateVersionCreate) OnConflict(opts ...sql.ConflictOption) *WorldStateVersionUpsertOne {
+	_c.conflict = opts
+	return &WorldStateVersionUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.WorldStateVersion.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *WorldStateVersionCreate) OnConflictColumns(columns ...string) *WorldStateVersionUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &WorldStateVersionUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// WorldStateVersionUpsertOne is the builder for "upsert"-ing
+	//  one WorldStateVersion node.
+	WorldStateVersionUpsertOne struct {
+		create *WorldStateVersionCreate
+	}
+
+	// WorldStateVersionUpsert is the "OnConflict" setter.
+	WorldStateVersionUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetWorldSettingID sets the "world_setting_id" field.
+func (u *WorldStateVersionUpsert) SetWorldSettingID(v int) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldWorldSettingID, v)
+	return u
+}
+
+// UpdateWorldSettingID sets the "world_setting_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateWorldSettingID() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldWorldSettingID)
+	return u
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (u *WorldStateVersionUpsert) SetChapterID(v int) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldChapterID, v)
+	return u
+}
+
+// UpdateChapterID sets the "chapter_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateChapterID() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldChapterID)
+	return u
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (u *WorldStateVersionUpsert) SetChapterIndex(v int) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldChapterIndex, v)
+	return u
+}
+
+// UpdateChapterIndex sets the "chapter_index" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateChapterIndex() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldChapterIndex)
+	return u
+}
+
+// AddChapterIndex adds v to the "chapter_index" field.
+func (u *WorldStateVersionUpsert) AddChapterIndex(v int) *WorldStateVersionUpsert {
+	u.Add(worldstateversion.FieldChapterIndex, v)
+	return u
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (u *WorldStateVersionUpsert) SetGenerationID(v string) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldGenerationID, v)
+	return u
+}
+
+// UpdateGenerationID sets the "generation_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateGenerationID() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldGenerationID)
+	return u
+}
+
+// SetCurrentState sets the "current_state" field.
+func (u *WorldStateVersionUpsert) SetCurrentState(v string) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldCurrentState, v)
+	return u
+}
+
+// UpdateCurrentState sets the "current_state" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateCurrentState() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldCurrentState)
+	return u
+}
+
+// SetValid sets the "valid" field.
+func (u *WorldStateVersionUpsert) SetValid(v bool) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldValid, v)
+	return u
+}
+
+// UpdateValid sets the "valid" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateValid() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldValid)
+	return u
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *WorldStateVersionUpsert) SetCreatedAt(v time.Time) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldCreatedAt, v)
+	return u
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateCreatedAt() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldCreatedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *WorldStateVersionUpsert) SetUpdatedAt(v time.Time) *WorldStateVersionUpsert {
+	u.Set(worldstateversion.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *WorldStateVersionUpsert) UpdateUpdatedAt() *WorldStateVersionUpsert {
+	u.SetExcluded(worldstateversion.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
+// Using this option is equivalent to using:
+//
+//	client.WorldStateVersion.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *WorldStateVersionUpsertOne) UpdateNewValues() *WorldStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.WorldStateVersion.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *WorldStateVersionUpsertOne) Ignore() *WorldStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *WorldStateVersionUpsertOne) DoNothing() *WorldStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the WorldStateVersionCreate.OnConflict
+// documentation for more info.
+func (u *WorldStateVersionUpsertOne) Update(set func(*WorldStateVersionUpsert)) *WorldStateVersionUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&WorldStateVersionUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetWorldSettingID sets the "world_setting_id" field.
+func (u *WorldStateVersionUpsertOne) SetWorldSettingID(v int) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetWorldSettingID(v)
+	})
+}
+
+// UpdateWorldSettingID sets the "world_setting_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateWorldSettingID() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateWorldSettingID()
+	})
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (u *WorldStateVersionUpsertOne) SetChapterID(v int) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetChapterID(v)
+	})
+}
+
+// UpdateChapterID sets the "chapter_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateChapterID() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateChapterID()
+	})
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (u *WorldStateVersionUpsertOne) SetChapterIndex(v int) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetChapterIndex(v)
+	})
+}
+
+// AddChapterIndex adds v to the "chapter_index" field.
+func (u *WorldStateVersionUpsertOne) AddChapterIndex(v int) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.AddChapterIndex(v)
+	})
+}
+
+// UpdateChapterIndex sets the "chapter_index" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateChapterIndex() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateChapterIndex()
+	})
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (u *WorldStateVersionUpsertOne) SetGenerationID(v string) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetGenerationID(v)
+	})
+}
+
+// UpdateGenerationID sets the "generation_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateGenerationID() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateGenerationID()
+	})
+}
+
+// SetCurrentState sets the "current_state" field.
+func (u *WorldStateVersionUpsertOne) SetCurrentState(v string) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetCurrentState(v)
+	})
+}
+
+// UpdateCurrentState sets the "current_state" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateCurrentState() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateCurrentState()
+	})
+}
+
+// SetValid sets the "valid" field.
+func (u *WorldStateVersionUpsertOne) SetValid(v bool) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetValid(v)
+	})
+}
+
+// UpdateValid sets the "valid" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateValid() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateValid()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *WorldStateVersionUpsertOne) SetCreatedAt(v time.Time) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateCreatedAt() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *WorldStateVersionUpsertOne) SetUpdatedAt(v time.Time) *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertOne) UpdateUpdatedAt() *WorldStateVersionUpsertOne {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *WorldStateVersionUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for WorldStateVersionCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *WorldStateVersionUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *WorldStateVersionUpsertOne) ID(ctx context.Context) (id int, err error) {
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *WorldStateVersionUpsertOne) IDX(ctx context.Context) int {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // WorldStateVersionCreateBulk is the builder for creating many WorldStateVersion entities in bulk.
 type WorldStateVersionCreateBulk struct {
 	config
 	err      error
 	builders []*WorldStateVersionCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the WorldStateVersion entities in the database.
@@ -321,6 +668,7 @@ func (_c *WorldStateVersionCreateBulk) Save(ctx context.Context) ([]*WorldStateV
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -371,6 +719,229 @@ func (_c *WorldStateVersionCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *WorldStateVersionCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.WorldStateVersion.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.WorldStateVersionUpsert) {
+//			SetWorldSettingID(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *WorldStateVersionCreateBulk) OnConflict(opts ...sql.ConflictOption) *WorldStateVersionUpsertBulk {
+	_c.conflict = opts
+	return &WorldStateVersionUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.WorldStateVersion.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *WorldStateVersionCreateBulk) OnConflictColumns(columns ...string) *WorldStateVersionUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &WorldStateVersionUpsertBulk{
+		create: _c,
+	}
+}
+
+// WorldStateVersionUpsertBulk is the builder for "upsert"-ing
+// a bulk of WorldStateVersion nodes.
+type WorldStateVersionUpsertBulk struct {
+	create *WorldStateVersionCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.WorldStateVersion.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *WorldStateVersionUpsertBulk) UpdateNewValues() *WorldStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.WorldStateVersion.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *WorldStateVersionUpsertBulk) Ignore() *WorldStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *WorldStateVersionUpsertBulk) DoNothing() *WorldStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the WorldStateVersionCreateBulk.OnConflict
+// documentation for more info.
+func (u *WorldStateVersionUpsertBulk) Update(set func(*WorldStateVersionUpsert)) *WorldStateVersionUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&WorldStateVersionUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetWorldSettingID sets the "world_setting_id" field.
+func (u *WorldStateVersionUpsertBulk) SetWorldSettingID(v int) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetWorldSettingID(v)
+	})
+}
+
+// UpdateWorldSettingID sets the "world_setting_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateWorldSettingID() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateWorldSettingID()
+	})
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (u *WorldStateVersionUpsertBulk) SetChapterID(v int) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetChapterID(v)
+	})
+}
+
+// UpdateChapterID sets the "chapter_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateChapterID() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateChapterID()
+	})
+}
+
+// SetChapterIndex sets the "chapter_index" field.
+func (u *WorldStateVersionUpsertBulk) SetChapterIndex(v int) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetChapterIndex(v)
+	})
+}
+
+// AddChapterIndex adds v to the "chapter_index" field.
+func (u *WorldStateVersionUpsertBulk) AddChapterIndex(v int) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.AddChapterIndex(v)
+	})
+}
+
+// UpdateChapterIndex sets the "chapter_index" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateChapterIndex() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateChapterIndex()
+	})
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (u *WorldStateVersionUpsertBulk) SetGenerationID(v string) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetGenerationID(v)
+	})
+}
+
+// UpdateGenerationID sets the "generation_id" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateGenerationID() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateGenerationID()
+	})
+}
+
+// SetCurrentState sets the "current_state" field.
+func (u *WorldStateVersionUpsertBulk) SetCurrentState(v string) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetCurrentState(v)
+	})
+}
+
+// UpdateCurrentState sets the "current_state" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateCurrentState() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateCurrentState()
+	})
+}
+
+// SetValid sets the "valid" field.
+func (u *WorldStateVersionUpsertBulk) SetValid(v bool) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetValid(v)
+	})
+}
+
+// UpdateValid sets the "valid" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateValid() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateValid()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *WorldStateVersionUpsertBulk) SetCreatedAt(v time.Time) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateCreatedAt() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *WorldStateVersionUpsertBulk) SetUpdatedAt(v time.Time) *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *WorldStateVersionUpsertBulk) UpdateUpdatedAt() *WorldStateVersionUpsertBulk {
+	return u.Update(func(s *WorldStateVersionUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *WorldStateVersionUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the WorldStateVersionCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for WorldStateVersionCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *WorldStateVersionUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

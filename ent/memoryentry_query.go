@@ -262,12 +262,12 @@ func (_q *MemoryEntryQuery) Clone() *MemoryEntryQuery {
 // Example:
 //
 //	var v []struct {
-//		NovelID string `json:"novel_id,omitempty"`
+//		DedupeKey string `json:"dedupe_key,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.MemoryEntry.Query().
-//		GroupBy(memoryentry.FieldNovelID).
+//		GroupBy(memoryentry.FieldDedupeKey).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
 func (_q *MemoryEntryQuery) GroupBy(field string, fields ...string) *MemoryEntryGroupBy {
@@ -285,11 +285,11 @@ func (_q *MemoryEntryQuery) GroupBy(field string, fields ...string) *MemoryEntry
 // Example:
 //
 //	var v []struct {
-//		NovelID string `json:"novel_id,omitempty"`
+//		DedupeKey string `json:"dedupe_key,omitempty"`
 //	}
 //
 //	client.MemoryEntry.Query().
-//		Select(memoryentry.FieldNovelID).
+//		Select(memoryentry.FieldDedupeKey).
 //		Scan(ctx, &v)
 func (_q *MemoryEntryQuery) Select(fields ...string) *MemoryEntrySelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)

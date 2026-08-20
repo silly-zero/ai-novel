@@ -247,15 +247,29 @@ func (r *WorldRepository) ReplaceChapterWorldSettings(
 				SetMetadata(input.Metadata).
 				Save(ctx)
 		} else if queryErr == nil {
+			hasValidHistory, historyErr := txClient.WorldStateVersion.Query().Where(
+				worldstateversion.WorldSettingID(row.ID),
+				worldstateversion.Valid(true),
+			).Exist(ctx)
+			if historyErr != nil {
+				return nil, fmt.Errorf("check world history %q: %w", input.Name, historyErr)
+			}
 			update := txClient.WorldSetting.UpdateOneID(row.ID).SetStateVersioned(true)
-			if strings.TrimSpace(row.Category) == "" {
-				update.SetCategory(strings.TrimSpace(input.Category))
-			}
-			if strings.TrimSpace(row.Description) == "" {
-				update.SetDescription(strings.TrimSpace(input.Description))
-			}
-			if len(row.Metadata) == 0 && len(input.Metadata) > 0 {
-				update.SetMetadata(input.Metadata)
+			if row.StateVersioned && !hasValidHistory {
+				update.
+					SetCategory(strings.TrimSpace(input.Category)).
+					SetDescription(strings.TrimSpace(input.Description)).
+					SetMetadata(input.Metadata)
+			} else {
+				if strings.TrimSpace(row.Category) == "" {
+					update.SetCategory(strings.TrimSpace(input.Category))
+				}
+				if strings.TrimSpace(row.Description) == "" {
+					update.SetDescription(strings.TrimSpace(input.Description))
+				}
+				if len(row.Metadata) == 0 && len(input.Metadata) > 0 {
+					update.SetMetadata(input.Metadata)
+				}
 			}
 			row, queryErr = update.Save(ctx)
 		}

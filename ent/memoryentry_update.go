@@ -29,6 +29,26 @@ func (_u *MemoryEntryUpdate) Where(ps ...predicate.MemoryEntry) *MemoryEntryUpda
 	return _u
 }
 
+// SetDedupeKey sets the "dedupe_key" field.
+func (_u *MemoryEntryUpdate) SetDedupeKey(v string) *MemoryEntryUpdate {
+	_u.mutation.SetDedupeKey(v)
+	return _u
+}
+
+// SetNillableDedupeKey sets the "dedupe_key" field if the given value is not nil.
+func (_u *MemoryEntryUpdate) SetNillableDedupeKey(v *string) *MemoryEntryUpdate {
+	if v != nil {
+		_u.SetDedupeKey(*v)
+	}
+	return _u
+}
+
+// ClearDedupeKey clears the value of the "dedupe_key" field.
+func (_u *MemoryEntryUpdate) ClearDedupeKey() *MemoryEntryUpdate {
+	_u.mutation.ClearDedupeKey()
+	return _u
+}
+
 // SetNovelID sets the "novel_id" field.
 func (_u *MemoryEntryUpdate) SetNovelID(v string) *MemoryEntryUpdate {
 	_u.mutation.SetNovelID(v)
@@ -130,6 +150,12 @@ func (_u *MemoryEntryUpdate) sqlSave(ctx context.Context) (_node int, err error)
 			}
 		}
 	}
+	if value, ok := _u.mutation.DedupeKey(); ok {
+		_spec.SetField(memoryentry.FieldDedupeKey, field.TypeString, value)
+	}
+	if _u.mutation.DedupeKeyCleared() {
+		_spec.ClearField(memoryentry.FieldDedupeKey, field.TypeString)
+	}
 	if value, ok := _u.mutation.NovelID(); ok {
 		_spec.SetField(memoryentry.FieldNovelID, field.TypeString, value)
 	}
@@ -168,6 +194,26 @@ type MemoryEntryUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *MemoryEntryMutation
+}
+
+// SetDedupeKey sets the "dedupe_key" field.
+func (_u *MemoryEntryUpdateOne) SetDedupeKey(v string) *MemoryEntryUpdateOne {
+	_u.mutation.SetDedupeKey(v)
+	return _u
+}
+
+// SetNillableDedupeKey sets the "dedupe_key" field if the given value is not nil.
+func (_u *MemoryEntryUpdateOne) SetNillableDedupeKey(v *string) *MemoryEntryUpdateOne {
+	if v != nil {
+		_u.SetDedupeKey(*v)
+	}
+	return _u
+}
+
+// ClearDedupeKey clears the value of the "dedupe_key" field.
+func (_u *MemoryEntryUpdateOne) ClearDedupeKey() *MemoryEntryUpdateOne {
+	_u.mutation.ClearDedupeKey()
+	return _u
 }
 
 // SetNovelID sets the "novel_id" field.
@@ -300,6 +346,12 @@ func (_u *MemoryEntryUpdateOne) sqlSave(ctx context.Context) (_node *MemoryEntry
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.DedupeKey(); ok {
+		_spec.SetField(memoryentry.FieldDedupeKey, field.TypeString, value)
+	}
+	if _u.mutation.DedupeKeyCleared() {
+		_spec.ClearField(memoryentry.FieldDedupeKey, field.TypeString)
 	}
 	if value, ok := _u.mutation.NovelID(); ok {
 		_spec.SetField(memoryentry.FieldNovelID, field.TypeString, value)

@@ -82,4 +82,28 @@ func TestEntVectorStoreSearchFiltersChapterBoundaryBeforeLimit(t *testing.T) {
 			t.Fatalf("results = %#v, missing %q", results, content)
 		}
 	}
+
+	concurrent := []*memory.MemoryEntry{{
+		DedupeKey: "same-generation-memory", NovelID: novelID, Content: "first",
+		Metadata:  map[string]any{"chapter_id": "11", "chapter_index": 1, "chapter_status": "Draft", "generation_id": "g", "type": "plot_summary"},
+		Embedding: []float32{1, 0},
+	}, {
+		DedupeKey: "same-generation-memory", NovelID: novelID, Content: "second",
+		Metadata:  map[string]any{"chapter_id": "11", "chapter_index": 1, "chapter_status": "Draft", "generation_id": "g", "type": "plot_summary"},
+		Embedding: []float32{1, 0},
+	}}
+	errs := make(chan error, 2)
+	for _, entry := range concurrent {
+		entry := entry
+		go func() { errs <- store.Add(ctx, []*memory.MemoryEntry{entry}) }()
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	count, err := client.MemoryEntry.Query().Where(memoryentry.DedupeKey("same-generation-memory")).Count(ctx)
+	if err != nil || count != 1 {
+		t.Fatalf("deduped memory count = %d, error=%v", count, err)
+	}
 }

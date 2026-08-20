@@ -18,6 +18,8 @@ type MemoryEntry struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int `json:"id,omitempty"`
+	// DedupeKey holds the value of the "dedupe_key" field.
+	DedupeKey string `json:"dedupe_key,omitempty"`
 	// NovelID holds the value of the "novel_id" field.
 	NovelID string `json:"novel_id,omitempty"`
 	// Content holds the value of the "content" field.
@@ -40,7 +42,7 @@ func (*MemoryEntry) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case memoryentry.FieldID:
 			values[i] = new(sql.NullInt64)
-		case memoryentry.FieldNovelID, memoryentry.FieldContent:
+		case memoryentry.FieldDedupeKey, memoryentry.FieldNovelID, memoryentry.FieldContent:
 			values[i] = new(sql.NullString)
 		case memoryentry.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -65,6 +67,12 @@ func (_m *MemoryEntry) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field id", value)
 			}
 			_m.ID = int(value.Int64)
+		case memoryentry.FieldDedupeKey:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field dedupe_key", values[i])
+			} else if value.Valid {
+				_m.DedupeKey = value.String
+			}
 		case memoryentry.FieldNovelID:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field novel_id", values[i])
@@ -135,6 +143,9 @@ func (_m *MemoryEntry) String() string {
 	var builder strings.Builder
 	builder.WriteString("MemoryEntry(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
+	builder.WriteString("dedupe_key=")
+	builder.WriteString(_m.DedupeKey)
+	builder.WriteString(", ")
 	builder.WriteString("novel_id=")
 	builder.WriteString(_m.NovelID)
 	builder.WriteString(", ")

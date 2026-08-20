@@ -117,6 +117,34 @@ func (_u *ChapterUpdate) SetNillableStatus(v *string) *ChapterUpdate {
 	return _u
 }
 
+// SetDerivedStatus sets the "derived_status" field.
+func (_u *ChapterUpdate) SetDerivedStatus(v string) *ChapterUpdate {
+	_u.mutation.SetDerivedStatus(v)
+	return _u
+}
+
+// SetNillableDerivedStatus sets the "derived_status" field if the given value is not nil.
+func (_u *ChapterUpdate) SetNillableDerivedStatus(v *string) *ChapterUpdate {
+	if v != nil {
+		_u.SetDerivedStatus(*v)
+	}
+	return _u
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (_u *ChapterUpdate) SetDerivedGenerationID(v string) *ChapterUpdate {
+	_u.mutation.SetDerivedGenerationID(v)
+	return _u
+}
+
+// SetNillableDerivedGenerationID sets the "derived_generation_id" field if the given value is not nil.
+func (_u *ChapterUpdate) SetNillableDerivedGenerationID(v *string) *ChapterUpdate {
+	if v != nil {
+		_u.SetDerivedGenerationID(*v)
+	}
+	return _u
+}
+
 // SetLastBeat sets the "last_beat" field.
 func (_u *ChapterUpdate) SetLastBeat(v string) *ChapterUpdate {
 	_u.mutation.SetLastBeat(v)
@@ -389,6 +417,12 @@ func (_u *ChapterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(chapter.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DerivedStatus(); ok {
+		_spec.SetField(chapter.FieldDerivedStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DerivedGenerationID(); ok {
+		_spec.SetField(chapter.FieldDerivedGenerationID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.LastBeat(); ok {
 		_spec.SetField(chapter.FieldLastBeat, field.TypeString, value)
@@ -677,6 +711,34 @@ func (_u *ChapterUpdateOne) SetStatus(v string) *ChapterUpdateOne {
 func (_u *ChapterUpdateOne) SetNillableStatus(v *string) *ChapterUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
+	}
+	return _u
+}
+
+// SetDerivedStatus sets the "derived_status" field.
+func (_u *ChapterUpdateOne) SetDerivedStatus(v string) *ChapterUpdateOne {
+	_u.mutation.SetDerivedStatus(v)
+	return _u
+}
+
+// SetNillableDerivedStatus sets the "derived_status" field if the given value is not nil.
+func (_u *ChapterUpdateOne) SetNillableDerivedStatus(v *string) *ChapterUpdateOne {
+	if v != nil {
+		_u.SetDerivedStatus(*v)
+	}
+	return _u
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (_u *ChapterUpdateOne) SetDerivedGenerationID(v string) *ChapterUpdateOne {
+	_u.mutation.SetDerivedGenerationID(v)
+	return _u
+}
+
+// SetNillableDerivedGenerationID sets the "derived_generation_id" field if the given value is not nil.
+func (_u *ChapterUpdateOne) SetNillableDerivedGenerationID(v *string) *ChapterUpdateOne {
+	if v != nil {
+		_u.SetDerivedGenerationID(*v)
 	}
 	return _u
 }
@@ -983,6 +1045,12 @@ func (_u *ChapterUpdateOne) sqlSave(ctx context.Context) (_node *Chapter, err er
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(chapter.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DerivedStatus(); ok {
+		_spec.SetField(chapter.FieldDerivedStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.DerivedGenerationID(); ok {
+		_spec.SetField(chapter.FieldDerivedGenerationID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.LastBeat(); ok {
 		_spec.SetField(chapter.FieldLastBeat, field.TypeString, value)

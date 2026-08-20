@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
@@ -22,6 +23,7 @@ type ChapterCreate struct {
 	config
 	mutation *ChapterMutation
 	hooks    []Hook
+	conflict []sql.ConflictOption
 }
 
 // SetTitle sets the "title" field.
@@ -58,6 +60,34 @@ func (_c *ChapterCreate) SetStatus(v string) *ChapterCreate {
 func (_c *ChapterCreate) SetNillableStatus(v *string) *ChapterCreate {
 	if v != nil {
 		_c.SetStatus(*v)
+	}
+	return _c
+}
+
+// SetDerivedStatus sets the "derived_status" field.
+func (_c *ChapterCreate) SetDerivedStatus(v string) *ChapterCreate {
+	_c.mutation.SetDerivedStatus(v)
+	return _c
+}
+
+// SetNillableDerivedStatus sets the "derived_status" field if the given value is not nil.
+func (_c *ChapterCreate) SetNillableDerivedStatus(v *string) *ChapterCreate {
+	if v != nil {
+		_c.SetDerivedStatus(*v)
+	}
+	return _c
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (_c *ChapterCreate) SetDerivedGenerationID(v string) *ChapterCreate {
+	_c.mutation.SetDerivedGenerationID(v)
+	return _c
+}
+
+// SetNillableDerivedGenerationID sets the "derived_generation_id" field if the given value is not nil.
+func (_c *ChapterCreate) SetNillableDerivedGenerationID(v *string) *ChapterCreate {
+	if v != nil {
+		_c.SetDerivedGenerationID(*v)
 	}
 	return _c
 }
@@ -219,6 +249,14 @@ func (_c *ChapterCreate) defaults() {
 		v := chapter.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.DerivedStatus(); !ok {
+		v := chapter.DefaultDerivedStatus
+		_c.mutation.SetDerivedStatus(v)
+	}
+	if _, ok := _c.mutation.DerivedGenerationID(); !ok {
+		v := chapter.DefaultDerivedGenerationID
+		_c.mutation.SetDerivedGenerationID(v)
+	}
 	if _, ok := _c.mutation.LastBeat(); !ok {
 		v := chapter.DefaultLastBeat
 		_c.mutation.SetLastBeat(v)
@@ -253,6 +291,12 @@ func (_c *ChapterCreate) check() error {
 	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Chapter.status"`)}
+	}
+	if _, ok := _c.mutation.DerivedStatus(); !ok {
+		return &ValidationError{Name: "derived_status", err: errors.New(`ent: missing required field "Chapter.derived_status"`)}
+	}
+	if _, ok := _c.mutation.DerivedGenerationID(); !ok {
+		return &ValidationError{Name: "derived_generation_id", err: errors.New(`ent: missing required field "Chapter.derived_generation_id"`)}
 	}
 	if _, ok := _c.mutation.LastBeat(); !ok {
 		return &ValidationError{Name: "last_beat", err: errors.New(`ent: missing required field "Chapter.last_beat"`)}
@@ -295,6 +339,7 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 		_node = &Chapter{config: _c.config}
 		_spec = sqlgraph.NewCreateSpec(chapter.Table, sqlgraph.NewFieldSpec(chapter.FieldID, field.TypeInt))
 	)
+	_spec.OnConflict = _c.conflict
 	if value, ok := _c.mutation.Title(); ok {
 		_spec.SetField(chapter.FieldTitle, field.TypeString, value)
 		_node.Title = value
@@ -314,6 +359,14 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(chapter.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.DerivedStatus(); ok {
+		_spec.SetField(chapter.FieldDerivedStatus, field.TypeString, value)
+		_node.DerivedStatus = value
+	}
+	if value, ok := _c.mutation.DerivedGenerationID(); ok {
+		_spec.SetField(chapter.FieldDerivedGenerationID, field.TypeString, value)
+		_node.DerivedGenerationID = value
 	}
 	if value, ok := _c.mutation.LastBeat(); ok {
 		_spec.SetField(chapter.FieldLastBeat, field.TypeString, value)
@@ -403,11 +456,485 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 	return _node, _spec
 }
 
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Chapter.Create().
+//		SetTitle(v).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.ChapterUpsert) {
+//			SetTitle(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *ChapterCreate) OnConflict(opts ...sql.ConflictOption) *ChapterUpsertOne {
+	_c.conflict = opts
+	return &ChapterUpsertOne{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Chapter.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *ChapterCreate) OnConflictColumns(columns ...string) *ChapterUpsertOne {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &ChapterUpsertOne{
+		create: _c,
+	}
+}
+
+type (
+	// ChapterUpsertOne is the builder for "upsert"-ing
+	//  one Chapter node.
+	ChapterUpsertOne struct {
+		create *ChapterCreate
+	}
+
+	// ChapterUpsert is the "OnConflict" setter.
+	ChapterUpsert struct {
+		*sql.UpdateSet
+	}
+)
+
+// SetTitle sets the "title" field.
+func (u *ChapterUpsert) SetTitle(v string) *ChapterUpsert {
+	u.Set(chapter.FieldTitle, v)
+	return u
+}
+
+// UpdateTitle sets the "title" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateTitle() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldTitle)
+	return u
+}
+
+// SetContent sets the "content" field.
+func (u *ChapterUpsert) SetContent(v string) *ChapterUpsert {
+	u.Set(chapter.FieldContent, v)
+	return u
+}
+
+// UpdateContent sets the "content" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateContent() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldContent)
+	return u
+}
+
+// SetWordCount sets the "word_count" field.
+func (u *ChapterUpsert) SetWordCount(v int) *ChapterUpsert {
+	u.Set(chapter.FieldWordCount, v)
+	return u
+}
+
+// UpdateWordCount sets the "word_count" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateWordCount() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldWordCount)
+	return u
+}
+
+// AddWordCount adds v to the "word_count" field.
+func (u *ChapterUpsert) AddWordCount(v int) *ChapterUpsert {
+	u.Add(chapter.FieldWordCount, v)
+	return u
+}
+
+// SetOrder sets the "order" field.
+func (u *ChapterUpsert) SetOrder(v int) *ChapterUpsert {
+	u.Set(chapter.FieldOrder, v)
+	return u
+}
+
+// UpdateOrder sets the "order" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateOrder() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldOrder)
+	return u
+}
+
+// AddOrder adds v to the "order" field.
+func (u *ChapterUpsert) AddOrder(v int) *ChapterUpsert {
+	u.Add(chapter.FieldOrder, v)
+	return u
+}
+
+// SetStatus sets the "status" field.
+func (u *ChapterUpsert) SetStatus(v string) *ChapterUpsert {
+	u.Set(chapter.FieldStatus, v)
+	return u
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateStatus() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldStatus)
+	return u
+}
+
+// SetDerivedStatus sets the "derived_status" field.
+func (u *ChapterUpsert) SetDerivedStatus(v string) *ChapterUpsert {
+	u.Set(chapter.FieldDerivedStatus, v)
+	return u
+}
+
+// UpdateDerivedStatus sets the "derived_status" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateDerivedStatus() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldDerivedStatus)
+	return u
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (u *ChapterUpsert) SetDerivedGenerationID(v string) *ChapterUpsert {
+	u.Set(chapter.FieldDerivedGenerationID, v)
+	return u
+}
+
+// UpdateDerivedGenerationID sets the "derived_generation_id" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateDerivedGenerationID() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldDerivedGenerationID)
+	return u
+}
+
+// SetLastBeat sets the "last_beat" field.
+func (u *ChapterUpsert) SetLastBeat(v string) *ChapterUpsert {
+	u.Set(chapter.FieldLastBeat, v)
+	return u
+}
+
+// UpdateLastBeat sets the "last_beat" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateLastBeat() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldLastBeat)
+	return u
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (u *ChapterUpsert) SetOpenLoops(v []string) *ChapterUpsert {
+	u.Set(chapter.FieldOpenLoops, v)
+	return u
+}
+
+// UpdateOpenLoops sets the "open_loops" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateOpenLoops() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldOpenLoops)
+	return u
+}
+
+// ClearOpenLoops clears the value of the "open_loops" field.
+func (u *ChapterUpsert) ClearOpenLoops() *ChapterUpsert {
+	u.SetNull(chapter.FieldOpenLoops)
+	return u
+}
+
+// SetNextAction sets the "next_action" field.
+func (u *ChapterUpsert) SetNextAction(v string) *ChapterUpsert {
+	u.Set(chapter.FieldNextAction, v)
+	return u
+}
+
+// UpdateNextAction sets the "next_action" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateNextAction() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldNextAction)
+	return u
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *ChapterUpsert) SetCreatedAt(v time.Time) *ChapterUpsert {
+	u.Set(chapter.FieldCreatedAt, v)
+	return u
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateCreatedAt() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldCreatedAt)
+	return u
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *ChapterUpsert) SetUpdatedAt(v time.Time) *ChapterUpsert {
+	u.Set(chapter.FieldUpdatedAt, v)
+	return u
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *ChapterUpsert) UpdateUpdatedAt() *ChapterUpsert {
+	u.SetExcluded(chapter.FieldUpdatedAt)
+	return u
+}
+
+// UpdateNewValues updates the mutable fields using the new values that were set on create.
+// Using this option is equivalent to using:
+//
+//	client.Chapter.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *ChapterUpsertOne) UpdateNewValues() *ChapterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Chapter.Create().
+//	    OnConflict(sql.ResolveWithIgnore()).
+//	    Exec(ctx)
+func (u *ChapterUpsertOne) Ignore() *ChapterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *ChapterUpsertOne) DoNothing() *ChapterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the ChapterCreate.OnConflict
+// documentation for more info.
+func (u *ChapterUpsertOne) Update(set func(*ChapterUpsert)) *ChapterUpsertOne {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&ChapterUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetTitle sets the "title" field.
+func (u *ChapterUpsertOne) SetTitle(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetTitle(v)
+	})
+}
+
+// UpdateTitle sets the "title" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateTitle() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateTitle()
+	})
+}
+
+// SetContent sets the "content" field.
+func (u *ChapterUpsertOne) SetContent(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetContent(v)
+	})
+}
+
+// UpdateContent sets the "content" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateContent() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateContent()
+	})
+}
+
+// SetWordCount sets the "word_count" field.
+func (u *ChapterUpsertOne) SetWordCount(v int) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetWordCount(v)
+	})
+}
+
+// AddWordCount adds v to the "word_count" field.
+func (u *ChapterUpsertOne) AddWordCount(v int) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.AddWordCount(v)
+	})
+}
+
+// UpdateWordCount sets the "word_count" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateWordCount() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateWordCount()
+	})
+}
+
+// SetOrder sets the "order" field.
+func (u *ChapterUpsertOne) SetOrder(v int) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetOrder(v)
+	})
+}
+
+// AddOrder adds v to the "order" field.
+func (u *ChapterUpsertOne) AddOrder(v int) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.AddOrder(v)
+	})
+}
+
+// UpdateOrder sets the "order" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateOrder() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateOrder()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *ChapterUpsertOne) SetStatus(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateStatus() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetDerivedStatus sets the "derived_status" field.
+func (u *ChapterUpsertOne) SetDerivedStatus(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetDerivedStatus(v)
+	})
+}
+
+// UpdateDerivedStatus sets the "derived_status" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateDerivedStatus() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateDerivedStatus()
+	})
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (u *ChapterUpsertOne) SetDerivedGenerationID(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetDerivedGenerationID(v)
+	})
+}
+
+// UpdateDerivedGenerationID sets the "derived_generation_id" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateDerivedGenerationID() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateDerivedGenerationID()
+	})
+}
+
+// SetLastBeat sets the "last_beat" field.
+func (u *ChapterUpsertOne) SetLastBeat(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetLastBeat(v)
+	})
+}
+
+// UpdateLastBeat sets the "last_beat" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateLastBeat() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateLastBeat()
+	})
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (u *ChapterUpsertOne) SetOpenLoops(v []string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetOpenLoops(v)
+	})
+}
+
+// UpdateOpenLoops sets the "open_loops" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateOpenLoops() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateOpenLoops()
+	})
+}
+
+// ClearOpenLoops clears the value of the "open_loops" field.
+func (u *ChapterUpsertOne) ClearOpenLoops() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.ClearOpenLoops()
+	})
+}
+
+// SetNextAction sets the "next_action" field.
+func (u *ChapterUpsertOne) SetNextAction(v string) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetNextAction(v)
+	})
+}
+
+// UpdateNextAction sets the "next_action" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateNextAction() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateNextAction()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *ChapterUpsertOne) SetCreatedAt(v time.Time) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateCreatedAt() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *ChapterUpsertOne) SetUpdatedAt(v time.Time) *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *ChapterUpsertOne) UpdateUpdatedAt() *ChapterUpsertOne {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *ChapterUpsertOne) Exec(ctx context.Context) error {
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for ChapterCreate.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *ChapterUpsertOne) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// Exec executes the UPSERT query and returns the inserted/updated ID.
+func (u *ChapterUpsertOne) ID(ctx context.Context) (id int, err error) {
+	node, err := u.create.Save(ctx)
+	if err != nil {
+		return id, err
+	}
+	return node.ID, nil
+}
+
+// IDX is like ID, but panics if an error occurs.
+func (u *ChapterUpsertOne) IDX(ctx context.Context) int {
+	id, err := u.ID(ctx)
+	if err != nil {
+		panic(err)
+	}
+	return id
+}
+
 // ChapterCreateBulk is the builder for creating many Chapter entities in bulk.
 type ChapterCreateBulk struct {
 	config
 	err      error
 	builders []*ChapterCreate
+	conflict []sql.ConflictOption
 }
 
 // Save creates the Chapter entities in the database.
@@ -437,6 +964,7 @@ func (_c *ChapterCreateBulk) Save(ctx context.Context) ([]*Chapter, error) {
 					_, err = mutators[i+1].Mutate(root, _c.builders[i+1].mutation)
 				} else {
 					spec := &sqlgraph.BatchCreateSpec{Nodes: specs}
+					spec.OnConflict = _c.conflict
 					// Invoke the actual operation on the latest mutation in the chain.
 					if err = sqlgraph.BatchCreate(ctx, _c.driver, spec); err != nil {
 						if sqlgraph.IsConstraintError(err) {
@@ -487,6 +1015,299 @@ func (_c *ChapterCreateBulk) Exec(ctx context.Context) error {
 // ExecX is like Exec, but panics if an error occurs.
 func (_c *ChapterCreateBulk) ExecX(ctx context.Context) {
 	if err := _c.Exec(ctx); err != nil {
+		panic(err)
+	}
+}
+
+// OnConflict allows configuring the `ON CONFLICT` / `ON DUPLICATE KEY` clause
+// of the `INSERT` statement. For example:
+//
+//	client.Chapter.CreateBulk(builders...).
+//		OnConflict(
+//			// Update the row with the new values
+//			// the was proposed for insertion.
+//			sql.ResolveWithNewValues(),
+//		).
+//		// Override some of the fields with custom
+//		// update values.
+//		Update(func(u *ent.ChapterUpsert) {
+//			SetTitle(v+v).
+//		}).
+//		Exec(ctx)
+func (_c *ChapterCreateBulk) OnConflict(opts ...sql.ConflictOption) *ChapterUpsertBulk {
+	_c.conflict = opts
+	return &ChapterUpsertBulk{
+		create: _c,
+	}
+}
+
+// OnConflictColumns calls `OnConflict` and configures the columns
+// as conflict target. Using this option is equivalent to using:
+//
+//	client.Chapter.Create().
+//		OnConflict(sql.ConflictColumns(columns...)).
+//		Exec(ctx)
+func (_c *ChapterCreateBulk) OnConflictColumns(columns ...string) *ChapterUpsertBulk {
+	_c.conflict = append(_c.conflict, sql.ConflictColumns(columns...))
+	return &ChapterUpsertBulk{
+		create: _c,
+	}
+}
+
+// ChapterUpsertBulk is the builder for "upsert"-ing
+// a bulk of Chapter nodes.
+type ChapterUpsertBulk struct {
+	create *ChapterCreateBulk
+}
+
+// UpdateNewValues updates the mutable fields using the new values that
+// were set on create. Using this option is equivalent to using:
+//
+//	client.Chapter.Create().
+//		OnConflict(
+//			sql.ResolveWithNewValues(),
+//		).
+//		Exec(ctx)
+func (u *ChapterUpsertBulk) UpdateNewValues() *ChapterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithNewValues())
+	return u
+}
+
+// Ignore sets each column to itself in case of conflict.
+// Using this option is equivalent to using:
+//
+//	client.Chapter.Create().
+//		OnConflict(sql.ResolveWithIgnore()).
+//		Exec(ctx)
+func (u *ChapterUpsertBulk) Ignore() *ChapterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWithIgnore())
+	return u
+}
+
+// DoNothing configures the conflict_action to `DO NOTHING`.
+// Supported only by SQLite and PostgreSQL.
+func (u *ChapterUpsertBulk) DoNothing() *ChapterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.DoNothing())
+	return u
+}
+
+// Update allows overriding fields `UPDATE` values. See the ChapterCreateBulk.OnConflict
+// documentation for more info.
+func (u *ChapterUpsertBulk) Update(set func(*ChapterUpsert)) *ChapterUpsertBulk {
+	u.create.conflict = append(u.create.conflict, sql.ResolveWith(func(update *sql.UpdateSet) {
+		set(&ChapterUpsert{UpdateSet: update})
+	}))
+	return u
+}
+
+// SetTitle sets the "title" field.
+func (u *ChapterUpsertBulk) SetTitle(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetTitle(v)
+	})
+}
+
+// UpdateTitle sets the "title" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateTitle() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateTitle()
+	})
+}
+
+// SetContent sets the "content" field.
+func (u *ChapterUpsertBulk) SetContent(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetContent(v)
+	})
+}
+
+// UpdateContent sets the "content" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateContent() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateContent()
+	})
+}
+
+// SetWordCount sets the "word_count" field.
+func (u *ChapterUpsertBulk) SetWordCount(v int) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetWordCount(v)
+	})
+}
+
+// AddWordCount adds v to the "word_count" field.
+func (u *ChapterUpsertBulk) AddWordCount(v int) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.AddWordCount(v)
+	})
+}
+
+// UpdateWordCount sets the "word_count" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateWordCount() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateWordCount()
+	})
+}
+
+// SetOrder sets the "order" field.
+func (u *ChapterUpsertBulk) SetOrder(v int) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetOrder(v)
+	})
+}
+
+// AddOrder adds v to the "order" field.
+func (u *ChapterUpsertBulk) AddOrder(v int) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.AddOrder(v)
+	})
+}
+
+// UpdateOrder sets the "order" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateOrder() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateOrder()
+	})
+}
+
+// SetStatus sets the "status" field.
+func (u *ChapterUpsertBulk) SetStatus(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetStatus(v)
+	})
+}
+
+// UpdateStatus sets the "status" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateStatus() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateStatus()
+	})
+}
+
+// SetDerivedStatus sets the "derived_status" field.
+func (u *ChapterUpsertBulk) SetDerivedStatus(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetDerivedStatus(v)
+	})
+}
+
+// UpdateDerivedStatus sets the "derived_status" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateDerivedStatus() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateDerivedStatus()
+	})
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (u *ChapterUpsertBulk) SetDerivedGenerationID(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetDerivedGenerationID(v)
+	})
+}
+
+// UpdateDerivedGenerationID sets the "derived_generation_id" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateDerivedGenerationID() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateDerivedGenerationID()
+	})
+}
+
+// SetLastBeat sets the "last_beat" field.
+func (u *ChapterUpsertBulk) SetLastBeat(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetLastBeat(v)
+	})
+}
+
+// UpdateLastBeat sets the "last_beat" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateLastBeat() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateLastBeat()
+	})
+}
+
+// SetOpenLoops sets the "open_loops" field.
+func (u *ChapterUpsertBulk) SetOpenLoops(v []string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetOpenLoops(v)
+	})
+}
+
+// UpdateOpenLoops sets the "open_loops" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateOpenLoops() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateOpenLoops()
+	})
+}
+
+// ClearOpenLoops clears the value of the "open_loops" field.
+func (u *ChapterUpsertBulk) ClearOpenLoops() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.ClearOpenLoops()
+	})
+}
+
+// SetNextAction sets the "next_action" field.
+func (u *ChapterUpsertBulk) SetNextAction(v string) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetNextAction(v)
+	})
+}
+
+// UpdateNextAction sets the "next_action" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateNextAction() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateNextAction()
+	})
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (u *ChapterUpsertBulk) SetCreatedAt(v time.Time) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetCreatedAt(v)
+	})
+}
+
+// UpdateCreatedAt sets the "created_at" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateCreatedAt() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateCreatedAt()
+	})
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (u *ChapterUpsertBulk) SetUpdatedAt(v time.Time) *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.SetUpdatedAt(v)
+	})
+}
+
+// UpdateUpdatedAt sets the "updated_at" field to the value that was provided on create.
+func (u *ChapterUpsertBulk) UpdateUpdatedAt() *ChapterUpsertBulk {
+	return u.Update(func(s *ChapterUpsert) {
+		s.UpdateUpdatedAt()
+	})
+}
+
+// Exec executes the query.
+func (u *ChapterUpsertBulk) Exec(ctx context.Context) error {
+	if u.create.err != nil {
+		return u.create.err
+	}
+	for i, b := range u.create.builders {
+		if len(b.conflict) != 0 {
+			return fmt.Errorf("ent: OnConflict was set for builder %d. Set it on the ChapterCreateBulk instead", i)
+		}
+	}
+	if len(u.create.conflict) == 0 {
+		return errors.New("ent: missing options for ChapterCreateBulk.OnConflict")
+	}
+	return u.create.Exec(ctx)
+}
+
+// ExecX is like Exec, but panics if an error occurs.
+func (u *ChapterUpsertBulk) ExecX(ctx context.Context) {
+	if err := u.create.Exec(ctx); err != nil {
 		panic(err)
 	}
 }

@@ -56,6 +56,8 @@ type ChapterMutation struct {
 	_order                             *int
 	add_order                          *int
 	status                             *string
+	derived_status                     *string
+	derived_generation_id              *string
 	last_beat                          *string
 	open_loops                         *[]string
 	appendopen_loops                   []string
@@ -395,6 +397,78 @@ func (m *ChapterMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *ChapterMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetDerivedStatus sets the "derived_status" field.
+func (m *ChapterMutation) SetDerivedStatus(s string) {
+	m.derived_status = &s
+}
+
+// DerivedStatus returns the value of the "derived_status" field in the mutation.
+func (m *ChapterMutation) DerivedStatus() (r string, exists bool) {
+	v := m.derived_status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDerivedStatus returns the old "derived_status" field's value of the Chapter entity.
+// If the Chapter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterMutation) OldDerivedStatus(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDerivedStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDerivedStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDerivedStatus: %w", err)
+	}
+	return oldValue.DerivedStatus, nil
+}
+
+// ResetDerivedStatus resets all changes to the "derived_status" field.
+func (m *ChapterMutation) ResetDerivedStatus() {
+	m.derived_status = nil
+}
+
+// SetDerivedGenerationID sets the "derived_generation_id" field.
+func (m *ChapterMutation) SetDerivedGenerationID(s string) {
+	m.derived_generation_id = &s
+}
+
+// DerivedGenerationID returns the value of the "derived_generation_id" field in the mutation.
+func (m *ChapterMutation) DerivedGenerationID() (r string, exists bool) {
+	v := m.derived_generation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDerivedGenerationID returns the old "derived_generation_id" field's value of the Chapter entity.
+// If the Chapter object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterMutation) OldDerivedGenerationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDerivedGenerationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDerivedGenerationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDerivedGenerationID: %w", err)
+	}
+	return oldValue.DerivedGenerationID, nil
+}
+
+// ResetDerivedGenerationID resets all changes to the "derived_generation_id" field.
+func (m *ChapterMutation) ResetDerivedGenerationID() {
+	m.derived_generation_id = nil
 }
 
 // SetLastBeat sets the "last_beat" field.
@@ -841,7 +915,7 @@ func (m *ChapterMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChapterMutation) Fields() []string {
-	fields := make([]string, 0, 10)
+	fields := make([]string, 0, 12)
 	if m.title != nil {
 		fields = append(fields, chapter.FieldTitle)
 	}
@@ -856,6 +930,12 @@ func (m *ChapterMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, chapter.FieldStatus)
+	}
+	if m.derived_status != nil {
+		fields = append(fields, chapter.FieldDerivedStatus)
+	}
+	if m.derived_generation_id != nil {
+		fields = append(fields, chapter.FieldDerivedGenerationID)
 	}
 	if m.last_beat != nil {
 		fields = append(fields, chapter.FieldLastBeat)
@@ -890,6 +970,10 @@ func (m *ChapterMutation) Field(name string) (ent.Value, bool) {
 		return m.Order()
 	case chapter.FieldStatus:
 		return m.Status()
+	case chapter.FieldDerivedStatus:
+		return m.DerivedStatus()
+	case chapter.FieldDerivedGenerationID:
+		return m.DerivedGenerationID()
 	case chapter.FieldLastBeat:
 		return m.LastBeat()
 	case chapter.FieldOpenLoops:
@@ -919,6 +1003,10 @@ func (m *ChapterMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldOrder(ctx)
 	case chapter.FieldStatus:
 		return m.OldStatus(ctx)
+	case chapter.FieldDerivedStatus:
+		return m.OldDerivedStatus(ctx)
+	case chapter.FieldDerivedGenerationID:
+		return m.OldDerivedGenerationID(ctx)
 	case chapter.FieldLastBeat:
 		return m.OldLastBeat(ctx)
 	case chapter.FieldOpenLoops:
@@ -972,6 +1060,20 @@ func (m *ChapterMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case chapter.FieldDerivedStatus:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDerivedStatus(v)
+		return nil
+	case chapter.FieldDerivedGenerationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDerivedGenerationID(v)
 		return nil
 	case chapter.FieldLastBeat:
 		v, ok := value.(string)
@@ -1107,6 +1209,12 @@ func (m *ChapterMutation) ResetField(name string) error {
 		return nil
 	case chapter.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case chapter.FieldDerivedStatus:
+		m.ResetDerivedStatus()
+		return nil
+	case chapter.FieldDerivedGenerationID:
+		m.ResetDerivedGenerationID()
 		return nil
 	case chapter.FieldLastBeat:
 		m.ResetLastBeat()
@@ -3489,6 +3597,7 @@ type MemoryEntryMutation struct {
 	op              Op
 	typ             string
 	id              *int
+	dedupe_key      *string
 	novel_id        *string
 	content         *string
 	metadata        *map[string]interface{}
@@ -3597,6 +3706,55 @@ func (m *MemoryEntryMutation) IDs(ctx context.Context) ([]int, error) {
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetDedupeKey sets the "dedupe_key" field.
+func (m *MemoryEntryMutation) SetDedupeKey(s string) {
+	m.dedupe_key = &s
+}
+
+// DedupeKey returns the value of the "dedupe_key" field in the mutation.
+func (m *MemoryEntryMutation) DedupeKey() (r string, exists bool) {
+	v := m.dedupe_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDedupeKey returns the old "dedupe_key" field's value of the MemoryEntry entity.
+// If the MemoryEntry object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *MemoryEntryMutation) OldDedupeKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDedupeKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDedupeKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDedupeKey: %w", err)
+	}
+	return oldValue.DedupeKey, nil
+}
+
+// ClearDedupeKey clears the value of the "dedupe_key" field.
+func (m *MemoryEntryMutation) ClearDedupeKey() {
+	m.dedupe_key = nil
+	m.clearedFields[memoryentry.FieldDedupeKey] = struct{}{}
+}
+
+// DedupeKeyCleared returns if the "dedupe_key" field was cleared in this mutation.
+func (m *MemoryEntryMutation) DedupeKeyCleared() bool {
+	_, ok := m.clearedFields[memoryentry.FieldDedupeKey]
+	return ok
+}
+
+// ResetDedupeKey resets all changes to the "dedupe_key" field.
+func (m *MemoryEntryMutation) ResetDedupeKey() {
+	m.dedupe_key = nil
+	delete(m.clearedFields, memoryentry.FieldDedupeKey)
 }
 
 // SetNovelID sets the "novel_id" field.
@@ -3828,7 +3986,10 @@ func (m *MemoryEntryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *MemoryEntryMutation) Fields() []string {
-	fields := make([]string, 0, 5)
+	fields := make([]string, 0, 6)
+	if m.dedupe_key != nil {
+		fields = append(fields, memoryentry.FieldDedupeKey)
+	}
 	if m.novel_id != nil {
 		fields = append(fields, memoryentry.FieldNovelID)
 	}
@@ -3852,6 +4013,8 @@ func (m *MemoryEntryMutation) Fields() []string {
 // schema.
 func (m *MemoryEntryMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case memoryentry.FieldDedupeKey:
+		return m.DedupeKey()
 	case memoryentry.FieldNovelID:
 		return m.NovelID()
 	case memoryentry.FieldContent:
@@ -3871,6 +4034,8 @@ func (m *MemoryEntryMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *MemoryEntryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case memoryentry.FieldDedupeKey:
+		return m.OldDedupeKey(ctx)
 	case memoryentry.FieldNovelID:
 		return m.OldNovelID(ctx)
 	case memoryentry.FieldContent:
@@ -3890,6 +4055,13 @@ func (m *MemoryEntryMutation) OldField(ctx context.Context, name string) (ent.Va
 // type.
 func (m *MemoryEntryMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case memoryentry.FieldDedupeKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDedupeKey(v)
+		return nil
 	case memoryentry.FieldNovelID:
 		v, ok := value.(string)
 		if !ok {
@@ -3954,7 +4126,11 @@ func (m *MemoryEntryMutation) AddField(name string, value ent.Value) error {
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *MemoryEntryMutation) ClearedFields() []string {
-	return nil
+	var fields []string
+	if m.FieldCleared(memoryentry.FieldDedupeKey) {
+		fields = append(fields, memoryentry.FieldDedupeKey)
+	}
+	return fields
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -3967,6 +4143,11 @@ func (m *MemoryEntryMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *MemoryEntryMutation) ClearField(name string) error {
+	switch name {
+	case memoryentry.FieldDedupeKey:
+		m.ClearDedupeKey()
+		return nil
+	}
 	return fmt.Errorf("unknown MemoryEntry nullable field %s", name)
 }
 
@@ -3974,6 +4155,9 @@ func (m *MemoryEntryMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *MemoryEntryMutation) ResetField(name string) error {
 	switch name {
+	case memoryentry.FieldDedupeKey:
+		m.ResetDedupeKey()
+		return nil
 	case memoryentry.FieldNovelID:
 		m.ResetNovelID()
 		return nil

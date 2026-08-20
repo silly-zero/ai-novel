@@ -247,21 +247,37 @@ func (r *CharacterRepository) ReplaceChapterCharacters(
 				SetStateVersioned(true).
 				Save(ctx)
 		} else if queryErr == nil {
+			hasValidHistory, historyErr := txClient.CharacterStateVersion.Query().Where(
+				characterstateversion.CharacterID(row.ID),
+				characterstateversion.Valid(true),
+			).Exist(ctx)
+			if historyErr != nil {
+				return nil, fmt.Errorf("check character history %q: %w", input.Name, historyErr)
+			}
 			update := txClient.Character.UpdateOneID(row.ID).SetStateVersioned(true)
-			if strings.TrimSpace(row.Gender) == "" {
-				update.SetGender(strings.TrimSpace(input.Gender))
-			}
-			if row.Age == 0 {
-				update.SetAge(input.Age)
-			}
-			if strings.TrimSpace(row.Appearance) == "" {
-				update.SetAppearance(strings.TrimSpace(input.Appearance))
-			}
-			if strings.TrimSpace(row.Personality) == "" {
-				update.SetPersonality(strings.TrimSpace(input.Personality))
-			}
-			if strings.TrimSpace(row.Background) == "" {
-				update.SetBackground(strings.TrimSpace(input.Background))
+			if row.StateVersioned && !hasValidHistory {
+				update.
+					SetGender(strings.TrimSpace(input.Gender)).
+					SetAge(input.Age).
+					SetAppearance(strings.TrimSpace(input.Appearance)).
+					SetPersonality(strings.TrimSpace(input.Personality)).
+					SetBackground(strings.TrimSpace(input.Background))
+			} else {
+				if strings.TrimSpace(row.Gender) == "" {
+					update.SetGender(strings.TrimSpace(input.Gender))
+				}
+				if row.Age == 0 {
+					update.SetAge(input.Age)
+				}
+				if strings.TrimSpace(row.Appearance) == "" {
+					update.SetAppearance(strings.TrimSpace(input.Appearance))
+				}
+				if strings.TrimSpace(row.Personality) == "" {
+					update.SetPersonality(strings.TrimSpace(input.Personality))
+				}
+				if strings.TrimSpace(row.Background) == "" {
+					update.SetBackground(strings.TrimSpace(input.Background))
+				}
 			}
 			row, queryErr = update.Save(ctx)
 		}

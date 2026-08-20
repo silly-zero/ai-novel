@@ -15,6 +15,7 @@ type MemoryEntry struct {
 // Fields of the MemoryEntry.
 func (MemoryEntry) Fields() []ent.Field {
 	return []ent.Field{
+		field.String("dedupe_key").Optional().Unique(),
 		field.String("novel_id"),
 		field.Text("content"),
 		field.JSON("metadata", map[string]interface{}{}),
