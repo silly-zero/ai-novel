@@ -15,17 +15,31 @@ import (
 
 type DerivedHandler func(context.Context, events.ChapterGeneratedEvent) error
 
-type DerivedOrchestrator struct {
-	repo     novel.DerivedTaskRepository
-	handlers map[string]DerivedHandler
-	lease    time.Duration
+type DerivedOrchestratorConfig struct {
+	HandlerTimeout    time.Duration
+	SettlementTimeout time.Duration
 }
 
-func NewDerivedOrchestrator(repo novel.DerivedTaskRepository, lease time.Duration) *DerivedOrchestrator {
-	if lease <= 0 {
-		lease = time.Minute
+type DerivedOrchestrator struct {
+	repo              novel.DerivedTaskRepository
+	handlers          map[string]DerivedHandler
+	handlerTimeout    time.Duration
+	settlementTimeout time.Duration
+}
+
+func NewDerivedOrchestrator(repo novel.DerivedTaskRepository, cfg DerivedOrchestratorConfig) *DerivedOrchestrator {
+	if cfg.HandlerTimeout <= 0 {
+		cfg.HandlerTimeout = time.Minute
 	}
-	return &DerivedOrchestrator{repo: repo, handlers: make(map[string]DerivedHandler), lease: lease}
+	if cfg.SettlementTimeout <= 0 {
+		cfg.SettlementTimeout = 5 * time.Second
+	}
+	return &DerivedOrchestrator{
+		repo:              repo,
+		handlers:          make(map[string]DerivedHandler),
+		handlerTimeout:    cfg.HandlerTimeout,
+		settlementTimeout: cfg.SettlementTimeout,
+	}
 }
 
 func (o *DerivedOrchestrator) Register(key string, handler DerivedHandler) error {
@@ -62,26 +76,44 @@ func (o *DerivedOrchestrator) run(ctx context.Context, event events.ChapterGener
 		return errors.New("derived handlers are incomplete")
 	}
 	if err := o.repo.Initialize(ctx, chapterID, event.GenerationID, novel.DerivedTaskPending); err != nil {
+		if callerErr := context.Cause(ctx); callerErr != nil && !errors.Is(err, callerErr) {
+			return errors.Join(err, callerErr)
+		}
 		return err
 	}
 	var errs []error
 	for _, key := range novel.DerivedHandlerKeys {
+		if ctxErr := context.Cause(ctx); ctxErr != nil {
+			errs = append(errs, ctxErr)
+			break
+		}
+		handlerCtx, cancelHandler := context.WithTimeout(ctx, o.handlerTimeout)
 		leaseToken, tokenErr := agents.NewGenerationID()
 		if tokenErr != nil {
+			cancelHandler()
 			errs = append(errs, fmt.Errorf("create lease token %s: %w", key, tokenErr))
 			continue
 		}
 		now := time.Now()
-		task, claimErr := o.repo.Claim(ctx, chapterID, event.GenerationID, key, leaseToken, now, now.Add(o.lease))
+		handlerDeadline, _ := handlerCtx.Deadline()
+		task, claimErr := o.repo.Claim(handlerCtx, chapterID, event.GenerationID, key, leaseToken, now, handlerDeadline.Add(o.settlementTimeout))
 		if claimErr != nil {
+			cancelHandler()
 			errs = append(errs, fmt.Errorf("claim %s: %w", key, claimErr))
 			continue
 		}
 		if task == nil {
+			cancelHandler()
 			continue
 		}
-		handlerErr := runDerivedHandler(ctx, o.handlers[key], event)
-		completeErr := o.repo.Complete(ctx, task.ID, chapterID, event.GenerationID, task.LeaseToken, time.Now(), handlerErr == nil, errorString(handlerErr))
+		handlerErr := runDerivedHandler(handlerCtx, o.handlers[key], event)
+		if handlerErr == nil {
+			handlerErr = context.Cause(handlerCtx)
+		}
+		cancelHandler()
+		settlementCtx, cancelSettlement := o.settlementContext(ctx)
+		completeErr := o.repo.Complete(settlementCtx, task.ID, chapterID, event.GenerationID, task.LeaseToken, time.Now(), handlerErr == nil, errorString(handlerErr))
+		cancelSettlement()
 		if handlerErr != nil {
 			errs = append(errs, fmt.Errorf("derived handler %s: %w", key, handlerErr))
 		}
@@ -89,11 +121,21 @@ func (o *DerivedOrchestrator) run(ctx context.Context, event events.ChapterGener
 			errs = append(errs, fmt.Errorf("complete %s: %w", key, completeErr))
 		}
 	}
-	_, reconcileErr := o.repo.Reconcile(ctx, chapterID, event.GenerationID)
+	settlementCtx, cancelSettlement := o.settlementContext(ctx)
+	_, reconcileErr := o.repo.Reconcile(settlementCtx, chapterID, event.GenerationID)
+	cancelSettlement()
 	if reconcileErr != nil {
-		errs = append(errs, reconcileErr)
+		errs = append(errs, fmt.Errorf("reconcile derived tasks: %w", reconcileErr))
 	}
-	return errors.Join(errs...)
+	result := errors.Join(errs...)
+	if callerErr := context.Cause(ctx); callerErr != nil && !errors.Is(result, callerErr) {
+		result = errors.Join(result, callerErr)
+	}
+	return result
+}
+
+func (o *DerivedOrchestrator) settlementContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), o.settlementTimeout)
 }
 
 func containsDerivedHandler(key string) bool {

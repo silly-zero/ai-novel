@@ -100,7 +100,10 @@ func run() error {
 	worldAgent := agents.NewWorldAgent(llmAdapter, worldRepo)
 	worldUC := usecases.NewWorldUseCase(worldAgent)
 	derivedRepo := database.NewDerivedTaskRepository(dbClient.Client)
-	derivedOrchestrator := usecases.NewDerivedOrchestrator(derivedRepo, cfg.App.GenerationTimeout+time.Minute)
+	derivedOrchestrator := usecases.NewDerivedOrchestrator(derivedRepo, usecases.DerivedOrchestratorConfig{
+		HandlerTimeout:    cfg.App.GenerationTimeout,
+		SettlementTimeout: 5 * time.Second,
+	})
 	for key, handler := range map[string]usecases.DerivedHandler{
 		domain.DerivedHandlerMemory: func(ctx context.Context, event events.ChapterGeneratedEvent) error {
 			return ingestionUC.HandleChapterGenerated(ctx, event)
