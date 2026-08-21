@@ -73,9 +73,9 @@ func generateStructuredResponse[T any](
 
 	repairSystemPrompt := systemPrompt + `
 
-你正在修复上一次输出的格式。只返回一个符合上述格式的 JSON 对象或数组，不要输出解释、Markdown 代码围栏、注释或其他文字。`
+你正在修复上一次输出的格式或校验错误。请严格遵守上述全部业务规则，只返回一个符合格式且通过校验的 JSON 对象或数组，不要输出解释、Markdown 代码围栏、注释或其他文字。`
 	repairUserPrompt := fmt.Sprintf(
-		"%s\n\n上一次响应无法解析或校验。请仅修复格式并返回完整 JSON。解析原因：%s\n<previous_response>\n%s\n</previous_response>",
+		"%s\n\n上一次响应无法解析或校验。请修复格式或校验错误，并仅返回符合全部规则的完整 JSON。原因：%s\n<previous_response>\n%s\n</previous_response>",
 		userPrompt,
 		boundedText(parseErr.Error(), structuredResponsePreviewRunes),
 		boundedText(response, structuredResponsePreviewRunes),

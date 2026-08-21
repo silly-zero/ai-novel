@@ -238,23 +238,27 @@ func (r *worldRepositoryFake) ReplaceChapterWorldSettings(
 	return result, nil
 }
 
+func characterEvidenceDraft() string {
+	return "青云山 地理 终年云雾环绕的修炼宗门 本章结束时山门封闭并由长老守卫 本章结束时山门封闭 玄天镜 宝物 可映照灵力轨迹的古镜 本章结束时由林云持有 群山中的修炼宗门 山门已经封闭 林云 男 20 黑衣 谨慎 边城出身 旧外貌 新外貌 新性格 新背景 坚定 旧背景 留在青云山等待消息 寻找苏青 苏青 与林云会合 本章结束时已进入密室 本章结束时离开边城"
+}
+
 func TestCharacterAgentReturnsRepositoryErrors(t *testing.T) {
 	listErr := errors.New("list failed")
 	agent := NewCharacterAgent(memoryAgentTestLLM{}, &characterRepositoryFake{listErr: listErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, listErr) {
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); !errors.Is(err, listErr) {
 		t.Fatalf("list error = %v, want %v", err, listErr)
 	}
 
 	saveErr := errors.New("save character failed")
-	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"留在青云山等待消息"}]}`}, &characterRepositoryFake{saveCharacterErr: saveErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, saveErr) {
+	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"留在青云山等待消息","identity_evidence":"林云","state_evidence":"留在青云山等待消息"}]}`}, &characterRepositoryFake{saveCharacterErr: saveErr})
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); !errors.Is(err, saveErr) {
 		t.Fatalf("save character error = %v, want %v", err, saveErr)
 	}
 
 	relationErr := errors.New("save relationship failed")
 	relationRepo := &characterRepositoryFake{saveRelationErr: relationErr}
-	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青"},{"name":"苏青","current_status":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}, relationRepo)
-	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, relationErr) {
+	agent = NewCharacterAgent(memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青","identity_evidence":"林云","state_evidence":"寻找苏青"},{"name":"苏青","current_status":"与林云会合","identity_evidence":"苏青","state_evidence":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友","evidence":"与林云会合"}]}`}, relationRepo)
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); !errors.Is(err, relationErr) {
 		t.Fatalf("save relationship error = %v, want %v", err, relationErr)
 	}
 	if relationRepo.saveCharacterCalls != 1 || relationRepo.savedCharacter == nil {
@@ -264,8 +268,8 @@ func TestCharacterAgentReturnsRepositoryErrors(t *testing.T) {
 
 func TestCharacterAgentUsesCanonicalRelationshipEndpoints(t *testing.T) {
 	repo := &characterRepositoryFake{}
-	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青"},{"name":"苏青","current_status":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}
-	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}
+	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","current_status":"寻找苏青","identity_evidence":"林云","state_evidence":"寻找苏青"},{"name":"苏青","current_status":"与林云会合","identity_evidence":"苏青","state_evidence":"与林云会合"}],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友","evidence":"与林云会合"}]}`}
+	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}
 
 	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err != nil {
 		t.Fatal(err)
@@ -280,8 +284,8 @@ func TestCharacterAgentUsesCanonicalRelationshipEndpoints(t *testing.T) {
 
 func TestCharacterAgentReturnsRelationshipResolutionError(t *testing.T) {
 	repo := &characterRepositoryFake{}
-	llm := memoryAgentTestLLM{response: `{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友"}]}`}
-	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}
+	llm := memoryAgentTestLLM{response: `{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友","evidence":"与林云会合"}]}`}
+	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}
 
 	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err == nil || !strings.Contains(err.Error(), "resolve relationship character") {
 		t.Fatalf("error = %v", err)
@@ -302,9 +306,9 @@ func TestCharacterAgentPreservesStaticLedgerAndReplacesCurrentStatus(t *testing.
 		Background:    "旧背景",
 		CurrentStatus: "上一章状态",
 	}}
-	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","gender":"女","age":30,"appearance":"新外貌","personality":"新性格","background":"新背景","current_status":"本章结束时已进入密室"}]}`}
+	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","gender":"女","age":30,"appearance":"新外貌","personality":"新性格","background":"新背景","current_status":"本章结束时已进入密室","identity_evidence":"林云","state_evidence":"本章结束时已进入密室"}]}`}
 
-	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); err != nil {
 		t.Fatal(err)
 	}
 	if repo.savedCharacter == nil {
@@ -332,9 +336,9 @@ func TestCharacterAgentFillsMissingStaticFields(t *testing.T) {
 		Background:    "   ",
 		CurrentStatus: "上一章状态",
 	}}
-	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","gender":"男","age":20,"appearance":"黑衣","personality":"谨慎","background":"边城出身","current_status":"本章结束时离开边城"}]}`}
+	llm := memoryAgentTestLLM{response: `{"characters":[{"name":"林云","gender":"男","age":20,"appearance":"黑衣","personality":"谨慎","background":"边城出身","current_status":"本章结束时离开边城","identity_evidence":"林云","static_evidence":"男 20 黑衣 谨慎 边城出身","state_evidence":"本章结束时离开边城"}]}`}
 
-	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
+	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedCharacter
@@ -354,9 +358,9 @@ func TestWorldAgentPreservesStaticLedgerAndReplacesCurrentState(t *testing.T) {
 		Description:  "终年云雾环绕的修炼宗门",
 		CurrentState: "山门开放",
 	}}
-	llm := memoryAgentTestLLM{response: `[{"category":"势力","name":"青云山","description":"被改写的说明","current_state":"本章结束时山门封闭并由长老守卫"}]`}
+	llm := memoryAgentTestLLM{response: `[{"category":"势力","name":"青云山","description":"被改写的说明","current_state":"本章结束时山门封闭并由长老守卫","identity_evidence":"青云山","state_evidence":"本章结束时山门封闭并由长老守卫"}]`}
 
-	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedSetting
@@ -382,9 +386,9 @@ func TestWorldAgentFillsMissingStaticFields(t *testing.T) {
 		Description:  "   ",
 		CurrentState: "旧状态",
 	}}
-	llm := memoryAgentTestLLM{response: `[{"category":"地理","name":"青云山","description":"终年云雾环绕的修炼宗门","current_state":"本章结束时山门封闭"}]`}
+	llm := memoryAgentTestLLM{response: `[{"category":"地理","name":"青云山","description":"终年云雾环绕的修炼宗门","current_state":"本章结束时山门封闭","identity_evidence":"青云山","static_evidence":"地理 终年云雾环绕的修炼宗门","state_evidence":"本章结束时山门封闭"}]`}
 
-	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedSetting
@@ -398,9 +402,9 @@ func TestWorldAgentFillsMissingStaticFields(t *testing.T) {
 
 func TestWorldAgentCreatesCompleteLedgerEntry(t *testing.T) {
 	repo := &worldRepositoryFake{}
-	llm := memoryAgentTestLLM{response: `[{"category":"宝物","name":"玄天镜","description":"可映照灵力轨迹的古镜","current_state":"本章结束时由林云持有"}]`}
+	llm := memoryAgentTestLLM{response: `[{"category":"宝物","name":"玄天镜","description":"可映照灵力轨迹的古镜","current_state":"本章结束时由林云持有","identity_evidence":"玄天镜","static_evidence":"宝物 可映照灵力轨迹的古镜","state_evidence":"本章结束时由林云持有"}]`}
 
-	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); err != nil {
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); err != nil {
 		t.Fatal(err)
 	}
 	got := repo.savedSetting
@@ -412,13 +416,13 @@ func TestWorldAgentCreatesCompleteLedgerEntry(t *testing.T) {
 func TestWorldAgentReturnsRepositoryErrors(t *testing.T) {
 	listErr := errors.New("list failed")
 	agent := NewWorldAgent(memoryAgentTestLLM{}, &worldRepositoryFake{listErr: listErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, listErr) {
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); !errors.Is(err, listErr) {
 		t.Fatalf("list error = %v, want %v", err, listErr)
 	}
 
 	saveErr := errors.New("save setting failed")
-	agent = NewWorldAgent(memoryAgentTestLLM{response: `[{"category":"地理","name":"青云山","description":"群山中的修炼宗门","current_state":"山门已经封闭"}]`}, &worldRepositoryFake{saveErr: saveErr})
-	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}); !errors.Is(err, saveErr) {
+	agent = NewWorldAgent(memoryAgentTestLLM{response: `[{"category":"地理","name":"青云山","description":"群山中的修炼宗门","current_state":"山门已经封闭","identity_evidence":"青云山","static_evidence":"群山中的修炼宗门","state_evidence":"山门已经封闭"}]`}, &worldRepositoryFake{saveErr: saveErr})
+	if _, err := agent.Run(context.Background(), &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: characterEvidenceDraft()}); !errors.Is(err, saveErr) {
 		t.Fatalf("save setting error = %v, want %v", err, saveErr)
 	}
 }

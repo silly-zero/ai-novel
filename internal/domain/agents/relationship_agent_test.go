@@ -15,8 +15,8 @@ func TestCharacterAgentPassesExplicitRelationshipRemove(t *testing.T) {
 			"苏青": {ID: "2", NovelID: "7", Name: "苏青"},
 		},
 	}
-	llm := memoryAgentTestLLM{response: `{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友","operation":"remove"}]}`}
-	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4}
+	llm := memoryAgentTestLLM{response: `{"characters":[],"relationships":[{"source":"林云","target":"苏青","relation_type":"盟友","operation":"remove","evidence":"林云与苏青解除盟友关系"}]}`}
+	state := &GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "林云与苏青解除盟友关系"}
 
 	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err != nil {
 		t.Fatal(err)

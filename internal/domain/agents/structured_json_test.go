@@ -1391,11 +1391,11 @@ func TestStructuredValidatorsRejectMissingRequiredFields(t *testing.T) {
 
 func TestCharacterAgentKeepsLegacyArrayResponse(t *testing.T) {
 	repo := &characterRepositoryFake{}
-	llm := &queuedStructuredLLM{responses: []string{`[{"name":" 林云 ","current_status":"在城门等待"}]`}}
+	llm := &queuedStructuredLLM{responses: []string{`[{"name":" 林云 ","current_status":"在城门等待","identity_evidence":"林云","state_evidence":"在城门等待"}]`}}
 
 	_, err := NewCharacterAgent(llm, repo).Run(
 		context.Background(),
-		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "林云在城门等待"},
 	)
 	if err != nil {
 		t.Fatalf("CharacterAgent.Run returned error: %v", err)
@@ -1411,7 +1411,7 @@ func TestWorldAgentAcceptsEmptyArray(t *testing.T) {
 
 	_, err := NewWorldAgent(llm, repo).Run(
 		context.Background(),
-		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "林云在城门等待"},
 	)
 	if err != nil {
 		t.Fatalf("WorldAgent.Run returned error: %v", err)

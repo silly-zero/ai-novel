@@ -63,6 +63,38 @@ func validateWorldSettingUpdatesForExisting(
 	}
 }
 
+func validateWorldSettingUpdatesForDraft(
+	existingSettings []*domain.WorldSetting,
+	draft string,
+) func(*[]WorldSettingUpdate) error {
+	existingByName := make(map[string]*domain.WorldSetting, len(existingSettings))
+	for _, setting := range existingSettings {
+		existingByName[strings.TrimSpace(setting.Name)] = setting
+	}
+	return func(updates *[]WorldSettingUpdate) error {
+		if err := validateWorldSettingUpdatesForExisting(existingSettings)(updates); err != nil {
+			return err
+		}
+		for index := range *updates {
+			update := &(*updates)[index]
+			if err := validateLedgerEvidence(fmt.Sprintf("world_settings[%d].identity_evidence", index), update.IdentityEvidence, draft, true); err != nil {
+				return err
+			}
+			existing := existingByName[update.Name]
+			staticRequired := (existing == nil && (update.Category != "" || update.Description != "")) ||
+				(existing != nil && strings.TrimSpace(existing.Category) == "" && update.Category != "") ||
+				(existing != nil && strings.TrimSpace(existing.Description) == "" && update.Description != "")
+			if err := validateLedgerEvidence(fmt.Sprintf("world_settings[%d].static_evidence", index), update.StaticEvidence, draft, staticRequired); err != nil {
+				return err
+			}
+			if err := validateLedgerEvidence(fmt.Sprintf("world_settings[%d].state_evidence", index), update.StateEvidence, draft, true); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
 type WorldAgent struct {
 	llm  LLMService
 	repo domain.WorldRepository
@@ -81,10 +113,13 @@ func (a *WorldAgent) Role() AgentRole {
 
 // WorldSettingUpdate 结构化输出
 type WorldSettingUpdate struct {
-	Category     string `json:"category"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	CurrentState string `json:"current_state"`
+	Category         string `json:"category"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	CurrentState     string `json:"current_state"`
+	IdentityEvidence string `json:"identity_evidence"`
+	StaticEvidence   string `json:"static_evidence"`
+	StateEvidence    string `json:"state_evidence"`
 }
 
 func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
@@ -115,14 +150,20 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 2. description 是设定的静态基线；已有设定不要改写，若正文没有新静态信息可留空。
 3. current_state 是本章结束时的动态快照，必须描述该设定当前的位置归属、开放封闭、控制者、损毁变化或生效状态。
 4. 新设定必须填写 description 和 current_state；已有设定必须根据正文填写 current_state。
-5. 不要用空字符串清除已有信息。
-6. 只输出合法 JSON 数组，不要输出 Markdown 或解释：
+5. 所有 evidence 必须逐字复制自【本章正文】中的一段连续原文，长度不超过1000字；不得改写、概括或引用现有账本。
+6. 每个设定必须提供 identity_evidence 和 state_evidence；仅当新增或补齐 category/description 时提供 static_evidence，否则留空。
+7. 正文没有明确证据时不要输出该更新。
+8. 不要用空字符串清除已有信息。
+9. 只输出合法 JSON 数组，不要输出 Markdown 或解释：
 [
   {
     "category": "分类(地理/武学/势力/宝物/规则)",
     "name": "设定名称",
     "description": "新设定的静态说明，否则留空",
-    "current_state": "本章结束时的具体动态状态"
+    "current_state": "本章结束时的具体动态状态",
+    "identity_evidence": "正文中的设定原文",
+    "static_evidence": "支持category/description的正文原文，没有静态更新则留空",
+    "state_evidence": "支持当前状态的正文原文"
   }
 ]`
 
@@ -135,7 +176,7 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 		systemPrompt,
 		userPrompt,
 		decodeJSON[[]WorldSettingUpdate],
-		validateWorldSettingUpdatesForExisting(existingSettings),
+		validateWorldSettingUpdatesForDraft(existingSettings, state.Draft),
 	)
 	if err != nil {
 		return state, err

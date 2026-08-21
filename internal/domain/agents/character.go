@@ -138,13 +138,16 @@ func (a *CharacterAgent) Role() AgentRole {
 
 // CharacterUpdate 结构化输出
 type CharacterUpdate struct {
-	Name          string `json:"name"`
-	Gender        string `json:"gender"`
-	Age           int    `json:"age"`
-	Appearance    string `json:"appearance"`
-	Personality   string `json:"personality"`
-	Background    string `json:"background"`
-	CurrentStatus string `json:"current_status"`
+	Name             string `json:"name"`
+	Gender           string `json:"gender"`
+	Age              int    `json:"age"`
+	Appearance       string `json:"appearance"`
+	Personality      string `json:"personality"`
+	Background       string `json:"background"`
+	CurrentStatus    string `json:"current_status"`
+	IdentityEvidence string `json:"identity_evidence"`
+	StaticEvidence   string `json:"static_evidence"`
+	StateEvidence    string `json:"state_evidence"`
 }
 
 type RelationshipUpdate struct {
@@ -153,11 +156,52 @@ type RelationshipUpdate struct {
 	RelationType string                       `json:"relation_type"`
 	Description  string                       `json:"description"`
 	Operation    domain.RelationshipOperation `json:"operation"`
+	Evidence     string                       `json:"evidence"`
 }
 
 type CharacterExtraction struct {
 	Characters    []CharacterUpdate    `json:"characters"`
 	Relationships []RelationshipUpdate `json:"relationships"`
+}
+
+func validateCharacterExtractionForDraft(
+	extracted *CharacterExtraction,
+	existing []*domain.Character,
+	draft string,
+) error {
+	if err := validateCharacterExtraction(extracted); err != nil {
+		return err
+	}
+	existingByName := make(map[string]*domain.Character, len(existing))
+	for _, character := range existing {
+		existingByName[strings.TrimSpace(character.Name)] = character
+	}
+	for index := range extracted.Characters {
+		update := &extracted.Characters[index]
+		if err := validateLedgerEvidence(fmt.Sprintf("characters[%d].identity_evidence", index), update.IdentityEvidence, draft, true); err != nil {
+			return err
+		}
+		existingCharacter := existingByName[update.Name]
+		hasStaticUpdate := update.Gender != "" || update.Age != 0 || update.Appearance != "" || update.Personality != "" || update.Background != ""
+		staticRequired := (existingCharacter == nil && hasStaticUpdate) ||
+			(existingCharacter != nil && strings.TrimSpace(existingCharacter.Gender) == "" && update.Gender != "") ||
+			(existingCharacter != nil && existingCharacter.Age == 0 && update.Age != 0) ||
+			(existingCharacter != nil && strings.TrimSpace(existingCharacter.Appearance) == "" && update.Appearance != "") ||
+			(existingCharacter != nil && strings.TrimSpace(existingCharacter.Personality) == "" && update.Personality != "") ||
+			(existingCharacter != nil && strings.TrimSpace(existingCharacter.Background) == "" && update.Background != "")
+		if err := validateLedgerEvidence(fmt.Sprintf("characters[%d].static_evidence", index), update.StaticEvidence, draft, staticRequired); err != nil {
+			return err
+		}
+		if err := validateLedgerEvidence(fmt.Sprintf("characters[%d].state_evidence", index), update.StateEvidence, draft, true); err != nil {
+			return err
+		}
+	}
+	for index := range extracted.Relationships {
+		if err := validateLedgerEvidence(fmt.Sprintf("relationships[%d].evidence", index), extracted.Relationships[index].Evidence, draft, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
@@ -211,8 +255,11 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 4. 新角色可以填写静态档案，但必须填写 current_status。
 5. 未提到的关系不要输出，不代表删除；只有正文明确建立、更新或解除关系时才输出。
 6. operation 为 upsert 或 remove。旧格式未提供 operation 时按 upsert 处理；关系改变时先 remove 旧类型，再 upsert 新类型。
-7. 不要用空字符串清除已有信息。
-8. 只输出合法 JSON，不要输出 Markdown 或解释。
+7. 所有 evidence 必须逐字复制自【本章正文】中的一段连续原文，长度不超过1000字；不得改写、概括或引用现有账本。
+8. 每个角色必须提供 identity_evidence 和 state_evidence；仅当新增或补齐静态字段时提供 static_evidence，否则留空。
+9. 每个关系 upsert/remove 都必须提供 evidence；正文没有明确证据时不要输出该更新。
+10. 不要用空字符串清除已有信息。
+11. 只输出合法 JSON，不要输出 Markdown 或解释。
 格式：
 {
   "characters": [
@@ -223,7 +270,10 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
       "appearance": "新信息，否则留空",
       "personality": "新信息，否则留空",
       "background": "新信息，否则留空",
-      "current_status": "本章结束时的具体动态状态"
+      "current_status": "本章结束时的具体动态状态",
+      "identity_evidence": "正文中的角色原文",
+      "static_evidence": "支持静态字段的正文原文，没有静态更新则留空",
+      "state_evidence": "支持当前状态的正文原文"
     }
   ],
   "relationships": [
@@ -232,7 +282,8 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
       "target": "角色B",
       "relation_type": "师徒/敌人/盟友/亲属/恋人/交易等",
       "description": "一句话说明正文依据",
-      "operation": "upsert 或 remove"
+      "operation": "upsert 或 remove",
+      "evidence": "支持关系变化的正文原文"
     }
   ]
 }`
@@ -246,7 +297,9 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		systemPrompt,
 		userPrompt,
 		decodeCharacterExtraction,
-		validateCharacterExtraction,
+		func(extracted *CharacterExtraction) error {
+			return validateCharacterExtractionForDraft(extracted, existingChars, state.Draft)
+		},
 	)
 	if err != nil {
 		return state, err
