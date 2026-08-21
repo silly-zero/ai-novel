@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
@@ -82,6 +83,7 @@ func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
 			chapter.Table:                  chapter.ValidColumn,
+			chapterderivedtask.Table:       chapterderivedtask.ValidColumn,
 			character.Table:                character.ValidColumn,
 			characterstateversion.Table:    characterstateversion.ValidColumn,
 			memoryentry.Table:              memoryentry.ValidColumn,

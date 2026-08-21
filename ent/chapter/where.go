@@ -827,6 +827,29 @@ func HasRelationshipStateVersionsWith(preds ...predicate.RelationshipStateVersio
 	})
 }
 
+// HasDerivedTasks applies the HasEdge predicate on the "derived_tasks" edge.
+func HasDerivedTasks() predicate.Chapter {
+	return predicate.Chapter(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, DerivedTasksTable, DerivedTasksColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasDerivedTasksWith applies the HasEdge predicate on the "derived_tasks" edge with a given conditions (other predicates).
+func HasDerivedTasksWith(preds ...predicate.ChapterDerivedTask) predicate.Chapter {
+	return predicate.Chapter(func(s *sql.Selector) {
+		step := newDerivedTasksStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.Chapter) predicate.Chapter {
 	return predicate.Chapter(sql.AndPredicates(predicates...))

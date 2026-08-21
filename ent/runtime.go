@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
@@ -53,6 +54,36 @@ func init() {
 	chapter.DefaultUpdatedAt = chapterDescUpdatedAt.Default.(func() time.Time)
 	// chapter.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	chapter.UpdateDefaultUpdatedAt = chapterDescUpdatedAt.UpdateDefault.(func() time.Time)
+	chapterderivedtaskFields := schema.ChapterDerivedTask{}.Fields()
+	_ = chapterderivedtaskFields
+	// chapterderivedtaskDescChapterID is the schema descriptor for chapter_id field.
+	chapterderivedtaskDescChapterID := chapterderivedtaskFields[0].Descriptor()
+	// chapterderivedtask.ChapterIDValidator is a validator for the "chapter_id" field. It is called by the builders before save.
+	chapterderivedtask.ChapterIDValidator = chapterderivedtaskDescChapterID.Validators[0].(func(int) error)
+	// chapterderivedtaskDescAttempts is the schema descriptor for attempts field.
+	chapterderivedtaskDescAttempts := chapterderivedtaskFields[4].Descriptor()
+	// chapterderivedtask.DefaultAttempts holds the default value on creation for the attempts field.
+	chapterderivedtask.DefaultAttempts = chapterderivedtaskDescAttempts.Default.(int)
+	// chapterderivedtask.AttemptsValidator is a validator for the "attempts" field. It is called by the builders before save.
+	chapterderivedtask.AttemptsValidator = chapterderivedtaskDescAttempts.Validators[0].(func(int) error)
+	// chapterderivedtaskDescLeaseToken is the schema descriptor for lease_token field.
+	chapterderivedtaskDescLeaseToken := chapterderivedtaskFields[5].Descriptor()
+	// chapterderivedtask.DefaultLeaseToken holds the default value on creation for the lease_token field.
+	chapterderivedtask.DefaultLeaseToken = chapterderivedtaskDescLeaseToken.Default.(string)
+	// chapterderivedtaskDescLastError is the schema descriptor for last_error field.
+	chapterderivedtaskDescLastError := chapterderivedtaskFields[7].Descriptor()
+	// chapterderivedtask.DefaultLastError holds the default value on creation for the last_error field.
+	chapterderivedtask.DefaultLastError = chapterderivedtaskDescLastError.Default.(string)
+	// chapterderivedtaskDescCreatedAt is the schema descriptor for created_at field.
+	chapterderivedtaskDescCreatedAt := chapterderivedtaskFields[8].Descriptor()
+	// chapterderivedtask.DefaultCreatedAt holds the default value on creation for the created_at field.
+	chapterderivedtask.DefaultCreatedAt = chapterderivedtaskDescCreatedAt.Default.(func() time.Time)
+	// chapterderivedtaskDescUpdatedAt is the schema descriptor for updated_at field.
+	chapterderivedtaskDescUpdatedAt := chapterderivedtaskFields[9].Descriptor()
+	// chapterderivedtask.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	chapterderivedtask.DefaultUpdatedAt = chapterderivedtaskDescUpdatedAt.Default.(func() time.Time)
+	// chapterderivedtask.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	chapterderivedtask.UpdateDefaultUpdatedAt = chapterderivedtaskDescUpdatedAt.UpdateDefault.(func() time.Time)
 	characterFields := schema.Character{}.Fields()
 	_ = characterFields
 	// characterDescStateVersioned is the schema descriptor for state_versioned field.

@@ -16,6 +16,7 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
@@ -33,6 +34,8 @@ type Client struct {
 	Schema *migrate.Schema
 	// Chapter is the client for interacting with the Chapter builders.
 	Chapter *ChapterClient
+	// ChapterDerivedTask is the client for interacting with the ChapterDerivedTask builders.
+	ChapterDerivedTask *ChapterDerivedTaskClient
 	// Character is the client for interacting with the Character builders.
 	Character *CharacterClient
 	// CharacterStateVersion is the client for interacting with the CharacterStateVersion builders.
@@ -61,6 +64,7 @@ func NewClient(opts ...Option) *Client {
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
 	c.Chapter = NewChapterClient(c.config)
+	c.ChapterDerivedTask = NewChapterDerivedTaskClient(c.config)
 	c.Character = NewCharacterClient(c.config)
 	c.CharacterStateVersion = NewCharacterStateVersionClient(c.config)
 	c.MemoryEntry = NewMemoryEntryClient(c.config)
@@ -162,6 +166,7 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		ctx:                      ctx,
 		config:                   cfg,
 		Chapter:                  NewChapterClient(cfg),
+		ChapterDerivedTask:       NewChapterDerivedTaskClient(cfg),
 		Character:                NewCharacterClient(cfg),
 		CharacterStateVersion:    NewCharacterStateVersionClient(cfg),
 		MemoryEntry:              NewMemoryEntryClient(cfg),
@@ -190,6 +195,7 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		ctx:                      ctx,
 		config:                   cfg,
 		Chapter:                  NewChapterClient(cfg),
+		ChapterDerivedTask:       NewChapterDerivedTaskClient(cfg),
 		Character:                NewCharacterClient(cfg),
 		CharacterStateVersion:    NewCharacterStateVersionClient(cfg),
 		MemoryEntry:              NewMemoryEntryClient(cfg),
@@ -227,9 +233,9 @@ func (c *Client) Close() error {
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
-		c.Chapter, c.Character, c.CharacterStateVersion, c.MemoryEntry, c.Novel,
-		c.Relationship, c.RelationshipStateVersion, c.WorldSetting,
-		c.WorldStateVersion,
+		c.Chapter, c.ChapterDerivedTask, c.Character, c.CharacterStateVersion,
+		c.MemoryEntry, c.Novel, c.Relationship, c.RelationshipStateVersion,
+		c.WorldSetting, c.WorldStateVersion,
 	} {
 		n.Use(hooks...)
 	}
@@ -239,9 +245,9 @@ func (c *Client) Use(hooks ...Hook) {
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
-		c.Chapter, c.Character, c.CharacterStateVersion, c.MemoryEntry, c.Novel,
-		c.Relationship, c.RelationshipStateVersion, c.WorldSetting,
-		c.WorldStateVersion,
+		c.Chapter, c.ChapterDerivedTask, c.Character, c.CharacterStateVersion,
+		c.MemoryEntry, c.Novel, c.Relationship, c.RelationshipStateVersion,
+		c.WorldSetting, c.WorldStateVersion,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -252,6 +258,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
 	case *ChapterMutation:
 		return c.Chapter.mutate(ctx, m)
+	case *ChapterDerivedTaskMutation:
+		return c.ChapterDerivedTask.mutate(ctx, m)
 	case *CharacterMutation:
 		return c.Character.mutate(ctx, m)
 	case *CharacterStateVersionMutation:
@@ -445,6 +453,22 @@ func (c *ChapterClient) QueryRelationshipStateVersions(_m *Chapter) *Relationshi
 	return query
 }
 
+// QueryDerivedTasks queries the derived_tasks edge of a Chapter.
+func (c *ChapterClient) QueryDerivedTasks(_m *Chapter) *ChapterDerivedTaskQuery {
+	query := (&ChapterDerivedTaskClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(chapter.Table, chapter.FieldID, id),
+			sqlgraph.To(chapterderivedtask.Table, chapterderivedtask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, chapter.DerivedTasksTable, chapter.DerivedTasksColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ChapterClient) Hooks() []Hook {
 	return c.hooks.Chapter
@@ -467,6 +491,155 @@ func (c *ChapterClient) mutate(ctx context.Context, m *ChapterMutation) (Value, 
 		return (&ChapterDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown Chapter mutation op: %q", m.Op())
+	}
+}
+
+// ChapterDerivedTaskClient is a client for the ChapterDerivedTask schema.
+type ChapterDerivedTaskClient struct {
+	config
+}
+
+// NewChapterDerivedTaskClient returns a client for the ChapterDerivedTask from the given config.
+func NewChapterDerivedTaskClient(c config) *ChapterDerivedTaskClient {
+	return &ChapterDerivedTaskClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `chapterderivedtask.Hooks(f(g(h())))`.
+func (c *ChapterDerivedTaskClient) Use(hooks ...Hook) {
+	c.hooks.ChapterDerivedTask = append(c.hooks.ChapterDerivedTask, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `chapterderivedtask.Intercept(f(g(h())))`.
+func (c *ChapterDerivedTaskClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ChapterDerivedTask = append(c.inters.ChapterDerivedTask, interceptors...)
+}
+
+// Create returns a builder for creating a ChapterDerivedTask entity.
+func (c *ChapterDerivedTaskClient) Create() *ChapterDerivedTaskCreate {
+	mutation := newChapterDerivedTaskMutation(c.config, OpCreate)
+	return &ChapterDerivedTaskCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ChapterDerivedTask entities.
+func (c *ChapterDerivedTaskClient) CreateBulk(builders ...*ChapterDerivedTaskCreate) *ChapterDerivedTaskCreateBulk {
+	return &ChapterDerivedTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ChapterDerivedTaskClient) MapCreateBulk(slice any, setFunc func(*ChapterDerivedTaskCreate, int)) *ChapterDerivedTaskCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ChapterDerivedTaskCreateBulk{err: fmt.Errorf("calling to ChapterDerivedTaskClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ChapterDerivedTaskCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ChapterDerivedTaskCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ChapterDerivedTask.
+func (c *ChapterDerivedTaskClient) Update() *ChapterDerivedTaskUpdate {
+	mutation := newChapterDerivedTaskMutation(c.config, OpUpdate)
+	return &ChapterDerivedTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ChapterDerivedTaskClient) UpdateOne(_m *ChapterDerivedTask) *ChapterDerivedTaskUpdateOne {
+	mutation := newChapterDerivedTaskMutation(c.config, OpUpdateOne, withChapterDerivedTask(_m))
+	return &ChapterDerivedTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ChapterDerivedTaskClient) UpdateOneID(id int) *ChapterDerivedTaskUpdateOne {
+	mutation := newChapterDerivedTaskMutation(c.config, OpUpdateOne, withChapterDerivedTaskID(id))
+	return &ChapterDerivedTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ChapterDerivedTask.
+func (c *ChapterDerivedTaskClient) Delete() *ChapterDerivedTaskDelete {
+	mutation := newChapterDerivedTaskMutation(c.config, OpDelete)
+	return &ChapterDerivedTaskDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ChapterDerivedTaskClient) DeleteOne(_m *ChapterDerivedTask) *ChapterDerivedTaskDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ChapterDerivedTaskClient) DeleteOneID(id int) *ChapterDerivedTaskDeleteOne {
+	builder := c.Delete().Where(chapterderivedtask.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ChapterDerivedTaskDeleteOne{builder}
+}
+
+// Query returns a query builder for ChapterDerivedTask.
+func (c *ChapterDerivedTaskClient) Query() *ChapterDerivedTaskQuery {
+	return &ChapterDerivedTaskQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeChapterDerivedTask},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ChapterDerivedTask entity by its id.
+func (c *ChapterDerivedTaskClient) Get(ctx context.Context, id int) (*ChapterDerivedTask, error) {
+	return c.Query().Where(chapterderivedtask.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ChapterDerivedTaskClient) GetX(ctx context.Context, id int) *ChapterDerivedTask {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryChapter queries the chapter edge of a ChapterDerivedTask.
+func (c *ChapterDerivedTaskClient) QueryChapter(_m *ChapterDerivedTask) *ChapterQuery {
+	query := (&ChapterClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(chapterderivedtask.Table, chapterderivedtask.FieldID, id),
+			sqlgraph.To(chapter.Table, chapter.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, chapterderivedtask.ChapterTable, chapterderivedtask.ChapterColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ChapterDerivedTaskClient) Hooks() []Hook {
+	return c.hooks.ChapterDerivedTask
+}
+
+// Interceptors returns the client interceptors.
+func (c *ChapterDerivedTaskClient) Interceptors() []Interceptor {
+	return c.inters.ChapterDerivedTask
+}
+
+func (c *ChapterDerivedTaskClient) mutate(ctx context.Context, m *ChapterDerivedTaskMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ChapterDerivedTaskCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ChapterDerivedTaskUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ChapterDerivedTaskUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ChapterDerivedTaskDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ChapterDerivedTask mutation op: %q", m.Op())
 	}
 }
 
@@ -1777,11 +1950,13 @@ func (c *WorldStateVersionClient) mutate(ctx context.Context, m *WorldStateVersi
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
-		Chapter, Character, CharacterStateVersion, MemoryEntry, Novel, Relationship,
-		RelationshipStateVersion, WorldSetting, WorldStateVersion []ent.Hook
+		Chapter, ChapterDerivedTask, Character, CharacterStateVersion, MemoryEntry,
+		Novel, Relationship, RelationshipStateVersion, WorldSetting,
+		WorldStateVersion []ent.Hook
 	}
 	inters struct {
-		Chapter, Character, CharacterStateVersion, MemoryEntry, Novel, Relationship,
-		RelationshipStateVersion, WorldSetting, WorldStateVersion []ent.Interceptor
+		Chapter, ChapterDerivedTask, Character, CharacterStateVersion, MemoryEntry,
+		Novel, Relationship, RelationshipStateVersion, WorldSetting,
+		WorldStateVersion []ent.Interceptor
 	}
 )

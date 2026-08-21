@@ -39,6 +39,51 @@ var (
 			},
 		},
 	}
+	// ChapterDerivedTasksColumns holds the columns for the "chapter_derived_tasks" table.
+	ChapterDerivedTasksColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "generation_id", Type: field.TypeString},
+		{Name: "handler_key", Type: field.TypeEnum, Enums: []string{"memory", "character", "world"}},
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"Pending", "Running", "Ready", "Failed"}},
+		{Name: "attempts", Type: field.TypeInt, Default: 0},
+		{Name: "lease_token", Type: field.TypeString, Default: ""},
+		{Name: "lease_until", Type: field.TypeTime, Nullable: true},
+		{Name: "last_error", Type: field.TypeString, Size: 2147483647, Default: ""},
+		{Name: "created_at", Type: field.TypeTime},
+		{Name: "updated_at", Type: field.TypeTime},
+		{Name: "chapter_id", Type: field.TypeInt},
+	}
+	// ChapterDerivedTasksTable holds the schema information for the "chapter_derived_tasks" table.
+	ChapterDerivedTasksTable = &schema.Table{
+		Name:       "chapter_derived_tasks",
+		Columns:    ChapterDerivedTasksColumns,
+		PrimaryKey: []*schema.Column{ChapterDerivedTasksColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "chapter_derived_tasks_chapters_derived_tasks",
+				Columns:    []*schema.Column{ChapterDerivedTasksColumns[10]},
+				RefColumns: []*schema.Column{ChaptersColumns[0]},
+				OnDelete:   schema.Cascade,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "chapterderivedtask_chapter_id_generation_id_handler_key",
+				Unique:  true,
+				Columns: []*schema.Column{ChapterDerivedTasksColumns[10], ChapterDerivedTasksColumns[1], ChapterDerivedTasksColumns[2]},
+			},
+			{
+				Name:    "chapterderivedtask_chapter_id_generation_id_status",
+				Unique:  false,
+				Columns: []*schema.Column{ChapterDerivedTasksColumns[10], ChapterDerivedTasksColumns[1], ChapterDerivedTasksColumns[3]},
+			},
+			{
+				Name:    "chapterderivedtask_lease_until",
+				Unique:  false,
+				Columns: []*schema.Column{ChapterDerivedTasksColumns[6]},
+			},
+		},
+	}
 	// CharactersColumns holds the columns for the "characters" table.
 	CharactersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -305,6 +350,7 @@ var (
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		ChaptersTable,
+		ChapterDerivedTasksTable,
 		CharactersTable,
 		CharacterStateVersionsTable,
 		MemoryEntriesTable,
@@ -318,6 +364,7 @@ var (
 
 func init() {
 	ChaptersTable.ForeignKeys[0].RefTable = NovelsTable
+	ChapterDerivedTasksTable.ForeignKeys[0].RefTable = ChaptersTable
 	CharacterStateVersionsTable.ForeignKeys[0].RefTable = ChaptersTable
 	CharacterStateVersionsTable.ForeignKeys[1].RefTable = CharactersTable
 	RelationshipsTable.ForeignKeys[0].RefTable = CharactersTable

@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
@@ -31,6 +32,7 @@ type ChapterQuery struct {
 	withCharacterStateVersions    *CharacterStateVersionQuery
 	withWorldStateVersions        *WorldStateVersionQuery
 	withRelationshipStateVersions *RelationshipStateVersionQuery
+	withDerivedTasks              *ChapterDerivedTaskQuery
 	withFKs                       bool
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -149,6 +151,28 @@ func (_q *ChapterQuery) QueryRelationshipStateVersions() *RelationshipStateVersi
 			sqlgraph.From(chapter.Table, chapter.FieldID, selector),
 			sqlgraph.To(relationshipstateversion.Table, relationshipstateversion.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, chapter.RelationshipStateVersionsTable, chapter.RelationshipStateVersionsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryDerivedTasks chains the current query on the "derived_tasks" edge.
+func (_q *ChapterQuery) QueryDerivedTasks() *ChapterDerivedTaskQuery {
+	query := (&ChapterDerivedTaskClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(chapter.Table, chapter.FieldID, selector),
+			sqlgraph.To(chapterderivedtask.Table, chapterderivedtask.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, chapter.DerivedTasksTable, chapter.DerivedTasksColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -352,6 +376,7 @@ func (_q *ChapterQuery) Clone() *ChapterQuery {
 		withCharacterStateVersions:    _q.withCharacterStateVersions.Clone(),
 		withWorldStateVersions:        _q.withWorldStateVersions.Clone(),
 		withRelationshipStateVersions: _q.withRelationshipStateVersions.Clone(),
+		withDerivedTasks:              _q.withDerivedTasks.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -399,6 +424,17 @@ func (_q *ChapterQuery) WithRelationshipStateVersions(opts ...func(*Relationship
 		opt(query)
 	}
 	_q.withRelationshipStateVersions = query
+	return _q
+}
+
+// WithDerivedTasks tells the query-builder to eager-load the nodes that are connected to
+// the "derived_tasks" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ChapterQuery) WithDerivedTasks(opts ...func(*ChapterDerivedTaskQuery)) *ChapterQuery {
+	query := (&ChapterDerivedTaskClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withDerivedTasks = query
 	return _q
 }
 
@@ -481,11 +517,12 @@ func (_q *ChapterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Chap
 		nodes       = []*Chapter{}
 		withFKs     = _q.withFKs
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			_q.withNovel != nil,
 			_q.withCharacterStateVersions != nil,
 			_q.withWorldStateVersions != nil,
 			_q.withRelationshipStateVersions != nil,
+			_q.withDerivedTasks != nil,
 		}
 	)
 	if _q.withNovel != nil {
@@ -542,6 +579,13 @@ func (_q *ChapterQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Chap
 			func(n *Chapter, e *RelationshipStateVersion) {
 				n.Edges.RelationshipStateVersions = append(n.Edges.RelationshipStateVersions, e)
 			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withDerivedTasks; query != nil {
+		if err := _q.loadDerivedTasks(ctx, query, nodes,
+			func(n *Chapter) { n.Edges.DerivedTasks = []*ChapterDerivedTask{} },
+			func(n *Chapter, e *ChapterDerivedTask) { n.Edges.DerivedTasks = append(n.Edges.DerivedTasks, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -655,6 +699,36 @@ func (_q *ChapterQuery) loadRelationshipStateVersions(ctx context.Context, query
 	}
 	query.Where(predicate.RelationshipStateVersion(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(chapter.RelationshipStateVersionsColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.ChapterID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "chapter_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *ChapterQuery) loadDerivedTasks(ctx context.Context, query *ChapterDerivedTaskQuery, nodes []*Chapter, init func(*Chapter), assign func(*Chapter, *ChapterDerivedTask)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int]*Chapter)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(chapterderivedtask.FieldChapterID)
+	}
+	query.Where(predicate.ChapterDerivedTask(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(chapter.DerivedTasksColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

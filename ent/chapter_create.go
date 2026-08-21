@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/relationshipstateversion"
@@ -208,6 +209,21 @@ func (_c *ChapterCreate) AddRelationshipStateVersions(v ...*RelationshipStateVer
 		ids[i] = v[i].ID
 	}
 	return _c.AddRelationshipStateVersionIDs(ids...)
+}
+
+// AddDerivedTaskIDs adds the "derived_tasks" edge to the ChapterDerivedTask entity by IDs.
+func (_c *ChapterCreate) AddDerivedTaskIDs(ids ...int) *ChapterCreate {
+	_c.mutation.AddDerivedTaskIDs(ids...)
+	return _c
+}
+
+// AddDerivedTasks adds the "derived_tasks" edges to the ChapterDerivedTask entity.
+func (_c *ChapterCreate) AddDerivedTasks(v ...*ChapterDerivedTask) *ChapterCreate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddDerivedTaskIDs(ids...)
 }
 
 // Mutation returns the ChapterMutation object of the builder.
@@ -446,6 +462,22 @@ func (_c *ChapterCreate) createSpec() (*Chapter, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DerivedTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

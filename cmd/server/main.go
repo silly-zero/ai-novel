@@ -10,12 +10,14 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/ai-novel/studio/internal/application/usecases"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	"github.com/ai-novel/studio/internal/domain/events"
 	"github.com/ai-novel/studio/internal/domain/memory"
+	domain "github.com/ai-novel/studio/internal/domain/novel"
 	"github.com/ai-novel/studio/internal/infrastructure/config"
 	"github.com/ai-novel/studio/internal/infrastructure/database"
 	"github.com/ai-novel/studio/internal/infrastructure/eventbus"
@@ -89,23 +91,31 @@ func run() error {
 	vStore := vectorstore.NewEntVectorStore(dbClient.Client)
 
 	ingestionUC := usecases.NewIngestionUseCase(llmAdapter, embedder, vStore)
-	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-		return ingestionUC.HandleChapterGenerated(ctx, event)
-	})
 
 	charRepo := database.NewCharacterRepository(dbClient.Client)
 	charAgent := agents.NewCharacterAgent(llmAdapter, charRepo)
 	charUC := usecases.NewCharacterUseCase(charAgent)
-	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-		return charUC.HandleChapterGenerated(ctx, event)
-	})
 
 	worldRepo := database.NewWorldRepository(dbClient.Client)
 	worldAgent := agents.NewWorldAgent(llmAdapter, worldRepo)
 	worldUC := usecases.NewWorldUseCase(worldAgent)
-	eventBus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-		return worldUC.HandleChapterGenerated(ctx, event)
-	})
+	derivedRepo := database.NewDerivedTaskRepository(dbClient.Client)
+	derivedOrchestrator := usecases.NewDerivedOrchestrator(derivedRepo, cfg.App.GenerationTimeout+time.Minute)
+	for key, handler := range map[string]usecases.DerivedHandler{
+		domain.DerivedHandlerMemory: func(ctx context.Context, event events.ChapterGeneratedEvent) error {
+			return ingestionUC.HandleChapterGenerated(ctx, event)
+		},
+		domain.DerivedHandlerCharacter: func(ctx context.Context, event events.ChapterGeneratedEvent) error {
+			return charUC.HandleChapterGenerated(ctx, event)
+		},
+		domain.DerivedHandlerWorld: func(ctx context.Context, event events.ChapterGeneratedEvent) error {
+			return worldUC.HandleChapterGenerated(ctx, event)
+		},
+	} {
+		if err := derivedOrchestrator.Register(key, handler); err != nil {
+			return fmt.Errorf("注册派生处理器 %s: %w", key, err)
+		}
+	}
 
 	architect := agents.NewArchitectAgent(llmAdapter)
 	plot := agents.NewPlotAgent(llmAdapter)
@@ -126,6 +136,8 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("初始化工作流引擎失败: %w", err)
 	}
+
+	engine.SetDerivedProcessor(derivedOrchestrator)
 
 	var localTestWG sync.WaitGroup
 	if os.Getenv("AI_NOVEL_RUN_LOCAL_TEST") == "1" {

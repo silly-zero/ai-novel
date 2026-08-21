@@ -1146,6 +1146,15 @@ func (s *entGenerationChapterStore) Save(
 	if err != nil {
 		return err
 	}
+	if err := databaseinfra.InitializeDerivedTasks(
+		ctx,
+		txClient,
+		target.ID,
+		state.GenerationID,
+		domain.DerivedTaskPending,
+	); err != nil {
+		return err
+	}
 	if err := invalidateChapterDerivedData(ctx, txClient, target.NovelID, []int{target.ID}); err != nil {
 		return err
 	}
@@ -1157,6 +1166,60 @@ func (s *entGenerationChapterStore) Save(
 	}
 	committed = true
 	return nil
+}
+
+func (s *Server) finalizeDerivedAfterPublish(
+	ctx context.Context,
+	chapterID int,
+	generationID string,
+	publishErr error,
+) error {
+	if s.db == nil {
+		return publishErr
+	}
+	row, err := s.db.Chapter.Get(ctx, chapterID)
+	if err != nil {
+		return errors.Join(publishErr, err)
+	}
+	if row.DerivedGenerationID != generationID {
+		return errors.Join(publishErr, errGenerationChapterChanged)
+	}
+	if s.derivedTasks != nil {
+		tasks, taskErr := s.derivedTasks.List(ctx, chapterID, generationID)
+		if taskErr != nil {
+			return errors.Join(publishErr, taskErr)
+		}
+		if len(tasks) > 0 {
+			if _, reconcileErr := s.derivedTasks.Reconcile(ctx, chapterID, generationID); reconcileErr != nil {
+				return errors.Join(publishErr, reconcileErr)
+			}
+			row, err = s.db.Chapter.Get(ctx, chapterID)
+			if err != nil {
+				return errors.Join(publishErr, err)
+			}
+			if row.DerivedGenerationID != generationID {
+				return errors.Join(publishErr, errGenerationChapterChanged)
+			}
+			if publishErr != nil {
+				return publishErr
+			}
+			if row.DerivedStatus != string(domain.DerivedStatusReady) {
+				return fmt.Errorf("derived tasks incomplete: %s", row.DerivedStatus)
+			}
+			return nil
+		}
+	}
+	if row.DerivedStatus != string(domain.DerivedStatusPending) {
+		if row.DerivedStatus == string(domain.DerivedStatusReady) && publishErr == nil {
+			return nil
+		}
+		return publishErr
+	}
+	status := domain.DerivedStatusReady
+	if publishErr != nil {
+		status = domain.DerivedStatusFailed
+	}
+	return errors.Join(publishErr, setChapterDerivedStatus(ctx, s.db, chapterID, generationID, status))
 }
 
 func (s *Server) setChapterDerivedStatus(
@@ -1448,6 +1511,7 @@ func (c *modelCapacity) closeAndWait(ctx context.Context) error {
 type Server struct {
 	engine          generationEngine
 	db              *ent.Client
+	derivedTasks    domain.DerivedTaskRepository
 	chapterStore    generationChapterStore
 	router          *chi.Mux
 	generationGuard *generationGuard
@@ -1486,6 +1550,7 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	s := &Server{
 		engine:          engine,
 		db:              db,
+		derivedTasks:    nil,
 		router:          chi.NewRouter(),
 		generationGuard: newGenerationGuard(),
 		config:          cfg,
@@ -1496,6 +1561,7 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	}
 	if db != nil {
 		s.chapterStore = &entGenerationChapterStore{client: db}
+		s.derivedTasks = databaseinfra.NewDerivedTaskRepository(db)
 	}
 
 	s.router.Use(middleware.Logger)
@@ -1554,6 +1620,26 @@ type ChapterItem struct {
 	DerivedStatus string    `json:"derived_status"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+type DerivedTaskItem struct {
+	HandlerKey string `json:"handler_key"`
+	Status     string `json:"status"`
+	Attempts   int    `json:"attempts"`
+	LastError  string `json:"last_error,omitempty"`
+}
+
+func derivedTaskItems(tasks []domain.DerivedTask) []DerivedTaskItem {
+	items := make([]DerivedTaskItem, len(tasks))
+	for index, task := range tasks {
+		items[index] = DerivedTaskItem{
+			HandlerKey: task.HandlerKey,
+			Status:     string(task.Status),
+			Attempts:   task.Attempts,
+			LastError:  task.LastError,
+		}
+	}
+	return items
 }
 
 type CreateNovelRequest struct {
@@ -2131,6 +2217,19 @@ func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	generationID := row.DerivedGenerationID
+	if s.derivedTasks != nil {
+		tasks, listErr := s.derivedTasks.List(r.Context(), row.ID, generationID)
+		if listErr != nil {
+			http.Error(w, listErr.Error(), http.StatusInternalServerError)
+			return
+		}
+		if len(tasks) != len(domain.DerivedHandlerKeys) {
+			if err := s.derivedTasks.Initialize(r.Context(), row.ID, generationID, domain.DerivedTaskPending); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+	}
 	updated, err := s.db.Chapter.UpdateOneID(row.ID).Where(
 		chapter.DerivedStatusIn(string(domain.DerivedStatusFailed), string(domain.DerivedStatusPending)),
 		chapter.DerivedGenerationIDEQ(generationID),
@@ -2149,21 +2248,48 @@ func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Reques
 	retryCtx, retryCancel := context.WithTimeout(s.lifecycleCtx, s.config.GenerationTimeout)
 	defer retryCancel()
 	publishErr := s.engine.PublishChapterGenerated(retryCtx, state)
-	status := domain.DerivedStatusReady
-	if publishErr != nil {
-		status = domain.DerivedStatusFailed
-	}
 	statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
-	statusErr := setChapterDerivedStatus(statusCtx, s.db, updated.ID, generationID, status)
-	statusCancel()
-	if publishErr != nil || statusErr != nil {
-		http.Error(w, fmt.Sprintf("retry chapter derived data: %v", errors.Join(publishErr, statusErr)), http.StatusInternalServerError)
+	defer statusCancel()
+	updated, err = s.db.Chapter.Get(statusCtx, updated.ID)
+	if err != nil {
+		http.Error(w, errors.Join(publishErr, err).Error(), http.StatusInternalServerError)
+		return
+	}
+	var tasks []domain.DerivedTask
+	if s.derivedTasks != nil {
+		if _, err = s.derivedTasks.Reconcile(statusCtx, updated.ID, generationID); err != nil {
+			http.Error(w, errors.Join(publishErr, err).Error(), http.StatusInternalServerError)
+			return
+		}
+		tasks, err = s.derivedTasks.List(statusCtx, updated.ID, generationID)
+		if err != nil {
+			http.Error(w, errors.Join(publishErr, err).Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	if len(tasks) == 0 && updated.DerivedStatus == string(domain.DerivedStatusPending) {
+		status := domain.DerivedStatusReady
+		if publishErr != nil {
+			status = domain.DerivedStatusFailed
+		}
+		if statusErr := setChapterDerivedStatus(statusCtx, s.db, updated.ID, generationID, status); statusErr != nil {
+			publishErr = errors.Join(publishErr, statusErr)
+		}
+		updated, _ = s.db.Chapter.Get(statusCtx, updated.ID)
+	}
+	if publishErr != nil || updated.DerivedStatus != string(domain.DerivedStatusReady) {
+		message := fmt.Sprintf("retry chapter derived data: %v", publishErr)
+		if publishErr == nil {
+			message = fmt.Sprintf("retry chapter derived data incomplete: %s", updated.DerivedStatus)
+		}
+		http.Error(w, message, http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"chapter_id":     strconv.Itoa(updated.ID),
-		"derived_status": string(domain.DerivedStatusReady),
+		"derived_status": updated.DerivedStatus,
+		"derived_tasks":  derivedTaskItems(tasks),
 	})
 }
 
@@ -2684,7 +2810,11 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		if runErr == nil && persist && finalState != nil {
 			finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
 			finalState.NovelID = novelID
+			finalState.GenerationID = generationID
 			finalState, runErr = s.engine.ExtractContinuity(ctx, finalState)
+			if finalState != nil {
+				finalState.GenerationID = generationID
+			}
 		}
 		cause := s.generationGuard.finish(novelIDInt, generationID)
 		result := classifyGenerationResult(
@@ -2715,26 +2845,19 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				publishErr := s.engine.PublishChapterGenerated(postprocessCtx, finalState)
-				derivedStatus := domain.DerivedStatusReady
-				if publishErr != nil {
-					derivedStatus = domain.DerivedStatusFailed
-				}
 				statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
-				statusErr := s.setChapterDerivedStatus(
+				derivedErr := s.finalizeDerivedAfterPublish(
 					statusCtx,
 					chapterTarget.ID,
 					generationID,
-					derivedStatus,
+					publishErr,
 				)
 				statusCancel()
-				if publishErr != nil || statusErr != nil {
+				if derivedErr != nil {
 					result = generationResult{
 						GenerationID: generationID,
 						Status:       generationStatusError,
-						Message: fmt.Sprintf(
-							"update chapter derived data: %v",
-							errors.Join(publishErr, statusErr),
-						),
+						Message:      fmt.Sprintf("update chapter derived data: %v", derivedErr),
 					}
 				}
 			}

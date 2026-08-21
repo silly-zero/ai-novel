@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
@@ -33,6 +34,7 @@ const (
 
 	// Node types.
 	TypeChapter                  = "Chapter"
+	TypeChapterDerivedTask       = "ChapterDerivedTask"
 	TypeCharacter                = "Character"
 	TypeCharacterStateVersion    = "CharacterStateVersion"
 	TypeMemoryEntry              = "MemoryEntry"
@@ -76,6 +78,9 @@ type ChapterMutation struct {
 	relationship_state_versions        map[int]struct{}
 	removedrelationship_state_versions map[int]struct{}
 	clearedrelationship_state_versions bool
+	derived_tasks                      map[int]struct{}
+	removedderived_tasks               map[int]struct{}
+	clearedderived_tasks               bool
 	done                               bool
 	oldValue                           func(context.Context) (*Chapter, error)
 	predicates                         []predicate.Chapter
@@ -881,6 +886,60 @@ func (m *ChapterMutation) ResetRelationshipStateVersions() {
 	m.removedrelationship_state_versions = nil
 }
 
+// AddDerivedTaskIDs adds the "derived_tasks" edge to the ChapterDerivedTask entity by ids.
+func (m *ChapterMutation) AddDerivedTaskIDs(ids ...int) {
+	if m.derived_tasks == nil {
+		m.derived_tasks = make(map[int]struct{})
+	}
+	for i := range ids {
+		m.derived_tasks[ids[i]] = struct{}{}
+	}
+}
+
+// ClearDerivedTasks clears the "derived_tasks" edge to the ChapterDerivedTask entity.
+func (m *ChapterMutation) ClearDerivedTasks() {
+	m.clearedderived_tasks = true
+}
+
+// DerivedTasksCleared reports if the "derived_tasks" edge to the ChapterDerivedTask entity was cleared.
+func (m *ChapterMutation) DerivedTasksCleared() bool {
+	return m.clearedderived_tasks
+}
+
+// RemoveDerivedTaskIDs removes the "derived_tasks" edge to the ChapterDerivedTask entity by IDs.
+func (m *ChapterMutation) RemoveDerivedTaskIDs(ids ...int) {
+	if m.removedderived_tasks == nil {
+		m.removedderived_tasks = make(map[int]struct{})
+	}
+	for i := range ids {
+		delete(m.derived_tasks, ids[i])
+		m.removedderived_tasks[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedDerivedTasks returns the removed IDs of the "derived_tasks" edge to the ChapterDerivedTask entity.
+func (m *ChapterMutation) RemovedDerivedTasksIDs() (ids []int) {
+	for id := range m.removedderived_tasks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// DerivedTasksIDs returns the "derived_tasks" edge IDs in the mutation.
+func (m *ChapterMutation) DerivedTasksIDs() (ids []int) {
+	for id := range m.derived_tasks {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetDerivedTasks resets all changes to the "derived_tasks" edge.
+func (m *ChapterMutation) ResetDerivedTasks() {
+	m.derived_tasks = nil
+	m.clearedderived_tasks = false
+	m.removedderived_tasks = nil
+}
+
 // Where appends a list predicates to the ChapterMutation builder.
 func (m *ChapterMutation) Where(ps ...predicate.Chapter) {
 	m.predicates = append(m.predicates, ps...)
@@ -1237,7 +1296,7 @@ func (m *ChapterMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ChapterMutation) AddedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.novel != nil {
 		edges = append(edges, chapter.EdgeNovel)
 	}
@@ -1249,6 +1308,9 @@ func (m *ChapterMutation) AddedEdges() []string {
 	}
 	if m.relationship_state_versions != nil {
 		edges = append(edges, chapter.EdgeRelationshipStateVersions)
+	}
+	if m.derived_tasks != nil {
+		edges = append(edges, chapter.EdgeDerivedTasks)
 	}
 	return edges
 }
@@ -1279,13 +1341,19 @@ func (m *ChapterMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case chapter.EdgeDerivedTasks:
+		ids := make([]ent.Value, 0, len(m.derived_tasks))
+		for id := range m.derived_tasks {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ChapterMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.removedcharacter_state_versions != nil {
 		edges = append(edges, chapter.EdgeCharacterStateVersions)
 	}
@@ -1294,6 +1362,9 @@ func (m *ChapterMutation) RemovedEdges() []string {
 	}
 	if m.removedrelationship_state_versions != nil {
 		edges = append(edges, chapter.EdgeRelationshipStateVersions)
+	}
+	if m.removedderived_tasks != nil {
+		edges = append(edges, chapter.EdgeDerivedTasks)
 	}
 	return edges
 }
@@ -1320,13 +1391,19 @@ func (m *ChapterMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case chapter.EdgeDerivedTasks:
+		ids := make([]ent.Value, 0, len(m.removedderived_tasks))
+		for id := range m.removedderived_tasks {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ChapterMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 4)
+	edges := make([]string, 0, 5)
 	if m.clearednovel {
 		edges = append(edges, chapter.EdgeNovel)
 	}
@@ -1338,6 +1415,9 @@ func (m *ChapterMutation) ClearedEdges() []string {
 	}
 	if m.clearedrelationship_state_versions {
 		edges = append(edges, chapter.EdgeRelationshipStateVersions)
+	}
+	if m.clearedderived_tasks {
+		edges = append(edges, chapter.EdgeDerivedTasks)
 	}
 	return edges
 }
@@ -1354,6 +1434,8 @@ func (m *ChapterMutation) EdgeCleared(name string) bool {
 		return m.clearedworld_state_versions
 	case chapter.EdgeRelationshipStateVersions:
 		return m.clearedrelationship_state_versions
+	case chapter.EdgeDerivedTasks:
+		return m.clearedderived_tasks
 	}
 	return false
 }
@@ -1385,8 +1467,935 @@ func (m *ChapterMutation) ResetEdge(name string) error {
 	case chapter.EdgeRelationshipStateVersions:
 		m.ResetRelationshipStateVersions()
 		return nil
+	case chapter.EdgeDerivedTasks:
+		m.ResetDerivedTasks()
+		return nil
 	}
 	return fmt.Errorf("unknown Chapter edge %s", name)
+}
+
+// ChapterDerivedTaskMutation represents an operation that mutates the ChapterDerivedTask nodes in the graph.
+type ChapterDerivedTaskMutation struct {
+	config
+	op             Op
+	typ            string
+	id             *int
+	generation_id  *string
+	handler_key    *chapterderivedtask.HandlerKey
+	status         *chapterderivedtask.Status
+	attempts       *int
+	addattempts    *int
+	lease_token    *string
+	lease_until    *time.Time
+	last_error     *string
+	created_at     *time.Time
+	updated_at     *time.Time
+	clearedFields  map[string]struct{}
+	chapter        *int
+	clearedchapter bool
+	done           bool
+	oldValue       func(context.Context) (*ChapterDerivedTask, error)
+	predicates     []predicate.ChapterDerivedTask
+}
+
+var _ ent.Mutation = (*ChapterDerivedTaskMutation)(nil)
+
+// chapterderivedtaskOption allows management of the mutation configuration using functional options.
+type chapterderivedtaskOption func(*ChapterDerivedTaskMutation)
+
+// newChapterDerivedTaskMutation creates new mutation for the ChapterDerivedTask entity.
+func newChapterDerivedTaskMutation(c config, op Op, opts ...chapterderivedtaskOption) *ChapterDerivedTaskMutation {
+	m := &ChapterDerivedTaskMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeChapterDerivedTask,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withChapterDerivedTaskID sets the ID field of the mutation.
+func withChapterDerivedTaskID(id int) chapterderivedtaskOption {
+	return func(m *ChapterDerivedTaskMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ChapterDerivedTask
+		)
+		m.oldValue = func(ctx context.Context) (*ChapterDerivedTask, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ChapterDerivedTask.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withChapterDerivedTask sets the old ChapterDerivedTask of the mutation.
+func withChapterDerivedTask(node *ChapterDerivedTask) chapterderivedtaskOption {
+	return func(m *ChapterDerivedTaskMutation) {
+		m.oldValue = func(context.Context) (*ChapterDerivedTask, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ChapterDerivedTaskMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ChapterDerivedTaskMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ChapterDerivedTaskMutation) ID() (id int, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ChapterDerivedTaskMutation) IDs(ctx context.Context) ([]int, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ChapterDerivedTask.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetChapterID sets the "chapter_id" field.
+func (m *ChapterDerivedTaskMutation) SetChapterID(i int) {
+	m.chapter = &i
+}
+
+// ChapterID returns the value of the "chapter_id" field in the mutation.
+func (m *ChapterDerivedTaskMutation) ChapterID() (r int, exists bool) {
+	v := m.chapter
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldChapterID returns the old "chapter_id" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldChapterID(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldChapterID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldChapterID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldChapterID: %w", err)
+	}
+	return oldValue.ChapterID, nil
+}
+
+// ResetChapterID resets all changes to the "chapter_id" field.
+func (m *ChapterDerivedTaskMutation) ResetChapterID() {
+	m.chapter = nil
+}
+
+// SetGenerationID sets the "generation_id" field.
+func (m *ChapterDerivedTaskMutation) SetGenerationID(s string) {
+	m.generation_id = &s
+}
+
+// GenerationID returns the value of the "generation_id" field in the mutation.
+func (m *ChapterDerivedTaskMutation) GenerationID() (r string, exists bool) {
+	v := m.generation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGenerationID returns the old "generation_id" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldGenerationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGenerationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGenerationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGenerationID: %w", err)
+	}
+	return oldValue.GenerationID, nil
+}
+
+// ResetGenerationID resets all changes to the "generation_id" field.
+func (m *ChapterDerivedTaskMutation) ResetGenerationID() {
+	m.generation_id = nil
+}
+
+// SetHandlerKey sets the "handler_key" field.
+func (m *ChapterDerivedTaskMutation) SetHandlerKey(ck chapterderivedtask.HandlerKey) {
+	m.handler_key = &ck
+}
+
+// HandlerKey returns the value of the "handler_key" field in the mutation.
+func (m *ChapterDerivedTaskMutation) HandlerKey() (r chapterderivedtask.HandlerKey, exists bool) {
+	v := m.handler_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldHandlerKey returns the old "handler_key" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldHandlerKey(ctx context.Context) (v chapterderivedtask.HandlerKey, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldHandlerKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldHandlerKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldHandlerKey: %w", err)
+	}
+	return oldValue.HandlerKey, nil
+}
+
+// ResetHandlerKey resets all changes to the "handler_key" field.
+func (m *ChapterDerivedTaskMutation) ResetHandlerKey() {
+	m.handler_key = nil
+}
+
+// SetStatus sets the "status" field.
+func (m *ChapterDerivedTaskMutation) SetStatus(c chapterderivedtask.Status) {
+	m.status = &c
+}
+
+// Status returns the value of the "status" field in the mutation.
+func (m *ChapterDerivedTaskMutation) Status() (r chapterderivedtask.Status, exists bool) {
+	v := m.status
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldStatus returns the old "status" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldStatus(ctx context.Context) (v chapterderivedtask.Status, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldStatus is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldStatus requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldStatus: %w", err)
+	}
+	return oldValue.Status, nil
+}
+
+// ResetStatus resets all changes to the "status" field.
+func (m *ChapterDerivedTaskMutation) ResetStatus() {
+	m.status = nil
+}
+
+// SetAttempts sets the "attempts" field.
+func (m *ChapterDerivedTaskMutation) SetAttempts(i int) {
+	m.attempts = &i
+	m.addattempts = nil
+}
+
+// Attempts returns the value of the "attempts" field in the mutation.
+func (m *ChapterDerivedTaskMutation) Attempts() (r int, exists bool) {
+	v := m.attempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAttempts returns the old "attempts" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldAttempts(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAttempts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAttempts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAttempts: %w", err)
+	}
+	return oldValue.Attempts, nil
+}
+
+// AddAttempts adds i to the "attempts" field.
+func (m *ChapterDerivedTaskMutation) AddAttempts(i int) {
+	if m.addattempts != nil {
+		*m.addattempts += i
+	} else {
+		m.addattempts = &i
+	}
+}
+
+// AddedAttempts returns the value that was added to the "attempts" field in this mutation.
+func (m *ChapterDerivedTaskMutation) AddedAttempts() (r int, exists bool) {
+	v := m.addattempts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetAttempts resets all changes to the "attempts" field.
+func (m *ChapterDerivedTaskMutation) ResetAttempts() {
+	m.attempts = nil
+	m.addattempts = nil
+}
+
+// SetLeaseToken sets the "lease_token" field.
+func (m *ChapterDerivedTaskMutation) SetLeaseToken(s string) {
+	m.lease_token = &s
+}
+
+// LeaseToken returns the value of the "lease_token" field in the mutation.
+func (m *ChapterDerivedTaskMutation) LeaseToken() (r string, exists bool) {
+	v := m.lease_token
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseToken returns the old "lease_token" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldLeaseToken(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseToken is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseToken requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseToken: %w", err)
+	}
+	return oldValue.LeaseToken, nil
+}
+
+// ResetLeaseToken resets all changes to the "lease_token" field.
+func (m *ChapterDerivedTaskMutation) ResetLeaseToken() {
+	m.lease_token = nil
+}
+
+// SetLeaseUntil sets the "lease_until" field.
+func (m *ChapterDerivedTaskMutation) SetLeaseUntil(t time.Time) {
+	m.lease_until = &t
+}
+
+// LeaseUntil returns the value of the "lease_until" field in the mutation.
+func (m *ChapterDerivedTaskMutation) LeaseUntil() (r time.Time, exists bool) {
+	v := m.lease_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLeaseUntil returns the old "lease_until" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldLeaseUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLeaseUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLeaseUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLeaseUntil: %w", err)
+	}
+	return oldValue.LeaseUntil, nil
+}
+
+// ClearLeaseUntil clears the value of the "lease_until" field.
+func (m *ChapterDerivedTaskMutation) ClearLeaseUntil() {
+	m.lease_until = nil
+	m.clearedFields[chapterderivedtask.FieldLeaseUntil] = struct{}{}
+}
+
+// LeaseUntilCleared returns if the "lease_until" field was cleared in this mutation.
+func (m *ChapterDerivedTaskMutation) LeaseUntilCleared() bool {
+	_, ok := m.clearedFields[chapterderivedtask.FieldLeaseUntil]
+	return ok
+}
+
+// ResetLeaseUntil resets all changes to the "lease_until" field.
+func (m *ChapterDerivedTaskMutation) ResetLeaseUntil() {
+	m.lease_until = nil
+	delete(m.clearedFields, chapterderivedtask.FieldLeaseUntil)
+}
+
+// SetLastError sets the "last_error" field.
+func (m *ChapterDerivedTaskMutation) SetLastError(s string) {
+	m.last_error = &s
+}
+
+// LastError returns the value of the "last_error" field in the mutation.
+func (m *ChapterDerivedTaskMutation) LastError() (r string, exists bool) {
+	v := m.last_error
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastError returns the old "last_error" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldLastError(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastError is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastError requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastError: %w", err)
+	}
+	return oldValue.LastError, nil
+}
+
+// ResetLastError resets all changes to the "last_error" field.
+func (m *ChapterDerivedTaskMutation) ResetLastError() {
+	m.last_error = nil
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ChapterDerivedTaskMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ChapterDerivedTaskMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ChapterDerivedTaskMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ChapterDerivedTaskMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ChapterDerivedTaskMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ChapterDerivedTask entity.
+// If the ChapterDerivedTask object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChapterDerivedTaskMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ChapterDerivedTaskMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// ClearChapter clears the "chapter" edge to the Chapter entity.
+func (m *ChapterDerivedTaskMutation) ClearChapter() {
+	m.clearedchapter = true
+	m.clearedFields[chapterderivedtask.FieldChapterID] = struct{}{}
+}
+
+// ChapterCleared reports if the "chapter" edge to the Chapter entity was cleared.
+func (m *ChapterDerivedTaskMutation) ChapterCleared() bool {
+	return m.clearedchapter
+}
+
+// ChapterIDs returns the "chapter" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// ChapterID instead. It exists only for internal usage by the builders.
+func (m *ChapterDerivedTaskMutation) ChapterIDs() (ids []int) {
+	if id := m.chapter; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetChapter resets all changes to the "chapter" edge.
+func (m *ChapterDerivedTaskMutation) ResetChapter() {
+	m.chapter = nil
+	m.clearedchapter = false
+}
+
+// Where appends a list predicates to the ChapterDerivedTaskMutation builder.
+func (m *ChapterDerivedTaskMutation) Where(ps ...predicate.ChapterDerivedTask) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ChapterDerivedTaskMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ChapterDerivedTaskMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ChapterDerivedTask, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ChapterDerivedTaskMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ChapterDerivedTaskMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ChapterDerivedTask).
+func (m *ChapterDerivedTaskMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ChapterDerivedTaskMutation) Fields() []string {
+	fields := make([]string, 0, 10)
+	if m.chapter != nil {
+		fields = append(fields, chapterderivedtask.FieldChapterID)
+	}
+	if m.generation_id != nil {
+		fields = append(fields, chapterderivedtask.FieldGenerationID)
+	}
+	if m.handler_key != nil {
+		fields = append(fields, chapterderivedtask.FieldHandlerKey)
+	}
+	if m.status != nil {
+		fields = append(fields, chapterderivedtask.FieldStatus)
+	}
+	if m.attempts != nil {
+		fields = append(fields, chapterderivedtask.FieldAttempts)
+	}
+	if m.lease_token != nil {
+		fields = append(fields, chapterderivedtask.FieldLeaseToken)
+	}
+	if m.lease_until != nil {
+		fields = append(fields, chapterderivedtask.FieldLeaseUntil)
+	}
+	if m.last_error != nil {
+		fields = append(fields, chapterderivedtask.FieldLastError)
+	}
+	if m.created_at != nil {
+		fields = append(fields, chapterderivedtask.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, chapterderivedtask.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ChapterDerivedTaskMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case chapterderivedtask.FieldChapterID:
+		return m.ChapterID()
+	case chapterderivedtask.FieldGenerationID:
+		return m.GenerationID()
+	case chapterderivedtask.FieldHandlerKey:
+		return m.HandlerKey()
+	case chapterderivedtask.FieldStatus:
+		return m.Status()
+	case chapterderivedtask.FieldAttempts:
+		return m.Attempts()
+	case chapterderivedtask.FieldLeaseToken:
+		return m.LeaseToken()
+	case chapterderivedtask.FieldLeaseUntil:
+		return m.LeaseUntil()
+	case chapterderivedtask.FieldLastError:
+		return m.LastError()
+	case chapterderivedtask.FieldCreatedAt:
+		return m.CreatedAt()
+	case chapterderivedtask.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ChapterDerivedTaskMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case chapterderivedtask.FieldChapterID:
+		return m.OldChapterID(ctx)
+	case chapterderivedtask.FieldGenerationID:
+		return m.OldGenerationID(ctx)
+	case chapterderivedtask.FieldHandlerKey:
+		return m.OldHandlerKey(ctx)
+	case chapterderivedtask.FieldStatus:
+		return m.OldStatus(ctx)
+	case chapterderivedtask.FieldAttempts:
+		return m.OldAttempts(ctx)
+	case chapterderivedtask.FieldLeaseToken:
+		return m.OldLeaseToken(ctx)
+	case chapterderivedtask.FieldLeaseUntil:
+		return m.OldLeaseUntil(ctx)
+	case chapterderivedtask.FieldLastError:
+		return m.OldLastError(ctx)
+	case chapterderivedtask.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case chapterderivedtask.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ChapterDerivedTask field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ChapterDerivedTaskMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case chapterderivedtask.FieldChapterID:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetChapterID(v)
+		return nil
+	case chapterderivedtask.FieldGenerationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGenerationID(v)
+		return nil
+	case chapterderivedtask.FieldHandlerKey:
+		v, ok := value.(chapterderivedtask.HandlerKey)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetHandlerKey(v)
+		return nil
+	case chapterderivedtask.FieldStatus:
+		v, ok := value.(chapterderivedtask.Status)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetStatus(v)
+		return nil
+	case chapterderivedtask.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAttempts(v)
+		return nil
+	case chapterderivedtask.FieldLeaseToken:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseToken(v)
+		return nil
+	case chapterderivedtask.FieldLeaseUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLeaseUntil(v)
+		return nil
+	case chapterderivedtask.FieldLastError:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastError(v)
+		return nil
+	case chapterderivedtask.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case chapterderivedtask.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ChapterDerivedTask field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ChapterDerivedTaskMutation) AddedFields() []string {
+	var fields []string
+	if m.addattempts != nil {
+		fields = append(fields, chapterderivedtask.FieldAttempts)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ChapterDerivedTaskMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case chapterderivedtask.FieldAttempts:
+		return m.AddedAttempts()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ChapterDerivedTaskMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case chapterderivedtask.FieldAttempts:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddAttempts(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ChapterDerivedTask numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ChapterDerivedTaskMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(chapterderivedtask.FieldLeaseUntil) {
+		fields = append(fields, chapterderivedtask.FieldLeaseUntil)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ChapterDerivedTaskMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ChapterDerivedTaskMutation) ClearField(name string) error {
+	switch name {
+	case chapterderivedtask.FieldLeaseUntil:
+		m.ClearLeaseUntil()
+		return nil
+	}
+	return fmt.Errorf("unknown ChapterDerivedTask nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ChapterDerivedTaskMutation) ResetField(name string) error {
+	switch name {
+	case chapterderivedtask.FieldChapterID:
+		m.ResetChapterID()
+		return nil
+	case chapterderivedtask.FieldGenerationID:
+		m.ResetGenerationID()
+		return nil
+	case chapterderivedtask.FieldHandlerKey:
+		m.ResetHandlerKey()
+		return nil
+	case chapterderivedtask.FieldStatus:
+		m.ResetStatus()
+		return nil
+	case chapterderivedtask.FieldAttempts:
+		m.ResetAttempts()
+		return nil
+	case chapterderivedtask.FieldLeaseToken:
+		m.ResetLeaseToken()
+		return nil
+	case chapterderivedtask.FieldLeaseUntil:
+		m.ResetLeaseUntil()
+		return nil
+	case chapterderivedtask.FieldLastError:
+		m.ResetLastError()
+		return nil
+	case chapterderivedtask.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case chapterderivedtask.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ChapterDerivedTask field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ChapterDerivedTaskMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.chapter != nil {
+		edges = append(edges, chapterderivedtask.EdgeChapter)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ChapterDerivedTaskMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case chapterderivedtask.EdgeChapter:
+		if id := m.chapter; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ChapterDerivedTaskMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ChapterDerivedTaskMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ChapterDerivedTaskMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedchapter {
+		edges = append(edges, chapterderivedtask.EdgeChapter)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ChapterDerivedTaskMutation) EdgeCleared(name string) bool {
+	switch name {
+	case chapterderivedtask.EdgeChapter:
+		return m.clearedchapter
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ChapterDerivedTaskMutation) ClearEdge(name string) error {
+	switch name {
+	case chapterderivedtask.EdgeChapter:
+		m.ClearChapter()
+		return nil
+	}
+	return fmt.Errorf("unknown ChapterDerivedTask unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ChapterDerivedTaskMutation) ResetEdge(name string) error {
+	switch name {
+	case chapterderivedtask.EdgeChapter:
+		m.ResetChapter()
+		return nil
+	}
+	return fmt.Errorf("unknown ChapterDerivedTask edge %s", name)
 }
 
 // CharacterMutation represents an operation that mutates the Character nodes in the graph.

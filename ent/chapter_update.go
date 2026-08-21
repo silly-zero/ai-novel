@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
@@ -267,6 +268,21 @@ func (_u *ChapterUpdate) AddRelationshipStateVersions(v ...*RelationshipStateVer
 	return _u.AddRelationshipStateVersionIDs(ids...)
 }
 
+// AddDerivedTaskIDs adds the "derived_tasks" edge to the ChapterDerivedTask entity by IDs.
+func (_u *ChapterUpdate) AddDerivedTaskIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.AddDerivedTaskIDs(ids...)
+	return _u
+}
+
+// AddDerivedTasks adds the "derived_tasks" edges to the ChapterDerivedTask entity.
+func (_u *ChapterUpdate) AddDerivedTasks(v ...*ChapterDerivedTask) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDerivedTaskIDs(ids...)
+}
+
 // Mutation returns the ChapterMutation object of the builder.
 func (_u *ChapterUpdate) Mutation() *ChapterMutation {
 	return _u.mutation
@@ -339,6 +355,27 @@ func (_u *ChapterUpdate) RemoveRelationshipStateVersions(v ...*RelationshipState
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveRelationshipStateVersionIDs(ids...)
+}
+
+// ClearDerivedTasks clears all "derived_tasks" edges to the ChapterDerivedTask entity.
+func (_u *ChapterUpdate) ClearDerivedTasks() *ChapterUpdate {
+	_u.mutation.ClearDerivedTasks()
+	return _u
+}
+
+// RemoveDerivedTaskIDs removes the "derived_tasks" edge to ChapterDerivedTask entities by IDs.
+func (_u *ChapterUpdate) RemoveDerivedTaskIDs(ids ...int) *ChapterUpdate {
+	_u.mutation.RemoveDerivedTaskIDs(ids...)
+	return _u
+}
+
+// RemoveDerivedTasks removes "derived_tasks" edges to ChapterDerivedTask entities.
+func (_u *ChapterUpdate) RemoveDerivedTasks(v ...*ChapterDerivedTask) *ChapterUpdate {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDerivedTaskIDs(ids...)
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -611,6 +648,51 @@ func (_u *ChapterUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.DerivedTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDerivedTasksIDs(); len(nodes) > 0 && !_u.mutation.DerivedTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DerivedTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _node, err = sqlgraph.UpdateNodes(ctx, _u.driver, _spec); err != nil {
 		if _, ok := err.(*sqlgraph.NotFoundError); ok {
 			err = &NotFoundError{chapter.Label}
@@ -865,6 +947,21 @@ func (_u *ChapterUpdateOne) AddRelationshipStateVersions(v ...*RelationshipState
 	return _u.AddRelationshipStateVersionIDs(ids...)
 }
 
+// AddDerivedTaskIDs adds the "derived_tasks" edge to the ChapterDerivedTask entity by IDs.
+func (_u *ChapterUpdateOne) AddDerivedTaskIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.AddDerivedTaskIDs(ids...)
+	return _u
+}
+
+// AddDerivedTasks adds the "derived_tasks" edges to the ChapterDerivedTask entity.
+func (_u *ChapterUpdateOne) AddDerivedTasks(v ...*ChapterDerivedTask) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddDerivedTaskIDs(ids...)
+}
+
 // Mutation returns the ChapterMutation object of the builder.
 func (_u *ChapterUpdateOne) Mutation() *ChapterMutation {
 	return _u.mutation
@@ -937,6 +1034,27 @@ func (_u *ChapterUpdateOne) RemoveRelationshipStateVersions(v ...*RelationshipSt
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveRelationshipStateVersionIDs(ids...)
+}
+
+// ClearDerivedTasks clears all "derived_tasks" edges to the ChapterDerivedTask entity.
+func (_u *ChapterUpdateOne) ClearDerivedTasks() *ChapterUpdateOne {
+	_u.mutation.ClearDerivedTasks()
+	return _u
+}
+
+// RemoveDerivedTaskIDs removes the "derived_tasks" edge to ChapterDerivedTask entities by IDs.
+func (_u *ChapterUpdateOne) RemoveDerivedTaskIDs(ids ...int) *ChapterUpdateOne {
+	_u.mutation.RemoveDerivedTaskIDs(ids...)
+	return _u
+}
+
+// RemoveDerivedTasks removes "derived_tasks" edges to ChapterDerivedTask entities.
+func (_u *ChapterUpdateOne) RemoveDerivedTasks(v ...*ChapterDerivedTask) *ChapterUpdateOne {
+	ids := make([]int, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveDerivedTaskIDs(ids...)
 }
 
 // Where appends a list predicates to the ChapterUpdate builder.
@@ -1232,6 +1350,51 @@ func (_u *ChapterUpdateOne) sqlSave(ctx context.Context) (_node *Chapter, err er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(relationshipstateversion.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.DerivedTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedDerivedTasksIDs(); len(nodes) > 0 && !_u.mutation.DerivedTasksCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.DerivedTasksIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   chapter.DerivedTasksTable,
+			Columns: []string{chapter.DerivedTasksColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(chapterderivedtask.FieldID, field.TypeInt),
 			},
 		}
 		for _, k := range nodes {

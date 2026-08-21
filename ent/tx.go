@@ -14,6 +14,8 @@ type Tx struct {
 	config
 	// Chapter is the client for interacting with the Chapter builders.
 	Chapter *ChapterClient
+	// ChapterDerivedTask is the client for interacting with the ChapterDerivedTask builders.
+	ChapterDerivedTask *ChapterDerivedTaskClient
 	// Character is the client for interacting with the Character builders.
 	Character *CharacterClient
 	// CharacterStateVersion is the client for interacting with the CharacterStateVersion builders.
@@ -162,6 +164,7 @@ func (tx *Tx) Client() *Client {
 
 func (tx *Tx) init() {
 	tx.Chapter = NewChapterClient(tx.config)
+	tx.ChapterDerivedTask = NewChapterDerivedTaskClient(tx.config)
 	tx.Character = NewCharacterClient(tx.config)
 	tx.CharacterStateVersion = NewCharacterStateVersionClient(tx.config)
 	tx.MemoryEntry = NewMemoryEntryClient(tx.config)

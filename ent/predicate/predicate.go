@@ -9,6 +9,9 @@ import (
 // Chapter is the predicate function for chapter builders.
 type Chapter func(*sql.Selector)
 
+// ChapterDerivedTask is the predicate function for chapterderivedtask builders.
+type ChapterDerivedTask func(*sql.Selector)
+
 // Character is the predicate function for character builders.
 type Character func(*sql.Selector)
 

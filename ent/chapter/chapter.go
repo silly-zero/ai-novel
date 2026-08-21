@@ -46,6 +46,8 @@ const (
 	EdgeWorldStateVersions = "world_state_versions"
 	// EdgeRelationshipStateVersions holds the string denoting the relationship_state_versions edge name in mutations.
 	EdgeRelationshipStateVersions = "relationship_state_versions"
+	// EdgeDerivedTasks holds the string denoting the derived_tasks edge name in mutations.
+	EdgeDerivedTasks = "derived_tasks"
 	// Table holds the table name of the chapter in the database.
 	Table = "chapters"
 	// NovelTable is the table that holds the novel relation/edge.
@@ -76,6 +78,13 @@ const (
 	RelationshipStateVersionsInverseTable = "relationship_state_versions"
 	// RelationshipStateVersionsColumn is the table column denoting the relationship_state_versions relation/edge.
 	RelationshipStateVersionsColumn = "chapter_id"
+	// DerivedTasksTable is the table that holds the derived_tasks relation/edge.
+	DerivedTasksTable = "chapter_derived_tasks"
+	// DerivedTasksInverseTable is the table name for the ChapterDerivedTask entity.
+	// It exists in this package in order to avoid circular dependency with the "chapterderivedtask" package.
+	DerivedTasksInverseTable = "chapter_derived_tasks"
+	// DerivedTasksColumn is the table column denoting the derived_tasks relation/edge.
+	DerivedTasksColumn = "chapter_id"
 )
 
 // Columns holds all SQL columns for chapter fields.
@@ -246,6 +255,20 @@ func ByRelationshipStateVersions(term sql.OrderTerm, terms ...sql.OrderTerm) Ord
 		sqlgraph.OrderByNeighborTerms(s, newRelationshipStateVersionsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByDerivedTasksCount orders the results by derived_tasks count.
+func ByDerivedTasksCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newDerivedTasksStep(), opts...)
+	}
+}
+
+// ByDerivedTasks orders the results by derived_tasks terms.
+func ByDerivedTasks(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newDerivedTasksStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
 func newNovelStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -272,5 +295,12 @@ func newRelationshipStateVersionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RelationshipStateVersionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, RelationshipStateVersionsTable, RelationshipStateVersionsColumn),
+	)
+}
+func newDerivedTasksStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(DerivedTasksInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, DerivedTasksTable, DerivedTasksColumn),
 	)
 }

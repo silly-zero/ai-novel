@@ -21,6 +21,18 @@ func (f ChapterFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, err
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChapterMutation", m)
 }
 
+// The ChapterDerivedTaskFunc type is an adapter to allow the use of ordinary
+// function as ChapterDerivedTask mutator.
+type ChapterDerivedTaskFunc func(context.Context, *ent.ChapterDerivedTaskMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ChapterDerivedTaskFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ChapterDerivedTaskMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ChapterDerivedTaskMutation", m)
+}
+
 // The CharacterFunc type is an adapter to allow the use of ordinary
 // function as Character mutator.
 type CharacterFunc func(context.Context, *ent.CharacterMutation) (ent.Value, error)

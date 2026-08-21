@@ -11,10 +11,15 @@ import (
 )
 
 // WorkflowEngine 是基于 eino 框架的状态机引擎，用于控制 Agent 之间的流转
+type derivedProcessor interface {
+	RunCurrent(context.Context, events.ChapterGeneratedEvent) error
+}
+
 type WorkflowEngine struct {
 	graph        compose.Runnable[*agents.GenerationState, *agents.GenerationState]
 	contextGraph compose.Runnable[*agents.GenerationState, *agents.GenerationState]
 	eventBus     events.Bus
+	derived      derivedProcessor
 	continuity   *agents.ContinuityExtractor
 }
 
@@ -146,21 +151,32 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	return finalState, nil
 }
 
+func (e *WorkflowEngine) SetDerivedProcessor(processor derivedProcessor) {
+	e.derived = processor
+}
+
 func (e *WorkflowEngine) PublishChapterGenerated(
 	ctx context.Context,
 	state *agents.GenerationState,
 ) error {
-	if e.eventBus == nil || state == nil {
+	if state == nil {
 		return nil
 	}
-	return e.eventBus.Publish(ctx, events.ChapterGeneratedEvent{
+	event := events.ChapterGeneratedEvent{
 		GenerationID: state.GenerationID,
 		NovelID:      state.NovelID,
 		ChapterID:    state.ChapterID,
 		ChapterIndex: state.ChapterIndex,
 		Content:      state.Draft,
 		Timestamp:    time.Now(),
-	})
+	}
+	if e.derived != nil {
+		return e.derived.RunCurrent(ctx, event)
+	}
+	if e.eventBus == nil {
+		return nil
+	}
+	return e.eventBus.Publish(ctx, event)
 }
 
 func (e *WorkflowEngine) ExtractContinuity(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
