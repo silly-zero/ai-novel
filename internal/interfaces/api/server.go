@@ -2437,6 +2437,8 @@ type generationResult struct {
 	GenerationID string           `json:"generation_id"`
 	Status       generationStatus `json:"status"`
 	Message      string           `json:"message,omitempty"`
+	ChapterID    string           `json:"chapter_id,omitempty"`
+	Persisted    bool             `json:"persisted,omitempty"`
 }
 
 const generationSSEWriteTimeout = 15 * time.Second
@@ -2700,7 +2702,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var initialNovelUpdatedAt time.Time
-	if persist && s.db != nil {
+	if s.db != nil {
 		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
 		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
 		loadCancel()
@@ -2882,6 +2884,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 					Message:      message,
 				}
 			} else {
+				result.ChapterID = strconv.Itoa(chapterTarget.ID)
+				result.Persisted = true
 				publishErr := s.engine.PublishChapterGenerated(postprocessCtx, finalState)
 				statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
 				derivedErr := s.finalizeDerivedAfterPublish(
@@ -2896,6 +2900,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 						GenerationID: generationID,
 						Status:       generationStatusError,
 						Message:      fmt.Sprintf("update chapter derived data: %v", derivedErr),
+						ChapterID:    strconv.Itoa(chapterTarget.ID),
+						Persisted:    true,
 					}
 				}
 			}

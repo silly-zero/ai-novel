@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -179,6 +180,24 @@ func TestWriteChapterDerivedSnapshot(t *testing.T) {
 	if body := recorder.Body.String(); !strings.Contains(body, `"derived_tasks":[]`) || !strings.Contains(body, `"derived_retryable":true`) {
 		t.Fatalf("body = %s", body)
 	}
+}
+
+func generationTerminalFromSSE(t *testing.T, body string) generationResult {
+	t.Helper()
+	blocks := strings.Split(body, "\n\n")
+	for _, block := range blocks {
+		if !strings.HasPrefix(block, "event: terminal\n") {
+			continue
+		}
+		data := strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(block, "event: terminal\n")), "data: ")
+		var result generationResult
+		if err := json.Unmarshal([]byte(data), &result); err != nil {
+			t.Fatalf("decode terminal: %v; block=%s", err, block)
+		}
+		return result
+	}
+	t.Fatalf("terminal event not found: %s", body)
+	return generationResult{}
 }
 
 func validGeneratedContent() string {
@@ -1443,6 +1462,9 @@ func TestHandleGenerateChapterPersistZeroSkipsChapterStoreAndEvent(t *testing.T)
 	if !strings.Contains(recorder.Body.String(), `"status":"success"`) {
 		t.Fatalf("SSE body missing success terminal: %s", recorder.Body.String())
 	}
+	if strings.Contains(recorder.Body.String(), `"persisted":true`) {
+		t.Fatalf("persist=0 terminal claims persisted chapter: %s", recorder.Body.String())
+	}
 }
 
 func TestHandleGenerateChapterUsesPersistedOrderForChapterIDRegeneration(t *testing.T) {
@@ -1483,8 +1505,9 @@ func TestHandleGenerateChapterUsesPersistedOrderForChapterIDRegeneration(t *test
 	if generatedIndex != 4 {
 		t.Fatalf("chapter index = %d, want persisted order 4", generatedIndex)
 	}
-	if !strings.Contains(recorder.Body.String(), `"status":"success"`) {
-		t.Fatalf("generation failed: %s", recorder.Body.String())
+	terminal := generationTerminalFromSSE(t, recorder.Body.String())
+	if terminal.Status != generationStatusSuccess || terminal.ChapterID != "11" || !terminal.Persisted {
+		t.Fatalf("terminal = %#v; body=%s", terminal, recorder.Body.String())
 	}
 }
 
@@ -1641,6 +1664,9 @@ func TestHandleGenerateChapterSaveFailureUsesErrorTerminal(t *testing.T) {
 		!strings.Contains(body, "save generated chapter: database unavailable") {
 		t.Fatalf("SSE body missing save error terminal: %s", body)
 	}
+	if strings.Contains(body, `"persisted":true`) {
+		t.Fatalf("save failure terminal claims persisted chapter: %s", body)
+	}
 	if strings.Contains(body, `"status":"success"`) {
 		t.Fatalf("SSE body contains success after save failure: %s", body)
 	}
@@ -1783,9 +1809,10 @@ func TestHandleGenerateChapterDerivedFailureUsesErrorAndReleasesLease(t *testing
 	)
 
 	body := first.Body.String()
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, "update chapter derived data") {
-		t.Fatalf("derived failure terminal: %s", body)
+	terminal := generationTerminalFromSSE(t, body)
+	if terminal.Status != generationStatusError || terminal.ChapterID != "11" || !terminal.Persisted ||
+		!strings.Contains(terminal.Message, "update chapter derived data") {
+		t.Fatalf("derived failure terminal=%#v body=%s", terminal, body)
 	}
 
 	second := httptest.NewRecorder()
