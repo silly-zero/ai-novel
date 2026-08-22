@@ -114,6 +114,73 @@ func (e *generationTestEngine) PublishChapterGenerated(
 	return nil
 }
 
+func TestChapterDerivedRetryable(t *testing.T) {
+	tests := []struct {
+		name string
+		row  *ent.Chapter
+		want bool
+	}{
+		{name: "failed", row: &ent.Chapter{Status: string(domain.StatusDraft), DerivedStatus: string(domain.DerivedStatusFailed), DerivedGenerationID: "g"}, want: true},
+		{name: "pending", row: &ent.Chapter{Status: string(domain.StatusDraft), DerivedStatus: string(domain.DerivedStatusPending), DerivedGenerationID: "g"}, want: true},
+		{name: "ready", row: &ent.Chapter{Status: string(domain.StatusDraft), DerivedStatus: string(domain.DerivedStatusReady), DerivedGenerationID: "g"}},
+		{name: "stale", row: &ent.Chapter{Status: string(domain.StatusStale), DerivedStatus: string(domain.DerivedStatusFailed), DerivedGenerationID: "g"}},
+		{name: "empty generation", row: &ent.Chapter{Status: string(domain.StatusDraft), DerivedStatus: string(domain.DerivedStatusFailed)}},
+		{name: "nil"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := chapterDerivedRetryable(test.row); got != test.want {
+				t.Fatalf("chapterDerivedRetryable() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDerivedTaskItemsBoundErrors(t *testing.T) {
+	longError := strings.Repeat("错", maxDerivedAPIErrorRunes+10)
+	items := derivedTaskItems([]domain.DerivedTask{{
+		HandlerKey: "memory",
+		Status:     domain.DerivedTaskFailed,
+		Attempts:   2,
+		LastError:  "  generation_id=g-secret lease_token: l-secret task_id=42 " + longError + "  ",
+	}})
+	if len(items) != 1 || len([]rune(items[0].LastError)) != maxDerivedAPIErrorRunes {
+		t.Fatalf("items = %#v", items)
+	}
+	if strings.Contains(items[0].LastError, "g-secret") || strings.Contains(items[0].LastError, "l-secret") || strings.Contains(items[0].LastError, "task_id") {
+		t.Fatalf("last error leaked identifiers: %q", items[0].LastError)
+	}
+	if !strings.Contains(items[0].LastError, "错") {
+		t.Fatalf("last error lost valid rune text: %q", items[0].LastError)
+	}
+}
+
+func TestBoundedDerivedAPIErrorRedactsJSONIdentifiers(t *testing.T) {
+	got := boundedDerivedAPIError(`{"generation_id":"g-secret","lease_token":"l-secret","task_id":"42"}`)
+	for _, secret := range []string{"g-secret", "l-secret", `"42"`} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("error leaked %q: %s", secret, got)
+		}
+	}
+}
+
+func TestWriteChapterDerivedSnapshot(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	writeChapterDerivedSnapshot(recorder, http.StatusInternalServerError, ChapterDerivedSnapshot{
+		ChapterID:        "1",
+		DerivedStatus:    string(domain.DerivedStatusFailed),
+		DerivedRetryable: true,
+		DerivedTasks:     []DerivedTaskItem{},
+		Error:            "failed",
+	})
+	if recorder.Code != http.StatusInternalServerError || !strings.HasPrefix(recorder.Header().Get("Content-Type"), "application/json") {
+		t.Fatalf("response = %d %#v", recorder.Code, recorder.Header())
+	}
+	if body := recorder.Body.String(); !strings.Contains(body, `"derived_tasks":[]`) || !strings.Contains(body, `"derived_retryable":true`) {
+		t.Fatalf("body = %s", body)
+	}
+}
+
 func validGeneratedContent() string {
 	return strings.Repeat("文", 2500)
 }

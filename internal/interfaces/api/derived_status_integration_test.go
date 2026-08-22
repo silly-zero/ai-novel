@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/novel"
@@ -20,7 +22,6 @@ import (
 	"github.com/ai-novel/studio/internal/domain/events"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 	databaseinfra "github.com/ai-novel/studio/internal/infrastructure/database"
-	"github.com/ai-novel/studio/internal/infrastructure/eventbus"
 	_ "github.com/lib/pq"
 )
 
@@ -38,6 +39,66 @@ func (l *switchEvidenceLLM) Generate(context.Context, string, string) (string, e
 
 func (*switchEvidenceLLM) StreamGenerate(context.Context, string, string, func(string) error) error {
 	return nil
+}
+
+func TestChapterDetailReturnsCurrentDerivedTasksPostgres(t *testing.T) {
+	dsn := os.Getenv("AI_NOVEL_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("AI_NOVEL_TEST_POSTGRES_DSN is not set")
+	}
+	client, err := ent.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+	if err := client.Schema.Create(ctx); err != nil {
+		t.Fatal(err)
+	}
+	novelRow, err := client.Novel.Create().SetTitle(fmt.Sprintf("derived-detail-%d", time.Now().UnixNano())).Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chapterRow, err := client.Chapter.Create().SetNovel(novelRow).SetTitle("第一章").SetContent("正文").SetWordCount(2).SetOrder(1).SetStatus(string(domain.StatusDraft)).SetDerivedStatus(string(domain.DerivedStatusFailed)).SetDerivedGenerationID("current-g").Save(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chapterID := chapterRow.ID
+	t.Cleanup(func() {
+		cleanupCtx := context.Background()
+		_, _ = client.ChapterDerivedTask.Delete().Where(chapterderivedtask.ChapterID(chapterID)).Exec(cleanupCtx)
+		_ = client.Chapter.DeleteOneID(chapterID).Exec(cleanupCtx)
+		_ = client.Novel.DeleteOneID(novelRow.ID).Exec(cleanupCtx)
+	})
+	for _, generationID := range []string{"old-g", "current-g"} {
+		for _, key := range domain.DerivedHandlerKeys {
+			status := chapterderivedtask.StatusReady
+			lastError := ""
+			if generationID == "current-g" && key == domain.DerivedHandlerMemory {
+				status = chapterderivedtask.StatusFailed
+				lastError = "current failure"
+			}
+			if generationID == "old-g" {
+				lastError = "old generation must not leak"
+			}
+			if _, err := client.ChapterDerivedTask.Create().SetChapterID(chapterID).SetGenerationID(generationID).SetHandlerKey(chapterderivedtask.HandlerKey(key)).SetStatus(status).SetAttempts(2).SetLastError(lastError).Save(ctx); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	server := newServer(&generationTestEngine{}, client)
+	recorder := httptest.NewRecorder()
+	server.router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/chapters/%d", chapterID), nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("response = %d %s", recorder.Code, recorder.Body.String())
+	}
+	body := recorder.Body.String()
+	if strings.Contains(body, "old generation must not leak") || strings.Contains(body, "lease_token") || strings.Contains(body, "lease_until") {
+		t.Fatalf("body leaked internal data: %s", body)
+	}
+	if !strings.Contains(body, `"derived_retryable":true`) || !strings.Contains(body, `"last_error":"current failure"`) || strings.Count(body, `"handler_key"`) != len(domain.DerivedHandlerKeys) {
+		t.Fatalf("body = %s", body)
+	}
 }
 
 func TestLedgerEvidenceFailureAndRetryUpdatesDerivedStatus(t *testing.T) {
@@ -90,10 +151,22 @@ func TestLedgerEvidenceFailureAndRetryUpdatesDerivedStatus(t *testing.T) {
 	llm := &switchEvidenceLLM{}
 	repo := databaseinfra.NewCharacterRepository(client)
 	characterUC := usecases.NewCharacterUseCase(agents.NewCharacterAgent(llm, repo))
-	bus := eventbus.NewInternalEventBus()
-	bus.Subscribe("chapter.generated", func(ctx context.Context, event events.Event) error {
-		return characterUC.HandleChapterGenerated(ctx, event)
+	derived := usecases.NewDerivedOrchestrator(databaseinfra.NewDerivedTaskRepository(client), usecases.DerivedOrchestratorConfig{
+		HandlerTimeout:    time.Minute,
+		SettlementTimeout: time.Second,
 	})
+	for _, key := range domain.DerivedHandlerKeys {
+		key := key
+		handler := func(context.Context, events.ChapterGeneratedEvent) error { return nil }
+		if key == domain.DerivedHandlerCharacter {
+			handler = func(ctx context.Context, event events.ChapterGeneratedEvent) error {
+				return characterUC.HandleChapterGenerated(ctx, event)
+			}
+		}
+		if err := derived.Register(key, handler); err != nil {
+			t.Fatal(err)
+		}
+	}
 	engine := &generationTestEngine{
 		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 			state.Draft = validGeneratedContent()
@@ -101,7 +174,7 @@ func TestLedgerEvidenceFailureAndRetryUpdatesDerivedStatus(t *testing.T) {
 			return state, nil
 		},
 		publish: func(ctx context.Context, state *agents.GenerationState) error {
-			return bus.Publish(ctx, events.ChapterGeneratedEvent{
+			return derived.RunCurrent(ctx, events.ChapterGeneratedEvent{
 				GenerationID: state.GenerationID, NovelID: state.NovelID, ChapterID: state.ChapterID,
 				ChapterIndex: state.ChapterIndex, Content: state.Draft, Timestamp: time.Now(),
 			})
@@ -212,13 +285,34 @@ func TestGenerationDerivedStatusLifecycle(t *testing.T) {
 					t.Errorf("cleanup derived novel: %v", err)
 				}
 			})
+			currentPublishErr := test.publishErr
+			derived := usecases.NewDerivedOrchestrator(databaseinfra.NewDerivedTaskRepository(client), usecases.DerivedOrchestratorConfig{
+				HandlerTimeout:    time.Minute,
+				SettlementTimeout: time.Second,
+			})
+			for _, key := range domain.DerivedHandlerKeys {
+				key := key
+				if err := derived.Register(key, func(context.Context, events.ChapterGeneratedEvent) error {
+					if key == domain.DerivedHandlerMemory {
+						return currentPublishErr
+					}
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			engine := &generationTestEngine{
 				run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 					state.Draft = validGeneratedContent()
 					state.IsApproved = true
 					return state, nil
 				},
-				publish: func(context.Context, *agents.GenerationState) error { return test.publishErr },
+				publish: func(ctx context.Context, state *agents.GenerationState) error {
+					return derived.RunCurrent(ctx, events.ChapterGeneratedEvent{
+						GenerationID: state.GenerationID, NovelID: state.NovelID, ChapterID: state.ChapterID,
+						ChapterIndex: state.ChapterIndex, Content: state.Draft, Timestamp: time.Now(),
+					})
+				},
 			}
 			server := newServer(engine, client)
 			server.chapterStore = &entGenerationChapterStore{client: client}
@@ -235,19 +329,8 @@ func TestGenerationDerivedStatusLifecycle(t *testing.T) {
 				t.Fatalf("chapter = %#v, error=%v", chapterRow, err)
 			}
 			if test.wantDerived == domain.DerivedStatusFailed {
-				retryEngine := &generationTestEngine{
-					run: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
-						t.Fatal("retry invoked chapter generation")
-						return nil, nil
-					},
-					publish: func(_ context.Context, state *agents.GenerationState) error {
-						if state.GenerationID != chapterRow.DerivedGenerationID || state.NovelID != fmt.Sprintf("%d", novelRow.ID) || state.ChapterID != fmt.Sprintf("%d", chapterRow.ID) || state.ChapterIndex != 1 || state.Draft != chapterRow.Content {
-							t.Fatalf("retry state = %#v", state)
-						}
-						return nil
-					},
-				}
-				retryServer := newServer(retryEngine, client)
+				currentPublishErr = nil
+				retryServer := newServer(engine, client)
 				retry := httptest.NewRecorder()
 				retryServer.router.ServeHTTP(
 					retry,
@@ -268,9 +351,15 @@ func TestGenerationDerivedStatusLifecycle(t *testing.T) {
 				if _, err := client.Chapter.UpdateOneID(chapterRow.ID).SetDerivedStatus(string(domain.DerivedStatusFailed)).Save(ctx); err != nil {
 					t.Fatal(err)
 				}
-				failedRetryServer := newServer(&generationTestEngine{publish: func(context.Context, *agents.GenerationState) error {
-					return errors.New("still unavailable")
-				}}, client)
+				if _, err := client.ChapterDerivedTask.Update().Where(
+					chapterderivedtask.ChapterID(chapterRow.ID),
+					chapterderivedtask.GenerationID(chapterRow.DerivedGenerationID),
+					chapterderivedtask.HandlerKeyEQ(chapterderivedtask.HandlerKey(domain.DerivedHandlerMemory)),
+				).SetStatus(chapterderivedtask.StatusFailed).Save(ctx); err != nil {
+					t.Fatal(err)
+				}
+				currentPublishErr = errors.New("still unavailable")
+				failedRetryServer := newServer(engine, client)
 				failedRetry := httptest.NewRecorder()
 				failedRetryServer.router.ServeHTTP(
 					failedRetry,
@@ -278,7 +367,13 @@ func TestGenerationDerivedStatusLifecycle(t *testing.T) {
 				)
 				chapterRow, err = client.Chapter.Get(ctx, chapterRow.ID)
 				if failedRetry.Code != 500 || err != nil || chapterRow.DerivedStatus != string(domain.DerivedStatusFailed) {
-					t.Fatalf("failed retry = %d chapter=%#v error=%v", failedRetry.Code, chapterRow, err)
+					t.Fatalf("failed retry = %d chapter=%#v error=%v body=%s", failedRetry.Code, chapterRow, err, failedRetry.Body.String())
+				}
+				if contentType := failedRetry.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/json") {
+					t.Fatalf("failed retry content type = %q", contentType)
+				}
+				if body := failedRetry.Body.String(); !strings.Contains(body, `"derived_status":"Failed"`) || !strings.Contains(body, `"derived_tasks"`) || !strings.Contains(body, `"error"`) {
+					t.Fatalf("failed retry body = %s", body)
 				}
 			}
 		})

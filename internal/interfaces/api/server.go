@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1609,17 +1610,35 @@ type NovelDetail struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+const maxDerivedAPIErrorRunes = 1000
+
+var derivedSecretPattern = regexp.MustCompile(`(?i)["']?\b(?:generation_id|lease_token|task_id)\b["']?\s*[:=]\s*["']?[^"'\s,;}]+["']?`)
+
 type ChapterItem struct {
-	ID            string    `json:"id"`
-	NovelID       string    `json:"novel_id"`
-	Title         string    `json:"title"`
-	Content       string    `json:"content"`
-	WordCount     int       `json:"word_count"`
-	Order         int       `json:"order"`
-	Status        string    `json:"status"`
-	DerivedStatus string    `json:"derived_status"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	NovelID          string    `json:"novel_id"`
+	Title            string    `json:"title"`
+	Content          string    `json:"content"`
+	WordCount        int       `json:"word_count"`
+	Order            int       `json:"order"`
+	Status           string    `json:"status"`
+	DerivedStatus    string    `json:"derived_status"`
+	DerivedRetryable bool      `json:"derived_retryable"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type ChapterDetailItem struct {
+	ChapterItem
+	DerivedTasks []DerivedTaskItem `json:"derived_tasks"`
+}
+
+type ChapterDerivedSnapshot struct {
+	ChapterID        string            `json:"chapter_id"`
+	DerivedStatus    string            `json:"derived_status"`
+	DerivedRetryable bool              `json:"derived_retryable"`
+	DerivedTasks     []DerivedTaskItem `json:"derived_tasks"`
+	Error            string            `json:"error"`
 }
 
 type DerivedTaskItem struct {
@@ -1636,10 +1655,56 @@ func derivedTaskItems(tasks []domain.DerivedTask) []DerivedTaskItem {
 			HandlerKey: task.HandlerKey,
 			Status:     string(task.Status),
 			Attempts:   task.Attempts,
-			LastError:  task.LastError,
+			LastError:  boundedDerivedAPIError(task.LastError),
 		}
 	}
 	return items
+}
+
+func chapterItemFromRow(row *ent.Chapter, novelID string) ChapterItem {
+	return ChapterItem{
+		ID:               strconv.Itoa(row.ID),
+		NovelID:          novelID,
+		Title:            row.Title,
+		Content:          row.Content,
+		WordCount:        row.WordCount,
+		Order:            row.Order,
+		Status:           row.Status,
+		DerivedStatus:    row.DerivedStatus,
+		DerivedRetryable: chapterDerivedRetryable(row),
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
+	}
+}
+
+func chapterDerivedRetryable(row *ent.Chapter) bool {
+	if row == nil || row.Status == string(domain.StatusStale) || strings.TrimSpace(row.DerivedGenerationID) == "" {
+		return false
+	}
+	return row.DerivedStatus == string(domain.DerivedStatusFailed) || row.DerivedStatus == string(domain.DerivedStatusPending)
+}
+
+func boundedDerivedAPIError(value string) string {
+	value = strings.TrimSpace(derivedSecretPattern.ReplaceAllString(value, "[internal identifier redacted]"))
+	runes := []rune(value)
+	if len(runes) > maxDerivedAPIErrorRunes {
+		return string(runes[:maxDerivedAPIErrorRunes])
+	}
+	return value
+}
+
+func writeBoundedDerivedHTTPError(w http.ResponseWriter, err error, status int) {
+	message := "derived task operation failed"
+	if err != nil {
+		message = boundedDerivedAPIError(err.Error())
+	}
+	http.Error(w, message, status)
+}
+
+func writeChapterDerivedSnapshot(w http.ResponseWriter, status int, snapshot ChapterDerivedSnapshot) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(snapshot)
 }
 
 type CreateNovelRequest struct {
@@ -1851,18 +1916,7 @@ func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 
 	chapters := make([]ChapterItem, 0, len(row.Edges.Chapters))
 	for _, c := range row.Edges.Chapters {
-		chapters = append(chapters, ChapterItem{
-			ID:            fmt.Sprintf("%d", c.ID),
-			NovelID:       item.ID,
-			Title:         c.Title,
-			Content:       c.Content,
-			WordCount:     c.WordCount,
-			Order:         c.Order,
-			Status:        c.Status,
-			DerivedStatus: c.DerivedStatus,
-			CreatedAt:     c.CreatedAt,
-			UpdatedAt:     c.UpdatedAt,
-		})
+		chapters = append(chapters, chapterItemFromRow(c, item.ID))
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -1967,18 +2021,7 @@ func (s *Server) HandleListChapters(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]ChapterItem, 0, len(rows))
 	for _, c := range rows {
-		items = append(items, ChapterItem{
-			ID:            fmt.Sprintf("%d", c.ID),
-			NovelID:       fmt.Sprintf("%d", novelID),
-			Title:         c.Title,
-			Content:       c.Content,
-			WordCount:     c.WordCount,
-			Order:         c.Order,
-			Status:        c.Status,
-			DerivedStatus: c.DerivedStatus,
-			CreatedAt:     c.CreatedAt,
-			UpdatedAt:     c.UpdatedAt,
-		})
+		items = append(items, chapterItemFromRow(c, strconv.Itoa(novelID)))
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"items": items})
@@ -2014,20 +2057,20 @@ func (s *Server) HandleGetChapter(w http.ResponseWriter, r *http.Request) {
 
 	novelID := ""
 	if row.Edges.Novel != nil {
-		novelID = fmt.Sprintf("%d", row.Edges.Novel.ID)
+		novelID = strconv.Itoa(row.Edges.Novel.ID)
 	}
 
-	item := ChapterItem{
-		ID:            fmt.Sprintf("%d", row.ID),
-		NovelID:       novelID,
-		Title:         row.Title,
-		Content:       row.Content,
-		WordCount:     row.WordCount,
-		Order:         row.Order,
-		Status:        row.Status,
-		DerivedStatus: row.DerivedStatus,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
+	tasks := []domain.DerivedTask{}
+	if generationID := strings.TrimSpace(row.DerivedGenerationID); generationID != "" && s.derivedTasks != nil {
+		tasks, err = s.derivedTasks.List(r.Context(), row.ID, generationID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	item := ChapterDetailItem{
+		ChapterItem:  chapterItemFromRow(row, novelID),
+		DerivedTasks: derivedTaskItems(tasks),
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
@@ -2086,18 +2129,7 @@ func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), chapterMutationHTTPStatus(err))
 		return
 	}
-	item := ChapterItem{
-		ID:            fmt.Sprintf("%d", row.ID),
-		NovelID:       fmt.Sprintf("%d", novelID),
-		Title:         row.Title,
-		Content:       row.Content,
-		WordCount:     row.WordCount,
-		Order:         row.Order,
-		Status:        row.Status,
-		DerivedStatus: row.DerivedStatus,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
-	}
+	item := chapterItemFromRow(row, strconv.Itoa(novelID))
 
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
@@ -2165,18 +2197,7 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 		novelID = fmt.Sprintf("%d", n.ID)
 	}
 
-	item := ChapterItem{
-		ID:            fmt.Sprintf("%d", row.ID),
-		NovelID:       novelID,
-		Title:         row.Title,
-		Content:       row.Content,
-		WordCount:     row.WordCount,
-		Order:         row.Order,
-		Status:        row.Status,
-		DerivedStatus: row.DerivedStatus,
-		CreatedAt:     row.CreatedAt,
-		UpdatedAt:     row.UpdatedAt,
-	}
+	item := chapterItemFromRow(row, novelID)
 
 	_ = json.NewEncoder(w).Encode(map[string]any{"item": item})
 }
@@ -2197,12 +2218,12 @@ func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "chapter not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeBoundedDerivedHTTPError(w, err, http.StatusInternalServerError)
 		return
 	}
 	novelRow, err := row.Edges.NovelOrErr()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeBoundedDerivedHTTPError(w, err, http.StatusInternalServerError)
 		return
 	}
 	if !s.generationGuard.acquireMutation(novelRow.ID) {
@@ -2210,22 +2231,20 @@ func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer s.generationGuard.releaseMutation(novelRow.ID)
-	if row.Status == string(domain.StatusStale) ||
-		(row.DerivedStatus != string(domain.DerivedStatusFailed) && row.DerivedStatus != string(domain.DerivedStatusPending)) ||
-		strings.TrimSpace(row.DerivedGenerationID) == "" {
-		http.Error(w, "chapter derived data is not failed", http.StatusConflict)
+	if !chapterDerivedRetryable(row) {
+		http.Error(w, "chapter derived data is not retryable", http.StatusConflict)
 		return
 	}
 	generationID := row.DerivedGenerationID
 	if s.derivedTasks != nil {
 		tasks, listErr := s.derivedTasks.List(r.Context(), row.ID, generationID)
 		if listErr != nil {
-			http.Error(w, listErr.Error(), http.StatusInternalServerError)
+			writeBoundedDerivedHTTPError(w, listErr, http.StatusInternalServerError)
 			return
 		}
 		if len(tasks) != len(domain.DerivedHandlerKeys) {
 			if err := s.derivedTasks.Initialize(r.Context(), row.ID, generationID, domain.DerivedTaskPending); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
+				writeBoundedDerivedHTTPError(w, err, http.StatusInternalServerError)
 				return
 			}
 		}
@@ -2235,7 +2254,7 @@ func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Reques
 		chapter.DerivedGenerationIDEQ(generationID),
 	).SetDerivedStatus(string(domain.DerivedStatusPending)).Save(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), chapterMutationHTTPStatus(err))
+		writeBoundedDerivedHTTPError(w, err, chapterMutationHTTPStatus(err))
 		return
 	}
 	state := &agents.GenerationState{
@@ -2250,47 +2269,66 @@ func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Reques
 	publishErr := s.engine.PublishChapterGenerated(retryCtx, state)
 	statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
 	defer statusCancel()
-	updated, err = s.db.Chapter.Get(statusCtx, updated.ID)
-	if err != nil {
-		http.Error(w, errors.Join(publishErr, err).Error(), http.StatusInternalServerError)
-		return
-	}
+	latest := updated
+	chapterLoaded := false
 	var tasks []domain.DerivedTask
-	if s.derivedTasks != nil {
-		if _, err = s.derivedTasks.Reconcile(statusCtx, updated.ID, generationID); err != nil {
-			http.Error(w, errors.Join(publishErr, err).Error(), http.StatusInternalServerError)
-			return
+	settlementErr := publishErr
+	if refreshed, refreshErr := s.db.Chapter.Get(statusCtx, updated.ID); refreshErr != nil {
+		settlementErr = errors.Join(settlementErr, refreshErr)
+	} else {
+		latest = refreshed
+		chapterLoaded = true
+	}
+	if chapterLoaded && latest.DerivedGenerationID != generationID {
+		settlementErr = errors.Join(settlementErr, errGenerationChapterChanged)
+	}
+	if latest.DerivedGenerationID == generationID && s.derivedTasks != nil {
+		if _, reconcileErr := s.derivedTasks.Reconcile(statusCtx, latest.ID, generationID); reconcileErr != nil {
+			settlementErr = errors.Join(settlementErr, reconcileErr)
+		} else if refreshed, refreshErr := s.db.Chapter.Get(statusCtx, latest.ID); refreshErr != nil {
+			settlementErr = errors.Join(settlementErr, refreshErr)
+		} else {
+			latest = refreshed
 		}
-		tasks, err = s.derivedTasks.List(statusCtx, updated.ID, generationID)
-		if err != nil {
-			http.Error(w, errors.Join(publishErr, err).Error(), http.StatusInternalServerError)
-			return
+		listed, listErr := s.derivedTasks.List(statusCtx, latest.ID, generationID)
+		if listErr != nil {
+			settlementErr = errors.Join(settlementErr, listErr)
+		} else {
+			tasks = listed
 		}
 	}
-	if len(tasks) == 0 && updated.DerivedStatus == string(domain.DerivedStatusPending) {
+	if len(tasks) == 0 && latest.DerivedGenerationID == generationID && latest.DerivedStatus == string(domain.DerivedStatusPending) {
 		status := domain.DerivedStatusReady
 		if publishErr != nil {
 			status = domain.DerivedStatusFailed
 		}
-		if statusErr := setChapterDerivedStatus(statusCtx, s.db, updated.ID, generationID, status); statusErr != nil {
-			publishErr = errors.Join(publishErr, statusErr)
+		if statusErr := setChapterDerivedStatus(statusCtx, s.db, latest.ID, generationID, status); statusErr != nil {
+			settlementErr = errors.Join(settlementErr, statusErr)
+		} else if refreshed, refreshErr := s.db.Chapter.Get(statusCtx, latest.ID); refreshErr != nil {
+			settlementErr = errors.Join(settlementErr, refreshErr)
+		} else {
+			latest = refreshed
 		}
-		updated, _ = s.db.Chapter.Get(statusCtx, updated.ID)
 	}
-	if publishErr != nil || updated.DerivedStatus != string(domain.DerivedStatusReady) {
-		message := fmt.Sprintf("retry chapter derived data: %v", publishErr)
-		if publishErr == nil {
-			message = fmt.Sprintf("retry chapter derived data incomplete: %s", updated.DerivedStatus)
-		}
-		http.Error(w, message, http.StatusInternalServerError)
+	if latest.DerivedStatus != string(domain.DerivedStatusReady) && settlementErr == nil {
+		settlementErr = fmt.Errorf("derived tasks incomplete: %s", latest.DerivedStatus)
+	}
+	snapshotError := ""
+	if settlementErr != nil {
+		snapshotError = settlementErr.Error()
+	}
+	snapshot := ChapterDerivedSnapshot{
+		ChapterID:        strconv.Itoa(latest.ID),
+		DerivedStatus:    latest.DerivedStatus,
+		DerivedRetryable: chapterDerivedRetryable(latest),
+		DerivedTasks:     derivedTaskItems(tasks),
+		Error:            boundedDerivedAPIError(snapshotError),
+	}
+	if settlementErr != nil {
+		writeChapterDerivedSnapshot(w, http.StatusInternalServerError, snapshot)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"chapter_id":     strconv.Itoa(updated.ID),
-		"derived_status": updated.DerivedStatus,
-		"derived_tasks":  derivedTaskItems(tasks),
-	})
+	writeChapterDerivedSnapshot(w, http.StatusOK, snapshot)
 }
 
 func (s *Server) HandleDeleteChapter(w http.ResponseWriter, r *http.Request) {
