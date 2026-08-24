@@ -11,9 +11,9 @@ import (
 )
 
 type DuplicateChapterOrder struct {
-	NovelID    int
-	Order      int
-	ChapterIDs []int
+	NovelID    int   `json:"novel_id"`
+	Order      int   `json:"order"`
+	ChapterIDs []int `json:"chapter_ids"`
 }
 
 func FindDuplicateChapterOrders(ctx context.Context, client *ent.Client) ([]DuplicateChapterOrder, error) {
