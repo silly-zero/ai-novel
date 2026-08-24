@@ -28,6 +28,7 @@ type generationChapterStoreFake struct {
 	mu           sync.Mutex
 	prepareCalls int
 	saveCalls    int
+	savedID      int
 	prepare      func(context.Context, int, int, int) (*generationChapterTarget, error)
 	save         func(context.Context, *generationChapterTarget, *agents.GenerationState) error
 }
@@ -61,17 +62,22 @@ func (s *generationChapterStoreFake) Save(
 	ctx context.Context,
 	target *generationChapterTarget,
 	state *agents.GenerationState,
-) error {
+) (int, error) {
 	s.mu.Lock()
 	s.saveCalls++
 	s.mu.Unlock()
 	if err := validateGenerationChapterSave(target, state); err != nil {
-		return err
+		return 0, err
 	}
 	if s.save != nil {
-		return s.save(ctx, target, state)
+		if err := s.save(ctx, target, state); err != nil {
+			return 0, err
+		}
 	}
-	return nil
+	if s.savedID > 0 {
+		return s.savedID, nil
+	}
+	return target.ID, nil
 }
 
 func (s *generationChapterStoreFake) calls() (int, int) {
@@ -944,7 +950,7 @@ func TestPrepareNewGenerationChapterAttachesPreviousContinuity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(events, ",") != "lock,target,lookup,create" || target.ID != 11 || target.Order != 3 || target.PreviousContinuity.LastBeat != "结尾" {
+	if strings.Join(events, ",") != "lock,target,lookup" || target.ID != 0 || !target.isNew || target.Order != 3 || target.PreviousContinuity.LastBeat != "结尾" {
 		t.Fatalf("events = %v, target = %#v", events, target)
 	}
 }
@@ -970,7 +976,7 @@ func TestPrepareNewGenerationChapterReusesTargetAfterLock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if createCalled || target.ID != 11 || target.PreviousContinuity.LastBeat != "结尾" {
+	if createCalled || target.ID != 11 || target.isNew || target.PreviousContinuity.LastBeat != "结尾" {
 		t.Fatalf("create called = %v, target = %#v", createCalled, target)
 	}
 }
@@ -1192,7 +1198,7 @@ func TestEntGenerationChapterStoreRejectsInvalidSaveBeforeMutation(t *testing.T)
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := store.Save(context.Background(), test.target, test.state)
+			_, err := store.Save(context.Background(), test.target, test.state)
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Fatalf("Save() error = %v, want %q", err, test.wantErr)
 			}

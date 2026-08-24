@@ -10,11 +10,63 @@ import (
 
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 	_ "github.com/lib/pq"
 )
+
+func TestDelayedNewChapterCreationPostgres(t *testing.T) {
+	dsn := os.Getenv("AI_NOVEL_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("AI_NOVEL_TEST_POSTGRES_DSN is not set")
+	}
+	client, err := ent.Open("postgres", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = client.Close() })
+	ctx := context.Background()
+	if err := client.Schema.Create(ctx); err != nil {
+		t.Fatal(err)
+	}
+	novelRow, _ := createStaleTestNovel(t, ctx, client, "delayed-create", 1)
+	store := &entGenerationChapterStore{client: client}
+	target, err := store.Prepare(ctx, novelRow.ID, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.ID != 0 || !target.isNew {
+		t.Fatalf("target = %#v", target)
+	}
+	if exists, err := client.Chapter.Query().Where(chapter.HasNovelWith(novel.ID(novelRow.ID)), chapter.OrderEQ(2)).Exist(ctx); err != nil || exists {
+		t.Fatalf("placeholder exists=%v error=%v", exists, err)
+	}
+	state := &agents.GenerationState{
+		GenerationID: "delayed-generation",
+		ChapterID:    "",
+		Draft:        validGeneratedContent(),
+		IsApproved:   true,
+		Continuity:   agents.ContinuityPacket{LastBeat: "结尾", NextAction: "下一步"},
+	}
+	state.Draft += "结尾下一步"
+	chapterID, err := store.Save(ctx, target, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := client.Chapter.Get(ctx, chapterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Order != 2 || created.Content != state.Draft || created.DerivedStatus != string(domain.DerivedStatusPending) || created.DerivedGenerationID != state.GenerationID {
+		t.Fatalf("created chapter = %#v", created)
+	}
+	tasks, err := client.ChapterDerivedTask.Query().Where(chapterderivedtask.ChapterID(chapterID)).Count(ctx)
+	if err != nil || tasks != len(domain.DerivedHandlerKeys) {
+		t.Fatalf("derived tasks=%d error=%v", tasks, err)
+	}
+}
 
 func createStaleTestNovel(
 	t *testing.T,
@@ -176,7 +228,7 @@ func TestGenerationRewriteMarksFollowingStale(t *testing.T) {
 		NovelID: fmt.Sprintf("%d", novelRow.ID), ChapterID: fmt.Sprintf("%d", chapters[1].ID), ChapterIndex: 1,
 		Draft: validGeneratedContent(), Continuity: agents.ContinuityPacket{LastBeat: "文", OpenLoops: []string{}, NextAction: "文"}, IsApproved: true,
 	}
-	if err := (&entGenerationChapterStore{client: client}).Save(ctx, target, state); err != nil {
+	if _, err := (&entGenerationChapterStore{client: client}).Save(ctx, target, state); err != nil {
 		t.Fatal(err)
 	}
 	second, err := client.Chapter.Get(ctx, chapters[2].ID)

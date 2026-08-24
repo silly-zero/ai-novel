@@ -54,11 +54,12 @@ type generationChapterTarget struct {
 	PreviousContinuity  agents.ContinuityPacket
 	UpdatedAt           time.Time
 	NovelUpdatedAt      time.Time
+	isNew               bool
 }
 
 type generationChapterStore interface {
 	Prepare(context.Context, int, int, int) (*generationChapterTarget, error)
-	Save(context.Context, *generationChapterTarget, *agents.GenerationState) error
+	Save(context.Context, *generationChapterTarget, *agents.GenerationState) (int, error)
 }
 
 type entGenerationChapterStore struct {
@@ -286,12 +287,15 @@ func prepareNewGenerationChapter(
 	if err != nil {
 		return nil, err
 	}
-	row, err = create(ctx, novelID, chapterIndex)
-	if err != nil {
-		return nil, err
+	row = &ent.Chapter{
+		Order:         chapterIndex,
+		Status:        "Draft",
+		DerivedStatus: string(domain.DerivedStatusReady),
+		OpenLoops:     []string{},
 	}
 	target := generationChapterTargetFromRow(row)
 	target.PreviousContinuity = packet
+	target.isNew = true
 	return target, nil
 }
 
@@ -1071,17 +1075,17 @@ func (s *entGenerationChapterStore) Save(
 	ctx context.Context,
 	target *generationChapterTarget,
 	state *agents.GenerationState,
-) error {
+) (int, error) {
 	if err := validateGenerationChapterSave(target, state); err != nil {
-		return err
+		return 0, err
 	}
 	if target.NovelID <= 0 || target.NovelUpdatedAt.IsZero() {
-		return errGenerationChapterChanged
+		return 0, errGenerationChapterChanged
 	}
 
 	tx, err := s.client.Tx(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	committed := false
 	defer func() {
@@ -1093,19 +1097,78 @@ func (s *entGenerationChapterStore) Save(
 	txClient := tx.Client()
 	if err := lockGenerationNovel(ctx, txClient, target.NovelID); err != nil {
 		if ent.IsNotFound(err) {
-			return errGenerationChapterChanged
+			return 0, errGenerationChapterChanged
 		}
-		return err
+		return 0, err
 	}
 	novelUpdatedAt, err := generationNovelUpdatedAt(ctx, txClient, target.NovelID)
 	if err != nil {
 		if ent.IsNotFound(err) {
-			return errGenerationChapterChanged
+			return 0, errGenerationChapterChanged
 		}
-		return err
+		return 0, err
 	}
 	if err := validateGenerationNovelSource(target.NovelUpdatedAt, novelUpdatedAt); err != nil {
-		return err
+		return 0, err
+	}
+
+	if target.isNew {
+		if err := requireAvailableChapterOrder(ctx, target.NovelID, target.Order, 0, func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
+			return lookupGenerationChapter(ctx, txClient, novelID, order)
+		}); err != nil {
+			return 0, err
+		}
+		if err := requireEarliestStaleTarget(ctx, txClient, target.NovelID, target.Order); err != nil {
+			return 0, err
+		}
+		if target.Order > 1 {
+			previous, previousErr := lookupPreviousChapter(ctx, txClient, target.NovelID, target.Order-1)
+			if previousErr != nil {
+				return 0, previousErr
+			}
+			if previous.Status == string(domain.StatusStale) || previous.DerivedStatus != string(domain.DerivedStatusReady) {
+				return 0, errGenerationPreviousDerivedNotReady
+			}
+			currentPacket := agents.ContinuityPacket{
+				LastBeat:   previous.LastBeat,
+				OpenLoops:  append([]string(nil), previous.OpenLoops...),
+				NextAction: previous.NextAction,
+			}
+			if !continuityPacketsEqual(target.PreviousContinuity, currentPacket) {
+				return 0, errGenerationChapterChanged
+			}
+		}
+		chapterTitleValue := target.Title
+		if strings.TrimSpace(chapterTitleValue) == "" {
+			chapterTitleValue = chapterTitle(target.Order)
+		}
+		row, createErr := txClient.Chapter.Create().
+			SetNovelID(target.NovelID).
+			SetTitle(chapterTitleValue).
+			SetContent(state.Draft).
+			SetWordCount(wordCountOf(state.Draft)).
+			SetOrder(target.Order).
+			SetStatus("Draft").
+			SetDerivedStatus(string(domain.DerivedStatusPending)).
+			SetDerivedGenerationID(state.GenerationID).
+			SetLastBeat(state.Continuity.LastBeat).
+			SetOpenLoops(state.Continuity.OpenLoops).
+			SetNextAction(state.Continuity.NextAction).
+			Save(ctx)
+		if createErr != nil {
+			return 0, createErr
+		}
+		if err := databaseinfra.InitializeDerivedTasks(ctx, txClient, row.ID, state.GenerationID, domain.DerivedTaskPending); err != nil {
+			return 0, err
+		}
+		if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, row.ID); err != nil {
+			return 0, err
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, err
+		}
+		committed = true
+		return row.ID, nil
 	}
 
 	_, err = txClient.Chapter.
@@ -1142,10 +1205,10 @@ func (s *entGenerationChapterStore) Save(
 		SetNextAction(state.Continuity.NextAction).
 		Save(ctx)
 	if ent.IsNotFound(err) {
-		return errGenerationChapterChanged
+		return 0, errGenerationChapterChanged
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := databaseinfra.InitializeDerivedTasks(
 		ctx,
@@ -1154,19 +1217,19 @@ func (s *entGenerationChapterStore) Save(
 		state.GenerationID,
 		domain.DerivedTaskPending,
 	); err != nil {
-		return err
+		return 0, err
 	}
 	if err := invalidateChapterDerivedData(ctx, txClient, target.NovelID, []int{target.ID}); err != nil {
-		return err
+		return 0, err
 	}
 	if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, target.ID); err != nil {
-		return err
+		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
-		return err
+		return 0, err
 	}
 	committed = true
-	return nil
+	return target.ID, nil
 }
 
 func (s *Server) finalizeDerivedAfterPublish(
@@ -1253,6 +1316,18 @@ func setChapterDerivedStatus(
 		return errGenerationChapterChanged
 	}
 	return err
+}
+
+func continuityPacketsEqual(left, right agents.ContinuityPacket) bool {
+	if left.LastBeat != right.LastBeat || left.NextAction != right.NextAction || len(left.OpenLoops) != len(right.OpenLoops) {
+		return false
+	}
+	for index := range left.OpenLoops {
+		if left.OpenLoops[index] != right.OpenLoops[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func validateGenerationChapterSave(
@@ -2783,7 +2858,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	chapterID := ""
 	chapterIndexForGeneration := chapterIndex
 	if chapterTarget != nil {
-		chapterID = strconv.Itoa(chapterTarget.ID)
+		if chapterTarget.ID > 0 {
+			chapterID = strconv.Itoa(chapterTarget.ID)
+		}
 		chapterIndexForGeneration = chapterTarget.Order
 	}
 	state := &agents.GenerationState{
@@ -2848,7 +2925,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		finalState, runErr := s.engine.RunChapterGeneration(ctx, prepared)
 		if runErr == nil && persist && finalState != nil {
-			finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
+			if chapterTarget.ID > 0 {
+				finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
+			}
 			finalState.NovelID = novelID
 			finalState.GenerationID = generationID
 			finalState, runErr = s.engine.ExtractContinuity(ctx, finalState)
@@ -2871,7 +2950,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			)
 			defer cancelPostprocess()
 			saveCtx, saveCancel := context.WithTimeout(postprocessCtx, 10*time.Second)
-			saveErr := s.chapterStore.Save(saveCtx, chapterTarget, finalState)
+			chapterID, saveErr := s.chapterStore.Save(saveCtx, chapterTarget, finalState)
 			saveCancel()
 			if saveErr != nil {
 				message := fmt.Sprintf("save generated chapter: %v", saveErr)
@@ -2884,13 +2963,14 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 					Message:      message,
 				}
 			} else {
-				result.ChapterID = strconv.Itoa(chapterTarget.ID)
+				finalState.ChapterID = strconv.Itoa(chapterID)
+				result.ChapterID = strconv.Itoa(chapterID)
 				result.Persisted = true
 				publishErr := s.engine.PublishChapterGenerated(postprocessCtx, finalState)
 				statusCtx, statusCancel := context.WithTimeout(s.lifecycleCtx, 10*time.Second)
 				derivedErr := s.finalizeDerivedAfterPublish(
 					statusCtx,
-					chapterTarget.ID,
+					chapterID,
 					generationID,
 					publishErr,
 				)
@@ -2900,7 +2980,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 						GenerationID: generationID,
 						Status:       generationStatusError,
 						Message:      fmt.Sprintf("update chapter derived data: %v", derivedErr),
-						ChapterID:    strconv.Itoa(chapterTarget.ID),
+						ChapterID:    strconv.Itoa(chapterID),
 						Persisted:    true,
 					}
 				}
