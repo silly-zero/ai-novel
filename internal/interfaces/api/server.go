@@ -109,12 +109,6 @@ type generationPreviousChapterLookup func(
 	int,
 ) (*ent.Chapter, error)
 
-type generationChapterCreate func(
-	context.Context,
-	int,
-	int,
-) (*ent.Chapter, error)
-
 func (s *entGenerationChapterStore) Prepare(
 	ctx context.Context,
 	novelID int,
@@ -230,9 +224,6 @@ func (s *entGenerationChapterStore) prepareNewGenerationChapter(
 		func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
 			return lookupPreviousChapterForShare(ctx, txClient, novelID, order)
 		},
-		func(ctx context.Context, novelID, chapterIndex int) (*ent.Chapter, error) {
-			return createGenerationChapter(ctx, txClient, novelID, chapterIndex)
-		},
 	)
 	if err != nil {
 		return nil, err
@@ -260,7 +251,6 @@ func prepareNewGenerationChapter(
 	lockNovel generationNovelLock,
 	lookupTarget generationChapterLookup,
 	lookup generationPreviousChapterLookup,
-	create generationChapterCreate,
 ) (*generationChapterTarget, error) {
 	if err := lockNovel(ctx, novelID); err != nil {
 		return nil, err
@@ -417,31 +407,6 @@ func (s *entGenerationChapterStore) lookupPreviousChapter(
 	order int,
 ) (*ent.Chapter, error) {
 	return lookupPreviousChapter(ctx, s.client, novelID, order)
-}
-
-func createGenerationChapter(
-	ctx context.Context,
-	client *ent.Client,
-	novelID int,
-	chapterIndex int,
-) (*ent.Chapter, error) {
-	return client.Chapter.
-		Create().
-		SetNovelID(novelID).
-		SetTitle(chapterTitle(chapterIndex)).
-		SetContent("").
-		SetWordCount(0).
-		SetOrder(chapterIndex).
-		SetStatus("Draft").
-		Save(ctx)
-}
-
-func (s *entGenerationChapterStore) createGenerationChapter(
-	ctx context.Context,
-	novelID int,
-	chapterIndex int,
-) (*ent.Chapter, error) {
-	return createGenerationChapter(ctx, s.client, novelID, chapterIndex)
 }
 
 func isChapterIntegrityConflict(err error) bool {

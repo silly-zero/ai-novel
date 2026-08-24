@@ -896,9 +896,8 @@ func TestPreparePreviousContinuityPropagatesLookupError(t *testing.T) {
 	}
 }
 
-func TestPrepareNewGenerationChapterChecksPredecessorBeforeCreate(t *testing.T) {
-	createCalled := false
-	_, err := prepareNewGenerationChapter(
+func TestPrepareNewGenerationChapterRejectsMissingPredecessor(t *testing.T) {
+	target, err := prepareNewGenerationChapter(
 		context.Background(),
 		7,
 		3,
@@ -911,16 +910,9 @@ func TestPrepareNewGenerationChapterChecksPredecessorBeforeCreate(t *testing.T) 
 		func(context.Context, int, int) (*ent.Chapter, error) {
 			return nil, &ent.NotFoundError{}
 		},
-		func(context.Context, int, int) (*ent.Chapter, error) {
-			createCalled = true
-			return nil, nil
-		},
 	)
-	if !errors.Is(err, errGenerationPreviousChapterMissing) {
-		t.Fatalf("error = %v", err)
-	}
-	if createCalled {
-		t.Fatal("target chapter was created before predecessor validation")
+	if !errors.Is(err, errGenerationPreviousChapterMissing) || target != nil {
+		t.Fatalf("target = %#v, error = %v", target, err)
 	}
 }
 
@@ -942,10 +934,6 @@ func TestPrepareNewGenerationChapterAttachesPreviousContinuity(t *testing.T) {
 			events = append(events, "lookup")
 			return &ent.Chapter{DerivedStatus: string(domain.DerivedStatusReady), LastBeat: "结尾", NextAction: "行动"}, nil
 		},
-		func(_ context.Context, novelID int, order int) (*ent.Chapter, error) {
-			events = append(events, "create")
-			return &ent.Chapter{ID: 11, Order: order}, nil
-		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -956,7 +944,6 @@ func TestPrepareNewGenerationChapterAttachesPreviousContinuity(t *testing.T) {
 }
 
 func TestPrepareNewGenerationChapterReusesTargetAfterLock(t *testing.T) {
-	createCalled := false
 	target, err := prepareNewGenerationChapter(
 		context.Background(),
 		7,
@@ -968,16 +955,12 @@ func TestPrepareNewGenerationChapterReusesTargetAfterLock(t *testing.T) {
 		func(context.Context, int, int) (*ent.Chapter, error) {
 			return &ent.Chapter{DerivedStatus: string(domain.DerivedStatusReady), LastBeat: "结尾", NextAction: "行动"}, nil
 		},
-		func(context.Context, int, int) (*ent.Chapter, error) {
-			createCalled = true
-			return nil, nil
-		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if createCalled || target.ID != 11 || target.isNew || target.PreviousContinuity.LastBeat != "结尾" {
-		t.Fatalf("create called = %v, target = %#v", createCalled, target)
+	if target.ID != 11 || target.isNew || target.PreviousContinuity.LastBeat != "结尾" {
+		t.Fatalf("target = %#v", target)
 	}
 }
 
@@ -989,10 +972,6 @@ func TestPrepareNewGenerationChapterStopsAtNovelLockFailure(t *testing.T) {
 		7,
 		3,
 		func(context.Context, int) error { return lockErr },
-		func(context.Context, int, int) (*ent.Chapter, error) {
-			lookupCalled = true
-			return nil, nil
-		},
 		func(context.Context, int, int) (*ent.Chapter, error) {
 			lookupCalled = true
 			return nil, nil
