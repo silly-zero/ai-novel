@@ -1624,7 +1624,7 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	s.router.Post("/api/v1/chapters/{id}/derived/retry", s.HandleRetryChapterDerived)
 	s.router.Post("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Post("/api/v1/novels/{id}/generate/cancel", s.HandleCancelGeneration)
-	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
+	s.router.Post("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
 	return s
 }
@@ -3076,107 +3076,121 @@ func truncate(s string, max int) string {
 	return string(runes[:max]) + "..."
 }
 
-// HandlePreviewContext 仅生成“场景卡 + 背景资料 + 共创指令”的合成上下文，不进入写作
+type PreviewContextRequest struct {
+	NovelID         *int   `json:"novel_id"`
+	ChapterIndex    *int   `json:"chapter_index,omitempty"`
+	Outline         string `json:"outline,omitempty"`
+	Idea            string `json:"idea,omitempty"`
+	ExistingOutline string `json:"existing_outline,omitempty"`
+	OutlineStart    *int   `json:"outline_start,omitempty"`
+	OutlineEnd      *int   `json:"outline_end,omitempty"`
+	EditorNotes     string `json:"editor_notes,omitempty"`
+	ManualContext   string `json:"manual_context,omitempty"`
+}
+
+func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (PreviewContextRequest, error) {
+	var req PreviewContextRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			return req, errors.New("request body too large")
+		}
+		return req, fmt.Errorf("invalid json: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return req, errors.New("request body must contain one JSON object")
+		}
+		return req, fmt.Errorf("invalid trailing json: %w", err)
+	}
+	if req.NovelID == nil || *req.NovelID <= 0 {
+		return req, errors.New("novel_id must be a positive integer")
+	}
+	if req.ChapterIndex != nil && *req.ChapterIndex <= 0 {
+		return req, errors.New("chapter_index must be a positive integer")
+	}
+	if (req.OutlineStart == nil) != (req.OutlineEnd == nil) {
+		return req, errors.New("outline_start and outline_end must be provided together")
+	}
+	if req.OutlineStart != nil && (*req.OutlineStart <= 0 || *req.OutlineEnd <= 0 || *req.OutlineStart > *req.OutlineEnd) {
+		return req, errors.New("outline range is invalid")
+	}
+	if req.ChapterIndex == nil {
+		value := 1
+		req.ChapterIndex = &value
+	}
+	req.Outline = strings.TrimSpace(req.Outline)
+	req.Idea = strings.TrimSpace(req.Idea)
+	req.ExistingOutline = strings.TrimSpace(req.ExistingOutline)
+	req.EditorNotes = strings.TrimSpace(req.EditorNotes)
+	req.ManualContext = strings.TrimSpace(req.ManualContext)
+	return req, nil
+}
+
 func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
+	req, err := decodePreviewContextRequest(w, r)
+	if err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
 	if s.engine == nil {
 		http.Error(w, "engine not configured", http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-
-	novelID := r.URL.Query().Get("novel_id")
-	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
-	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
-	editorNotes := strings.TrimSpace(r.URL.Query().Get("editor_notes"))
-	manualContext := strings.TrimSpace(r.URL.Query().Get("manual_context"))
-	existingOutline := strings.TrimSpace(r.URL.Query().Get("existing_outline"))
-	outlineStart, _ := strconv.Atoi(r.URL.Query().Get("outline_start"))
-	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
-
-	chapterIndexStr := strings.TrimSpace(r.URL.Query().Get("chapter_index"))
-	chapterIndex := 1
-	if chapterIndexStr != "" {
-		parsedChapterIndex, parseErr := parseIntParam(chapterIndexStr)
-		if parseErr != nil {
-			http.Error(w, "invalid chapter_index", http.StatusBadRequest)
-			return
-		}
-		chapterIndex = parsedChapterIndex
+	novelID := strconv.Itoa(*req.NovelID)
+	chapterIndex := *req.ChapterIndex
+	outline := req.Outline
+	idea := req.Idea
+	editorNotes := req.EditorNotes
+	manualContext := req.ManualContext
+	existingOutline := req.ExistingOutline
+	outlineStart, outlineEnd := 0, 0
+	if req.OutlineStart != nil {
+		outlineStart, outlineEnd = *req.OutlineStart, *req.OutlineEnd
 	}
-
-	if strings.TrimSpace(novelID) == "" {
-		http.Error(w, "Missing novel_id and all of outline/idea/existing_outline", http.StatusBadRequest)
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(r.Context(), s.config.GenerationTimeout)
 	defer cancel()
+	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
+		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
+		row, qErr := s.db.Novel.Query().Where(novel.ID(*req.NovelID)).Only(loadCtx)
+		loadCancel()
+		if qErr != nil {
+			http.Error(w, "failed to load novel", http.StatusInternalServerError)
+			return
+		}
+		if idea == "" {
+			idea = strings.TrimSpace(row.Idea)
+		}
+		if outline == "" {
+			outline = strings.TrimSpace(row.Outline)
+		}
+		if existingOutline == "" {
+			existingOutline = strings.TrimSpace(row.Outline)
+		}
+	}
+	if outline == "" && idea == "" && existingOutline == "" {
+		http.Error(w, "Missing outline and idea (no saved outline found)", http.StatusBadRequest)
+		return
+	}
 	if !s.modelCapacity.tryAcquire() {
 		w.Header().Set("Retry-After", "1")
 		http.Error(w, "模型正在处理其他任务，请稍后再试", http.StatusTooManyRequests)
 		return
 	}
 	defer s.modelCapacity.release()
-	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		log.Printf("[Preview] clear write deadline failed: novel_id=%s error=%v", novelID, err)
-	}
-	novelIDInt, err := parseIntParam(novelID)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
-		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
-		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
-		loadCancel()
-		if qErr == nil && row != nil {
-			if idea == "" {
-				idea = strings.TrimSpace(row.Idea)
-			}
-			if outline == "" {
-				outline = strings.TrimSpace(row.Outline)
-			}
-			if existingOutline == "" {
-				existingOutline = strings.TrimSpace(row.Outline)
-			}
-		}
-	}
-
-	if outline == "" && idea == "" && existingOutline == "" {
-		http.Error(w, "Missing outline and idea (no saved outline found)", http.StatusBadRequest)
-		return
-	}
-
-	state := &agents.GenerationState{
-		NovelID:         novelID,
-		ChapterIndex:    chapterIndex,
-		FullOutline:     outline,
-		Idea:            idea,
-		EditorNotes:     editorNotes,
-		ManualContext:   manualContext,
-		ExistingOutline: existingOutline,
-		OutlineStart:    outlineStart,
-		OutlineEnd:      outlineEnd,
-	}
-
+	state := &agents.GenerationState{NovelID: novelID, ChapterIndex: chapterIndex, FullOutline: outline, Idea: idea, EditorNotes: editorNotes, ManualContext: manualContext, ExistingOutline: existingOutline, OutlineStart: outlineStart, OutlineEnd: outlineEnd}
 	res, err := s.engine.PrepareContext(ctx, state)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if err != nil || res == nil {
+		http.Error(w, "preview context preparation failed", http.StatusInternalServerError)
 		return
 	}
-
-	payload := map[string]interface{}{
-		"novel_id":       res.NovelID,
-		"chapter_index":  res.ChapterIndex,
-		"full_outline":   res.FullOutline,
-		"outline":        res.Outline,
-		"scene_card":     res.SceneCard,
-		"context":        res.Context,
-		"editor_notes":   res.EditorNotes,
-		"manual_context": res.ManualContext,
-	}
-	enc := json.NewEncoder(w)
-	_ = enc.Encode(payload)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"novel_id": res.NovelID, "chapter_index": res.ChapterIndex, "full_outline": res.FullOutline, "outline": res.Outline, "scene_card": res.SceneCard, "context": res.Context, "editor_notes": res.EditorNotes, "manual_context": res.ManualContext})
 }

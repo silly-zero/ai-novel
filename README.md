@@ -153,7 +153,10 @@ ai-novel/
 4. **预览上下文 JSON（不写入章节）**:
    ```bash
    # 仅生成“场景卡 + 背景资料 + 共创指令”，不进入写作/审查
-   curl "http://127.0.0.1:8081/api/v1/novel/preview-context?novel_id=1&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默,禁用第一人称&manual_context=青阳镇位于群山脚下,镇北有小河"
+   curl -X POST "http://127.0.0.1:8081/api/v1/novel/preview-context" \
+     -H "Content-Type: application/json" \
+     -H "Accept: application/json" \
+     --data-raw '{"novel_id":1,"idea":"主角能听懂动物语言","chapter_index":1,"editor_notes":"保持轻松幽默，禁用第一人称","manual_context":"青阳镇位于群山脚下，镇北有一条小河"}'
    ```
    该接口返回 JSON 合成上下文，由前端创作工作台内嵌展示；项目没有独立预览页面，也不是文件下载接口。
 

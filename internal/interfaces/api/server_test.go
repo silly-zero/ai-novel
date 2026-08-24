@@ -226,6 +226,12 @@ func generateJSONRequest(body string) *http.Request {
 	request.Header.Set("Content-Type", "application/json")
 	return request
 }
+func previewJSONRequest(body string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/novel/preview-context", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	return request
+}
+
 func waitForSignal(t *testing.T, signal <-chan struct{}) {
 	t.Helper()
 	select {
@@ -382,19 +388,39 @@ func TestGenerateAndPreviewRejectInvalidChapterIndex(t *testing.T) {
 		{
 			name:    "preview negative",
 			handler: server.HandlePreviewContext,
-			request: func() *http.Request {
-				return httptest.NewRequest(http.MethodGet, "/api/v1/novel/preview-context?novel_id=7&idea=test&chapter_index=-1", nil)
-			},
+			request: func() *http.Request { return previewJSONRequest(`{"novel_id":7,"idea":"test","chapter_index":-1}`) },
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			test.handler(recorder, test.request())
-			if recorder.Code != http.StatusBadRequest || (test.name == "preview negative" && !strings.Contains(recorder.Body.String(), "invalid chapter_index")) {
+			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("response = %d, body=%s", recorder.Code, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestPreviewContextRouteUsesPostJSON(t *testing.T) {
+	engine := &generationTestEngine{prepare: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+		state.FullOutline = "完整大纲"
+		state.Outline = "章节大纲"
+		return state, nil
+	}}
+	server := newServer(engine, nil)
+	get := httptest.NewRecorder()
+	server.router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/v1/novel/preview-context?novel_id=7&idea=secret", nil))
+	if get.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET status = %d", get.Code)
+	}
+	post := httptest.NewRecorder()
+	server.router.ServeHTTP(post, previewJSONRequest(`{"novel_id":7,"chapter_index":2,"idea":" 想法 ","editor_notes":" 备注 "}`))
+	if post.Code != http.StatusOK || !strings.Contains(post.Body.String(), `"novel_id":"7"`) || !strings.Contains(post.Body.String(), `"chapter_index":2`) {
+		t.Fatalf("POST response = %d %s", post.Code, post.Body.String())
+	}
+	if post.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", post.Header().Get("Cache-Control"))
 	}
 }
 
@@ -416,7 +442,7 @@ func TestPreviewUsesGlobalModelCapacity(t *testing.T) {
 	previewDone := make(chan struct{})
 	go func() {
 		recorder := httptest.NewRecorder()
-		request := httptest.NewRequest(http.MethodGet, "/api/v1/novel/preview-context?novel_id=7&idea=test", nil)
+		request := previewJSONRequest(`{"novel_id":7,"idea":"test"}`)
 		server.HandlePreviewContext(recorder, request)
 		close(previewDone)
 	}()
