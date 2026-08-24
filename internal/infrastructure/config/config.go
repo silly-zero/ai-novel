@@ -86,21 +86,27 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.AllowEmptyEnv(true)
 	v.AutomaticEnv()
 	for key, value := range map[string]any{
-		"app.listen_addr":                "127.0.0.1:8081",
-		"app.cors_origins":               "http://localhost:5173,http://127.0.0.1:5173",
-		"app.max_concurrent_generations": 2,
-		"app.read_header_timeout":        "5s",
-		"app.read_timeout":               "15s",
-		"app.write_timeout":              "30s",
-		"app.idle_timeout":               "60s",
-		"app.generation_timeout":         "30m",
-		"app.startup_timeout":            "15s",
-		"app.shutdown_timeout":           "15s",
-		"rag.min_similarity":             "0.55",
-		"rag.candidate_limit":            100,
-		"rag.result_limit":               4,
-		"rag.max_queries":                4,
-		"rag.max_context_memories":       8,
+		"database.postgres.host":                "localhost",
+		"database.postgres.port":                5432,
+		"database.postgres.user":                "postgres",
+		"database.postgres.dbname":              "ai_novel",
+		"database.postgres.sslmode":             "disable",
+		"database.postgres.enable_foreign_keys": false,
+		"app.listen_addr":                       "127.0.0.1:8081",
+		"app.cors_origins":                      "http://localhost:5173,http://127.0.0.1:5173",
+		"app.max_concurrent_generations":        2,
+		"app.read_header_timeout":               "5s",
+		"app.read_timeout":                      "15s",
+		"app.write_timeout":                     "30s",
+		"app.idle_timeout":                      "60s",
+		"app.generation_timeout":                "30m",
+		"app.startup_timeout":                   "15s",
+		"app.shutdown_timeout":                  "15s",
+		"rag.min_similarity":                    "0.55",
+		"rag.candidate_limit":                   100,
+		"rag.result_limit":                      4,
+		"rag.max_queries":                       4,
+		"rag.max_context_memories":              8,
 	} {
 		v.SetDefault(key, value)
 	}
@@ -121,6 +127,20 @@ func LoadConfig(configPath string) (*Config, error) {
 		"rag.result_limit":               "RAG_RESULT_LIMIT",
 		"rag.max_queries":                "RAG_MAX_QUERIES",
 		"rag.max_context_memories":       "RAG_MAX_CONTEXT_MEMORIES",
+	} {
+		if err := v.BindEnv(key, env); err != nil {
+			return nil, fmt.Errorf("bind %s: %w", key, err)
+		}
+	}
+
+	for key, env := range map[string]string{
+		"database.postgres.host":                "DATABASE_POSTGRES_HOST",
+		"database.postgres.port":                "DATABASE_POSTGRES_PORT",
+		"database.postgres.user":                "DATABASE_POSTGRES_USER",
+		"database.postgres.password":            "DATABASE_POSTGRES_PASSWORD",
+		"database.postgres.dbname":              "DATABASE_POSTGRES_DBNAME",
+		"database.postgres.sslmode":             "DATABASE_POSTGRES_SSLMODE",
+		"database.postgres.enable_foreign_keys": "DATABASE_POSTGRES_ENABLE_FOREIGN_KEYS",
 	} {
 		if err := v.BindEnv(key, env); err != nil {
 			return nil, fmt.Errorf("bind %s: %w", key, err)
@@ -155,6 +175,17 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	postgresPort, err := parsePositiveInt(v, "database.postgres.port")
+	if err != nil {
+		return nil, err
+	}
+	if postgresPort > 65535 {
+		return nil, fmt.Errorf("database.postgres.port must be less than or equal to 65535")
+	}
+	postgresForeignKeys, err := parseBool(v, "database.postgres.enable_foreign_keys")
+	if err != nil {
+		return nil, err
+	}
 	maxTokens, err := parsePositiveInt(v, "llm.chat.max_tokens")
 	if err != nil {
 		return nil, err
@@ -209,7 +240,8 @@ func LoadConfig(configPath string) (*Config, error) {
 		ragLimits[key] = limit
 	}
 
-	cfg.App.ListenAddr = strings.TrimSpace(v.GetString("app.listen_addr"))
+	cfg.Database.Postgres.Port = postgresPort
+	cfg.Database.Postgres.EnableForeignKeys = postgresForeignKeys
 	cfg.App.CorsOrigins = origins
 	cfg.App.MaxConcurrentGenerations = maxConcurrent
 	cfg.App.ReadHeaderTimeout = appDurations["app.read_header_timeout"]
@@ -337,6 +369,17 @@ func parsePositiveInt(v *viper.Viper, key string) (int, error) {
 	return int(parsed), nil
 }
 
+func parseBool(v *viper.Viper, key string) (bool, error) {
+	raw := strings.TrimSpace(v.GetString(key))
+	if raw == "" {
+		return false, fmt.Errorf("%s is required", key)
+	}
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean", key)
+	}
+	return parsed, nil
+}
 func parseCorsOrigins(raw string) ([]string, error) {
 	parts := strings.Split(raw, ",")
 	origins := make([]string, 0, len(parts))
@@ -405,6 +448,26 @@ func parseDuration(v *viper.Viper, key string) (time.Duration, error) {
 }
 
 func validate(cfg *Config) error {
+	cfg.Database.Postgres.Host = strings.TrimSpace(cfg.Database.Postgres.Host)
+	cfg.Database.Postgres.User = strings.TrimSpace(cfg.Database.Postgres.User)
+	cfg.Database.Postgres.DBName = strings.TrimSpace(cfg.Database.Postgres.DBName)
+	cfg.Database.Postgres.SSLMode = strings.TrimSpace(strings.ToLower(cfg.Database.Postgres.SSLMode))
+	for _, field := range []struct {
+		path  string
+		value string
+	}{
+		{path: "database.postgres.host", value: cfg.Database.Postgres.Host},
+		{path: "database.postgres.user", value: cfg.Database.Postgres.User},
+		{path: "database.postgres.dbname", value: cfg.Database.Postgres.DBName},
+	} {
+		if field.value == "" {
+			return fmt.Errorf("%s is required", field.path)
+		}
+	}
+	validSSLMode := map[string]bool{"disable": true, "allow": true, "prefer": true, "require": true, "verify-ca": true, "verify-full": true}
+	if !validSSLMode[cfg.Database.Postgres.SSLMode] {
+		return fmt.Errorf("database.postgres.sslmode is invalid")
+	}
 	cfg.App.ListenAddr = strings.TrimSpace(cfg.App.ListenAddr)
 	if err := validateListenAddr(cfg.App.ListenAddr); err != nil {
 		return err

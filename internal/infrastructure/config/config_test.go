@@ -56,6 +56,13 @@ var environmentKeys = []string{
 	"RAG_RESULT_LIMIT",
 	"RAG_MAX_QUERIES",
 	"RAG_MAX_CONTEXT_MEMORIES",
+	"DATABASE_POSTGRES_HOST",
+	"DATABASE_POSTGRES_PORT",
+	"DATABASE_POSTGRES_USER",
+	"DATABASE_POSTGRES_PASSWORD",
+	"DATABASE_POSTGRES_DBNAME",
+	"DATABASE_POSTGRES_SSLMODE",
+	"DATABASE_POSTGRES_ENABLE_FOREIGN_KEYS",
 }
 
 func unsetTestEnvironment(t *testing.T) {
@@ -199,8 +206,7 @@ func TestLoadConfigRejectsInvalidModelConfiguration(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
 				t.Fatalf("error = %v, want field %s", err, test.wantErr)
 			}
-			if strings.Contains(err.Error(), "chat-test-key") ||
-				strings.Contains(err.Error(), "embedding-test-key") {
+			if strings.Contains(err.Error(), "chat-test-key") || strings.Contains(err.Error(), "embedding-test-key") {
 				t.Fatalf("error exposed API key: %v", err)
 			}
 		})
@@ -244,6 +250,7 @@ func TestLoadConfigRejectsInvalidAppConfiguration(t *testing.T) {
 		})
 	}
 }
+
 func TestLoadConfigReadsRAGConfiguration(t *testing.T) {
 	cfg, err := loadTestConfig(t, validConfig+`
 rag:
@@ -256,9 +263,7 @@ rag:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RAG.MinSimilarity != 0.6 || cfg.RAG.CandidateLimit != 20 ||
-		cfg.RAG.ResultLimit != 2 || cfg.RAG.MaxQueries != 3 ||
-		cfg.RAG.MaxContextMemories != 4 {
+	if cfg.RAG.MinSimilarity != 0.6 || cfg.RAG.CandidateLimit != 20 || cfg.RAG.ResultLimit != 2 || cfg.RAG.MaxQueries != 3 || cfg.RAG.MaxContextMemories != 4 {
 		t.Fatalf("rag yaml config = %#v", cfg.RAG)
 	}
 }
@@ -270,7 +275,6 @@ func TestLoadConfigRAGEnvironmentOverridesYAML(t *testing.T) {
 	t.Setenv("RAG_RESULT_LIMIT", "3")
 	t.Setenv("RAG_MAX_QUERIES", "2")
 	t.Setenv("RAG_MAX_CONTEXT_MEMORIES", "5")
-
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(validConfig+`
 rag:
@@ -286,9 +290,7 @@ rag:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.RAG.MinSimilarity != 0.7 || cfg.RAG.CandidateLimit != 25 ||
-		cfg.RAG.ResultLimit != 3 || cfg.RAG.MaxQueries != 2 ||
-		cfg.RAG.MaxContextMemories != 5 {
+	if cfg.RAG.MinSimilarity != 0.7 || cfg.RAG.CandidateLimit != 25 || cfg.RAG.ResultLimit != 3 || cfg.RAG.MaxQueries != 2 || cfg.RAG.MaxContextMemories != 5 {
 		t.Fatalf("rag config = %#v", cfg.RAG)
 	}
 }

@@ -18,6 +18,7 @@ database:
     password: ""
     dbname: "ai_novel"
     sslmode: "disable"
+    enable_foreign_keys: false
 
 llm:
   chat:

@@ -97,6 +97,7 @@ ai-novel/
        password: "your-password"
        dbname: "ai_novel"
        sslmode: "disable"
+       enable_foreign_keys: false
    llm:
      chat:
        api_key: "your-api-key"
@@ -113,11 +114,14 @@ ai-novel/
 
    `app` 配置控制本地监听地址、CORS、生成并发数和超时；`rag` 配置控制相似度阈值、候选窗口、每次查询结果数、查询数和最终上下文上限。带单位的 duration 示例包括 `5m`、`1m` 和 `30m`。完整字段和默认值见 `configs/config.yaml.example`。
 
-   上述 `app`、`llm` 和 `rag` 字段均可通过环境变量覆盖，或在无配置文件时直接提供。支持 `APP_*`、`LLM_CHAT_*`、`LLM_EMBEDDING_*` 和 `RAG_*` 变量，包括：
+   上述 `database.postgres`、`app`、`llm` 和 `rag` 字段均可通过环境变量覆盖，或在无配置文件时直接提供。支持：
+   - `DATABASE_POSTGRES_HOST`、`DATABASE_POSTGRES_PORT`、`DATABASE_POSTGRES_USER`、`DATABASE_POSTGRES_PASSWORD`、`DATABASE_POSTGRES_DBNAME`、`DATABASE_POSTGRES_SSLMODE`、`DATABASE_POSTGRES_ENABLE_FOREIGN_KEYS`
    - `APP_LISTEN_ADDR`、`APP_CORS_ORIGINS`、`APP_MAX_CONCURRENT_GENERATIONS`、`APP_READ_HEADER_TIMEOUT`、`APP_READ_TIMEOUT`、`APP_WRITE_TIMEOUT`、`APP_IDLE_TIMEOUT`、`APP_GENERATION_TIMEOUT`、`APP_STARTUP_TIMEOUT`、`APP_SHUTDOWN_TIMEOUT`
    - `LLM_CHAT_API_KEY`、`LLM_CHAT_BASE_URL`、`LLM_CHAT_MODEL`、`LLM_CHAT_MAX_TOKENS`、`LLM_CHAT_TIMEOUT`
    - `LLM_EMBEDDING_API_KEY`、`LLM_EMBEDDING_BASE_URL`、`LLM_EMBEDDING_MODEL`、`LLM_EMBEDDING_TIMEOUT`
    - `RAG_MIN_SIMILARITY`、`RAG_CANDIDATE_LIMIT`、`RAG_RESULT_LIMIT`、`RAG_MAX_QUERIES`、`RAG_MAX_CONTEXT_MEMORIES`
+
+   数据库环境变量会覆盖 YAML；`DATABASE_POSTGRES_PASSWORD` 可以为空，但仅适用于本地已配置无需密码认证的 PostgreSQL。端口必须为 `1..65535`，`sslmode` 支持 `disable`、`allow`、`prefer`、`require`、`verify-ca`、`verify-full`。只读诊断命令的 `--dsn` / `AI_NOVEL_POSTGRES_DSN` 不参与服务启动配置，也不会触发建库或迁移。
 
    示例中的 API key 只是占位符；不要把真实凭据写入 README、示例配置或 Git。
 
