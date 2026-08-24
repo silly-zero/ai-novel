@@ -1130,9 +1130,9 @@ func (s *entGenerationChapterStore) Save(
 				return 0, errGenerationPreviousDerivedNotReady
 			}
 			currentPacket := agents.ContinuityPacket{
-				LastBeat:   previous.LastBeat,
+				LastBeat:   strings.TrimSpace(previous.LastBeat),
 				OpenLoops:  append([]string(nil), previous.OpenLoops...),
-				NextAction: previous.NextAction,
+				NextAction: strings.TrimSpace(previous.NextAction),
 			}
 			if !continuityPacketsEqual(target.PreviousContinuity, currentPacket) {
 				return 0, errGenerationChapterChanged
