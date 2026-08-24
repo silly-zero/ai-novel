@@ -133,13 +133,19 @@ ai-novel/
 
 3. **体验流式 API**:
 
-   `novel_id` 和 `chapter_index` 必须是正整数；请先创建小说，并将示例中的 `1` 替换为数据库中的实际小说 ID。
+   `novel_id` 和 `chapter_index` 必须是 JSON 正整数；章节生成使用 POST JSON，响应仍为 SSE。`persist` 是 JSON boolean，省略时默认为 true；请求体最大 1 MiB，未知字段和尾随 JSON 会被拒绝。GET 生成接口已移除，预览接口仍保持 GET。
    ```bash
    # 基础用法：从大纲生成
-   curl -N "http://127.0.0.1:8081/api/v1/novel/generate?novel_id=1&outline=写一个主角在深山发现古老遗迹的故事"
+   curl -N -X POST "http://127.0.0.1:8081/api/v1/novel/generate" \
+     -H "Content-Type: application/json" \
+     -H "Accept: text/event-stream" \
+     --data-raw '{"novel_id":1,"outline":"写一个主角在深山发现古老遗迹的故事"}'
 
    # 人工干预/共创：注入作者指令与手工资料
-   curl -N "http://127.0.0.1:8081/api/v1/novel/generate?novel_id=1&idea=主角能听懂动物语言&chapter_index=1&editor_notes=保持轻松幽默的语气, 禁用第一人称&manual_context=青阳镇位于群山脚下, 镇北有一条小河"
+   curl -N -X POST "http://127.0.0.1:8081/api/v1/novel/generate" \
+     -H "Content-Type: application/json" \
+     -H "Accept: text/event-stream" \
+     --data-raw '{"novel_id":1,"idea":"主角能听懂动物语言","chapter_index":1,"editor_notes":"保持轻松幽默的语气，禁用第一人称","manual_context":"青阳镇位于群山脚下，镇北有一条小河"}'
    ```
 
    SSE 过程事件依次包括 `start`、`context_meta`、`token` 和可能出现的 `retry`；每个请求最后只发送一次 `terminal`，状态为 `success`、`error` 或 `cancelled`。

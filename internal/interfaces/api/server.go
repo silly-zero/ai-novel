@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"regexp"
@@ -1621,7 +1622,7 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	s.router.Put("/api/v1/chapters/{id}", s.HandleUpdateChapter)
 	s.router.Delete("/api/v1/chapters/{id}", s.HandleDeleteChapter)
 	s.router.Post("/api/v1/chapters/{id}/derived/retry", s.HandleRetryChapterDerived)
-	s.router.Get("/api/v1/novel/generate", s.HandleGenerateChapter)
+	s.router.Post("/api/v1/novel/generate", s.HandleGenerateChapter)
 	s.router.Post("/api/v1/novels/{id}/generate/cancel", s.HandleCancelGeneration)
 	s.router.Get("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
@@ -2465,6 +2466,72 @@ type CancelGenerationRequest struct {
 	GenerationID string `json:"generation_id"`
 }
 
+type GenerateChapterRequest struct {
+	NovelID         *int   `json:"novel_id"`
+	ChapterID       *int   `json:"chapter_id,omitempty"`
+	Persist         *bool  `json:"persist,omitempty"`
+	ChapterIndex    *int   `json:"chapter_index,omitempty"`
+	Outline         string `json:"outline,omitempty"`
+	Idea            string `json:"idea,omitempty"`
+	ExistingOutline string `json:"existing_outline,omitempty"`
+	OutlineStart    *int   `json:"outline_start,omitempty"`
+	OutlineEnd      *int   `json:"outline_end,omitempty"`
+	EditorNotes     string `json:"editor_notes,omitempty"`
+	ManualContext   string `json:"manual_context,omitempty"`
+}
+
+func decodeGenerateChapterRequest(w http.ResponseWriter, r *http.Request) (GenerateChapterRequest, error) {
+	var req GenerateChapterRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		if _, ok := err.(*http.MaxBytesError); ok {
+			return req, fmt.Errorf("request body too large")
+		}
+		return req, fmt.Errorf("invalid json: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return req, errors.New("request body must contain one JSON object")
+		}
+		return req, fmt.Errorf("invalid trailing json: %w", err)
+	}
+	return req, nil
+}
+
+func normalizeGenerateChapterRequest(req GenerateChapterRequest) (GenerateChapterRequest, error) {
+	if req.NovelID == nil || *req.NovelID <= 0 {
+		return req, errors.New("novel_id must be a positive integer")
+	}
+	if req.ChapterID != nil && *req.ChapterID <= 0 {
+		return req, errors.New("chapter_id must be a positive integer")
+	}
+	if req.ChapterIndex != nil && *req.ChapterIndex <= 0 {
+		return req, errors.New("chapter_index must be a positive integer")
+	}
+	if (req.OutlineStart == nil) != (req.OutlineEnd == nil) {
+		return req, errors.New("outline_start and outline_end must be provided together")
+	}
+	if req.OutlineStart != nil && (*req.OutlineStart <= 0 || *req.OutlineEnd <= 0 || *req.OutlineStart > *req.OutlineEnd) {
+		return req, errors.New("outline range is invalid")
+	}
+	if req.ChapterIndex == nil {
+		value := 1
+		req.ChapterIndex = &value
+	}
+	if req.Persist == nil {
+		value := true
+		req.Persist = &value
+	}
+	req.Outline = strings.TrimSpace(req.Outline)
+	req.Idea = strings.TrimSpace(req.Idea)
+	req.ExistingOutline = strings.TrimSpace(req.ExistingOutline)
+	req.EditorNotes = strings.TrimSpace(req.EditorNotes)
+	req.ManualContext = strings.TrimSpace(req.ManualContext)
+	return req, nil
+}
+
 type generationStatus string
 
 const (
@@ -2623,25 +2690,44 @@ func (s *Server) HandleCancelGeneration(
 }
 
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
-	if s.engine == nil {
-		http.Error(w, "engine not configured", http.StatusInternalServerError)
+	request, err := decodeGenerateChapterRequest(w, r)
+	if err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
-
-	novelIDRaw := strings.TrimSpace(r.URL.Query().Get("novel_id"))
-	if novelIDRaw == "" {
-		http.Error(w, "Missing novel_id", http.StatusBadRequest)
-		return
-	}
-	novelIDInt, err := parseIntParam(novelIDRaw)
+	request, err = normalizeGenerateChapterRequest(request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if s.engine == nil {
+		http.Error(w, "engine not configured", http.StatusInternalServerError)
+		return
+	}
+	novelIDInt := *request.NovelID
 	novelID := strconv.Itoa(novelIDInt)
+	chapterIndex := *request.ChapterIndex
+	persist := *request.Persist
+	chapterIDStr := ""
+	if request.ChapterID != nil {
+		chapterIDStr = strconv.Itoa(*request.ChapterID)
+	}
+	outline := request.Outline
+	idea := request.Idea
+	editorNotes := request.EditorNotes
+	manualContext := request.ManualContext
+	existingOutline := request.ExistingOutline
+	outlineStart, outlineEnd := 0, 0
+	if request.OutlineStart != nil {
+		outlineStart, outlineEnd = *request.OutlineStart, *request.OutlineEnd
+	}
 	generationID, err := agents.NewGenerationID()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "failed to create generation id", http.StatusInternalServerError)
 		return
 	}
 	deadlineCtx, deadlineCancel := context.WithTimeout(r.Context(), s.config.GenerationTimeout)
@@ -2680,7 +2766,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[Generation] clear write deadline failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, err)
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
 	w.Header().Set("Connection", "keep-alive")
 
 	if _, ok := w.(http.Flusher); !ok {
@@ -2688,25 +2774,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sse := newGenerationSSEWriter(w, http.NewResponseController(w))
-
-	outline := strings.TrimSpace(r.URL.Query().Get("outline"))
-	idea := strings.TrimSpace(r.URL.Query().Get("idea"))
-	editorNotes := strings.TrimSpace(r.URL.Query().Get("editor_notes"))
-	manualContext := strings.TrimSpace(r.URL.Query().Get("manual_context"))
-	existingOutline := strings.TrimSpace(r.URL.Query().Get("existing_outline"))
-	outlineStart, _ := strconv.Atoi(r.URL.Query().Get("outline_start"))
-	outlineEnd, _ := strconv.Atoi(r.URL.Query().Get("outline_end"))
-	chapterIDStr := r.URL.Query().Get("chapter_id")
-	persistStr := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("persist")))
-	chapterIndexStr := strings.TrimSpace(r.URL.Query().Get("chapter_index"))
-	chapterIndex := 1
-	if chapterIndexStr != "" {
-		chapterIndex, err = parseIntParam(chapterIndexStr)
-		if err != nil {
-			http.Error(w, "invalid chapter_index", http.StatusBadRequest)
-			return
-		}
-	}
 
 	ctx := generationCtx
 	finishSync := func(runErr error, finalState *agents.GenerationState) {
@@ -2736,18 +2803,13 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	persist := true
-	if persistStr == "0" || persistStr == "false" || persistStr == "no" {
-		persist = false
-	}
-
 	var initialNovelUpdatedAt time.Time
 	if s.db != nil {
-		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
+		loadCtx, loadCancel := context.WithTimeout(r.Context(), 5*time.Second)
 		row, qErr := s.db.Novel.Query().Where(novel.ID(novelIDInt)).Only(loadCtx)
 		loadCancel()
 		if qErr != nil {
-			finishSync(qErr, nil)
+			http.Error(w, "failed to load novel", http.StatusInternalServerError)
 			return
 		}
 		initialNovelUpdatedAt = row.UpdatedAt
@@ -2763,10 +2825,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if outline == "" && idea == "" && existingOutline == "" {
-		finishSync(
-			errors.New("Missing outline and idea (no saved outline found)"),
-			nil,
-		)
+		http.Error(w, "Missing outline and idea (no saved outline found)", http.StatusBadRequest)
 		return
 	}
 

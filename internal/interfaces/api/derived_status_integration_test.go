@@ -74,7 +74,8 @@ func TestPersistZeroUsesSavedNovelInputPostgres(t *testing.T) {
 	}
 	server := newServer(engine, client)
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/novel/generate?novel_id=%d&chapter_index=1&persist=0", novelRow.ID), nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/novel/generate", strings.NewReader(fmt.Sprintf(`{"novel_id":%d,"chapter_index":1,"persist":false}`, novelRow.ID)))
+	request.Header.Set("Content-Type", "application/json")
 	server.HandleGenerateChapter(recorder, request)
 	if seenIdea != "saved idea" || !strings.Contains(recorder.Body.String(), `"status":"success"`) {
 		t.Fatalf("idea=%q body=%s", seenIdea, recorder.Body.String())

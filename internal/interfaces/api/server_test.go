@@ -213,26 +213,19 @@ func validGeneratedContent() string {
 func generateRequest(ctx context.Context, novelID string, chapterIndex int) *http.Request {
 	return generateRequestWithPersist(ctx, novelID, chapterIndex, false)
 }
-
-func generateRequestWithPersist(
-	ctx context.Context,
-	novelID string,
-	chapterIndex int,
-	persist bool,
-) *http.Request {
-	persistValue := 0
-	if persist {
-		persistValue = 1
-	}
-	url := fmt.Sprintf(
-		"/api/v1/novel/generate?novel_id=%s&chapter_index=%d&idea=test&persist=%d",
-		novelID,
-		chapterIndex,
-		persistValue,
-	)
-	return httptest.NewRequest(http.MethodGet, url, nil).WithContext(ctx)
+func generateRequestWithPersist(ctx context.Context, novelID string, chapterIndex int, persist bool) *http.Request {
+	body := fmt.Sprintf(`{"novel_id":%s,"chapter_index":%d,"persist":%t,"idea":"test"}`, novelID, chapterIndex, persist)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/novel/generate", strings.NewReader(body)).WithContext(ctx)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "text/event-stream")
+	return request
 }
 
+func generateJSONRequest(body string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/novel/generate", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	return request
+}
 func waitForSignal(t *testing.T, signal <-chan struct{}) {
 	t.Helper()
 	select {
@@ -370,29 +363,35 @@ func TestGenerateAndPreviewRejectInvalidChapterIndex(t *testing.T) {
 	tests := []struct {
 		name    string
 		handler func(http.ResponseWriter, *http.Request)
-		path    string
+		request func() *http.Request
 	}{
 		{
 			name:    "generate zero",
 			handler: server.HandleGenerateChapter,
-			path:    "/api/v1/novel/generate?novel_id=7&idea=test&persist=0&chapter_index=0",
+			request: func() *http.Request {
+				return generateJSONRequest(`{"novel_id":7,"idea":"test","persist":false,"chapter_index":0}`)
+			},
 		},
 		{
 			name:    "generate malformed",
 			handler: server.HandleGenerateChapter,
-			path:    "/api/v1/novel/generate?novel_id=7&idea=test&persist=0&chapter_index=bad",
+			request: func() *http.Request {
+				return generateJSONRequest(`{"novel_id":7,"idea":"test","persist":false,"chapter_index":"bad"}`)
+			},
 		},
 		{
 			name:    "preview negative",
 			handler: server.HandlePreviewContext,
-			path:    "/api/v1/novel/preview-context?novel_id=7&idea=test&chapter_index=-1",
+			request: func() *http.Request {
+				return httptest.NewRequest(http.MethodGet, "/api/v1/novel/preview-context?novel_id=7&idea=test&chapter_index=-1", nil)
+			},
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			test.handler(recorder, httptest.NewRequest(http.MethodGet, test.path, nil))
-			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "invalid chapter_index") {
+			test.handler(recorder, test.request())
+			if recorder.Code != http.StatusBadRequest || (test.name == "preview negative" && !strings.Contains(recorder.Body.String(), "invalid chapter_index")) {
 				t.Fatalf("response = %d, body=%s", recorder.Code, recorder.Body.String())
 			}
 		})
@@ -634,7 +633,7 @@ func TestHandleGenerateChapterRejectsConcurrentRequestForSameNovel(t *testing.T)
 	waitForSignal(t, entered)
 
 	second := httptest.NewRecorder()
-	server.HandleGenerateChapter(second, generateRequest(context.Background(), "007", 2))
+	server.HandleGenerateChapter(second, generateRequest(context.Background(), "7", 2))
 	if second.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want %d", second.Code, http.StatusConflict)
 	}
@@ -1479,11 +1478,7 @@ func TestHandleGenerateChapterUsesPersistedOrderForChapterIDRegeneration(t *test
 	server := newServer(engine, nil)
 	server.chapterStore = store
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(
-		http.MethodGet,
-		"/api/v1/novel/generate?novel_id=7&chapter_id=11&idea=test&persist=1",
-		nil,
-	)
+	request := generateJSONRequest(`{"novel_id":7,"chapter_id":11,"idea":"test","persist":true}`)
 
 	server.HandleGenerateChapter(recorder, request)
 
