@@ -241,6 +241,40 @@ func TestArchitectExistingOutlineTakesPrecedenceOverFullOutline(t *testing.T) {
 	}
 }
 
+func TestArchitectDoesNotCommitAfterProviderReturnsIntoCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	llm := &queuedStructuredLLM{
+		responses: []string{"第1章：主角抵达边城"},
+		afterCall: func(int) { cancel() },
+	}
+	state := &GenerationState{Idea: "调查身世", OutlineStart: 1, OutlineEnd: 1, ChapterIndex: 1, FullOutline: "旧大纲"}
+	got, err := NewArchitectAgent(llm).Run(ctx, state)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v", err)
+	}
+	if got.FullOutline != "旧大纲" || got.MainlineBeat != (MainlineEventBeat{}) {
+		t.Fatalf("state committed after cancellation: %#v", got)
+	}
+}
+
+func TestArchitectRepairsMalformedGeneratedOutline(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		"以下是大纲：\n第3章：主角进入密室\n第4章：主角追踪祭坛",
+		"第3章：主角进入密室\n第4章：主角追踪祭坛",
+	}}
+	state := &GenerationState{Idea: "调查身世", OutlineStart: 3, OutlineEnd: 4, ChapterIndex: 3}
+	got, err := NewArchitectAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if llm.calls != 2 || got.MainlineBeat.CurrentEvent != "主角进入密室" || !strings.Contains(got.FullOutline, "第4章：主角追踪祭坛") {
+		t.Fatalf("calls=%d state=%#v", llm.calls, got)
+	}
+	if !strings.Contains(llm.systems[1], "全角冒号") || !strings.Contains(llm.users[1], "generated_outline_malformed_line") {
+		t.Fatalf("repair prompt missing constraints: system=%s user=%s", llm.systems[1], llm.users[1])
+	}
+}
+
 func TestArchitectRejectsInvalidGeneratedOutlineWithoutMutatingState(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -257,7 +291,7 @@ func TestArchitectRejectsInvalidGeneratedOutlineWithoutMutatingState(t *testing.
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			llm := &queuedStructuredLLM{responses: []string{test.response}}
+			llm := &queuedStructuredLLM{responses: []string{test.response, test.response}}
 			state := &GenerationState{
 				FullOutline:  originalOutline,
 				OutlineStart: 3,
@@ -272,7 +306,7 @@ func TestArchitectRejectsInvalidGeneratedOutlineWithoutMutatingState(t *testing.
 			if strings.Contains(err.Error(), test.response) {
 				t.Fatalf("error leaked generated outline: %v", err)
 			}
-			if llm.calls != 1 || got.FullOutline != originalOutline || got.ExistingOutline != "" || got.MainlineBeat != (MainlineEventBeat{}) {
+			if llm.calls != 2 || got.FullOutline != originalOutline || got.ExistingOutline != "" || got.MainlineBeat != (MainlineEventBeat{}) {
 				t.Fatalf("state = %#v, calls = %d", got, llm.calls)
 			}
 		})

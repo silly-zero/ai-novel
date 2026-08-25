@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // ArchitectAgent 是架构师智能体，负责根据 Idea 构建全书的章节大纲映射
@@ -96,8 +97,17 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if err != nil {
 		return state, fmt.Errorf("architect agent failed: %w", err)
 	}
+	if err := ctx.Err(); err != nil {
+		return state, err
+	}
 	if issue := validateGeneratedOutlineSegment(fullOutline, start, end); issue != "" {
-		return state, architectOutlineError(issue)
+		fullOutline, repairErr := a.repairOutline(ctx, start, end, fullOutline, issue)
+		if repairErr != nil {
+			return state, repairErr
+		}
+		if issue = validateGeneratedOutlineSegment(fullOutline, start, end); issue != "" {
+			return state, architectOutlineError(issue)
+		}
 	}
 
 	mergedOutline := fullOutline
@@ -120,6 +130,32 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	state.MainlineBeat = beat
 
 	return state, nil
+}
+
+func (a *ArchitectAgent) repairOutline(ctx context.Context, start, end int, previous, issue string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	systemPrompt := fmt.Sprintf(`你是小说大纲格式修复器。只修复格式，不改变剧情含义。
+必须严格输出第 %d 章到第 %d 章，每章一行，格式为：第N章：事件。
+只能使用 ASCII 数字、中文“第”和“章”、全角冒号“：”；禁止 Markdown、标题、解释、开场白、空行和结尾说明。`, start, end)
+	userPrompt := fmt.Sprintf("校验错误：%s\n原始大纲：\n%s", issue, truncateArchitectText(previous, 512))
+	fixed, err := a.llm.Generate(ctx, systemPrompt, userPrompt)
+	if err != nil {
+		return "", fmt.Errorf("architect outline repair failed: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return fixed, nil
+}
+
+func truncateArchitectText(value string, max int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= max {
+		return string(runes)
+	}
+	return string(runes[:max]) + "..."
 }
 
 func architectOutlineRange(start, end int) (int, int, string) {
