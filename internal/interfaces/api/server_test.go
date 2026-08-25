@@ -402,6 +402,27 @@ func TestGenerateAndPreviewRejectInvalidChapterIndex(t *testing.T) {
 	}
 }
 
+func TestContextMetaContainsOnlySafeSummary(t *testing.T) {
+	engine := &generationTestEngine{run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+		state.Draft = validGeneratedContent()
+		state.IsApproved = true
+		return state, nil
+	}}
+	server := newServer(engine, nil)
+	recorder := httptest.NewRecorder()
+	server.HandleGenerateChapter(recorder, generateRequest(context.Background(), "7", 1))
+	body := recorder.Body.String()
+	metaStart := strings.Index(body, "event: context_meta\n")
+	metaEnd := strings.Index(body[metaStart:], "\n\nevent:")
+	if metaStart < 0 || metaEnd < 0 {
+		t.Fatalf("context meta missing: %s", body)
+	}
+	meta := body[metaStart : metaStart+metaEnd]
+	if !strings.Contains(meta, `"context_stats"`) || strings.Contains(meta, "editor_notes") || strings.Contains(meta, "manual_context") || strings.Contains(meta, "context_preview") || strings.Contains(meta, "scene_card_preview") || strings.Contains(meta, "full_outline_preview") || strings.Contains(meta, "generation_id") {
+		t.Fatalf("unsafe context meta: %s", meta)
+	}
+}
+
 func TestPreviewContextRouteUsesPostJSON(t *testing.T) {
 	engine := &generationTestEngine{prepare: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 		state.FullOutline = "完整大纲"

@@ -2921,18 +2921,13 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	prepared.NovelID = novelID
 
 	meta := map[string]interface{}{
-		"type":                 "context_meta",
-		"generation_id":        prepared.GenerationID,
-		"novel_id":             prepared.NovelID,
-		"chapter_index":        prepared.ChapterIndex,
-		"chapter_id":           chapterID,
-		"persist":              persist,
-		"editor_notes":         prepared.EditorNotes,
-		"manual_context":       prepared.ManualContext,
-		"full_outline_preview": truncate(prepared.FullOutline, 400),
-		"outline_preview":      truncate(prepared.Outline, 300),
-		"scene_card_preview":   truncate(prepared.SceneCard, 500),
-		"context_preview":      truncate(prepared.Context, 800),
+		"chapter_index": prepared.ChapterIndex,
+		"chapter_id": func() any {
+			if chapterID == "" {
+				return nil
+			}
+			return chapterID
+		}(),
 		"context_stats": map[string]int{
 			"context_lines":    1 + strings.Count(prepared.Context, "\n"),
 			"scene_card_lines": 1 + strings.Count(prepared.SceneCard, "\n"),
