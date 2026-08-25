@@ -1856,10 +1856,8 @@ func (s *Server) HandleCreateNovel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req CreateNovelRequest
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+	if err := decodeStrictJSONObjectWithLimit(w, r, &req, []string{"title", "description", "type", "tags"}, 1<<20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1982,10 +1980,8 @@ func (s *Server) HandleUpdateNovel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req UpdateNovelRequest
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20))
-	dec.DisallowUnknownFields()
-	if decodeErr := dec.Decode(&req); decodeErr != nil {
-		http.Error(w, fmt.Sprintf("invalid json: %v", decodeErr), http.StatusBadRequest)
+	if err := decodeStrictJSONObjectWithLimit(w, r, &req, []string{"idea", "outline"}, 5<<20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -2139,10 +2135,8 @@ func (s *Server) HandleCreateChapter(w http.ResponseWriter, r *http.Request) {
 	defer s.generationGuard.releaseMutation(novelID)
 
 	var req CreateChapterRequest
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 5<<20))
-	dec.DisallowUnknownFields()
-	if decodeErr := dec.Decode(&req); decodeErr != nil {
-		http.Error(w, fmt.Sprintf("invalid json: %v", decodeErr), http.StatusBadRequest)
+	if err := decodeStrictJSONObjectWithLimit(w, r, &req, []string{"title", "content", "order", "status"}, 5<<20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -2212,10 +2206,8 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 	defer s.generationGuard.releaseMutation(chapterNovel.ID)
 
 	var req UpdateChapterRequest
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 10<<20))
-	dec.DisallowUnknownFields()
-	if decodeErr := dec.Decode(&req); decodeErr != nil {
-		http.Error(w, fmt.Sprintf("invalid json: %v", decodeErr), http.StatusBadRequest)
+	if err := decodeStrictJSONObjectWithLimit(w, r, &req, []string{"title", "content", "order", "status"}, 10<<20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -2469,8 +2461,8 @@ type CancelGenerationRequest struct {
 
 var errRequestBodyTooLarge = errors.New("request body too large")
 
-func decodeStrictJSONObject(w http.ResponseWriter, r *http.Request, dst any, fields []string) error {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+func decodeStrictJSONObjectWithLimit(w http.ResponseWriter, r *http.Request, dst any, fields []string, maxBytes int64) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
 	var raw json.RawMessage
 	if err := decoder.Decode(&raw); err != nil {
 		var maxErr *http.MaxBytesError
@@ -2505,6 +2497,10 @@ func decodeStrictJSONObject(w http.ResponseWriter, r *http.Request, dst any, fie
 		return fmt.Errorf("invalid json: %w", err)
 	}
 	return nil
+}
+
+func decodeStrictJSONObject(w http.ResponseWriter, r *http.Request, dst any, fields []string) error {
+	return decodeStrictJSONObjectWithLimit(w, r, dst, fields, 1<<20)
 }
 
 type GenerateChapterRequest struct {
@@ -2686,10 +2682,8 @@ func (s *Server) HandleCancelGeneration(
 	}
 
 	var req CancelGenerationRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		http.Error(w, fmt.Sprintf("invalid json: %v", err), http.StatusBadRequest)
+	if err := decodeStrictJSONObjectWithLimit(w, r, &req, []string{"generation_id"}, 1<<20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	req.GenerationID = strings.TrimSpace(req.GenerationID)
