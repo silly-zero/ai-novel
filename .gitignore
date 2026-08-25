@@ -1,4 +1,7 @@
 # 忽略特定的配置文件
-config.yaml
+configs/config.yaml
+.env
+.env.*
+!.env.example
 docs/
 .claude

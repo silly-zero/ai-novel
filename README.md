@@ -125,6 +125,8 @@ ai-novel/
 
    示例中的 API key 只是占位符；不要把真实凭据写入 README、示例配置或 Git。
 
+   本地 `configs/config.yaml` 仅用于开发，建议设置为仅当前用户可读：`chmod 600 configs/config.yaml`。如果凭据曾经进入 Git 历史，应按已暴露处理并立即在对应 API/数据库侧撤销或轮换；从当前文件删除或加入 `.gitignore` 不能清除历史副本。前端 `VITE_*` 变量会编译进浏览器，只能放非敏感公开配置，后端密钥必须留在后端环境。
+
 2. **运行**:
    ```bash
    go run ./cmd/server
