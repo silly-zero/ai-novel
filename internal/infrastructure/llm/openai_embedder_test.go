@@ -3,9 +3,9 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 )
@@ -68,7 +68,8 @@ func TestNewOpenAIEmbedderAppliesTimeout(t *testing.T) {
 		t.Fatalf("NewOpenAIEmbedder returned error: %v", err)
 	}
 	_, err = embedder.EmbedText(context.Background(), "text")
-	if err == nil || !strings.Contains(err.Error(), "Client.Timeout") {
-		t.Fatalf("EmbedText error = %v, want HTTP timeout", err)
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || !providerErr.Retryable {
+		t.Fatalf("EmbedText error = %v, want retryable provider timeout", err)
 	}
 }

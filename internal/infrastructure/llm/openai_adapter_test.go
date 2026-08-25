@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -87,8 +86,9 @@ func TestNewOpenAIAdapterAppliesTimeout(t *testing.T) {
 		t.Fatalf("NewOpenAIAdapter returned error: %v", err)
 	}
 	_, err = adapter.Generate(context.Background(), "system", "user")
-	if err == nil || !strings.Contains(err.Error(), "Client.Timeout") {
-		t.Fatalf("Generate error = %v, want HTTP timeout", err)
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || !providerErr.Retryable {
+		t.Fatalf("Generate error = %v, want retryable provider timeout", err)
 	}
 }
 

@@ -15,7 +15,8 @@ import (
 
 // OpenAIAdapter 将 Eino 的 ChatModel 适配为领域层的 LLMService
 type OpenAIAdapter struct {
-	chatModel model.ChatModel
+	chatModel   model.ChatModel
+	retryPolicy retryPolicy
 }
 
 type ChatConfig struct {
@@ -40,7 +41,8 @@ func NewOpenAIAdapter(ctx context.Context, config ChatConfig) (*OpenAIAdapter, e
 	}
 
 	return &OpenAIAdapter{
-		chatModel: cm,
+		chatModel:   cm,
+		retryPolicy: defaultRetryPolicy(),
 	}, nil
 }
 
@@ -53,9 +55,12 @@ func messagesFor(systemPrompt, userPrompt string) []*schema.Message {
 
 // Generate 实现领域层的 agents.LLMService 接口
 func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
-	resp, err := a.chatModel.Generate(ctx, messagesFor(systemPrompt, userPrompt))
+	resp, err := withRetry(ctx, a.retryPolicy, func() (*schema.Message, error) {
+		resp, err := a.chatModel.Generate(ctx, messagesFor(systemPrompt, userPrompt))
+		return resp, normalizeProviderError("chat generate", ctx, err)
+	})
 	if err != nil {
-		return "", fmt.Errorf("openai generate error: %w", err)
+		return "", err
 	}
 
 	if resp == nil || resp.Content == "" {

@@ -11,7 +11,8 @@ import (
 
 // OpenAIEmbedder 将 Eino 的 Embedding 组件适配为领域层的 memory.Embedder
 type OpenAIEmbedder struct {
-	embedder embedding.Embedder
+	embedder    embedding.Embedder
+	retryPolicy retryPolicy
 }
 
 type EmbeddingConfig struct {
@@ -36,16 +37,20 @@ func NewOpenAIEmbedder(
 	}
 
 	return &OpenAIEmbedder{
-		embedder: emb,
+		embedder:    emb,
+		retryPolicy: defaultRetryPolicy(),
 	}, nil
 }
 
 // EmbedText 实现 memory.Embedder 接口
 func (e *OpenAIEmbedder) EmbedText(ctx context.Context, text string) ([]float32, error) {
 	// 2. 调用 Eino 的 EmbedStrings 方法 (注意：Eino 返回的是 [][]float64)
-	vectors, err := e.embedder.EmbedStrings(ctx, []string{text})
+	vectors, err := withRetry(ctx, e.retryPolicy, func() ([][]float64, error) {
+		vectors, err := e.embedder.EmbedStrings(ctx, []string{text})
+		return vectors, normalizeProviderError("embedding text", ctx, err)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("openai embed text error: %w", err)
+		return nil, err
 	}
 
 	if len(vectors) == 0 {
@@ -63,9 +68,12 @@ func (e *OpenAIEmbedder) EmbedText(ctx context.Context, text string) ([]float32,
 
 // EmbedBatch 批量转换向量
 func (e *OpenAIEmbedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	vectors, err := e.embedder.EmbedStrings(ctx, texts)
+	vectors, err := withRetry(ctx, e.retryPolicy, func() ([][]float64, error) {
+		vectors, err := e.embedder.EmbedStrings(ctx, texts)
+		return vectors, normalizeProviderError("embedding batch", ctx, err)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("openai embed batch error: %w", err)
+		return nil, err
 	}
 
 	res := make([][]float32, len(vectors))
