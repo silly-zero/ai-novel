@@ -363,6 +363,50 @@ func TestGlobalModelCapacityRejectsExcessGenerationAndReleasesSlot(t *testing.T)
 	}
 }
 
+func TestGenerateAndPreviewRejectExplicitNull(t *testing.T) {
+	calls := 0
+	engine := &generationTestEngine{prepare: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+		calls++
+		return state, nil
+	}}
+	server := newServer(engine, nil)
+	tests := []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request)
+		request func() *http.Request
+		field   string
+	}{}
+	for _, field := range []string{"novel_id", "chapter_id", "persist", "chapter_index", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"} {
+		field := field
+		tests = append(tests, struct {
+			name    string
+			handler func(http.ResponseWriter, *http.Request)
+			request func() *http.Request
+			field   string
+		}{"generate " + field, server.HandleGenerateChapter, func() *http.Request { return generateJSONRequest(fmt.Sprintf(`{"novel_id":7,"%s":null}`, field)) }, field})
+	}
+	for _, field := range []string{"novel_id", "chapter_index", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"} {
+		field := field
+		tests = append(tests, struct {
+			name    string
+			handler func(http.ResponseWriter, *http.Request)
+			request func() *http.Request
+			field   string
+		}{"preview " + field, server.HandlePreviewContext, func() *http.Request { return previewJSONRequest(fmt.Sprintf(`{"novel_id":7,"%s":null}`, field)) }, field})
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			test.handler(recorder, test.request())
+			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), test.field+" must not be null") {
+				t.Fatalf("response=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+	if calls != 0 {
+		t.Fatalf("engine calls = %d", calls)
+	}
+}
 func TestGenerateAndPreviewRejectInvalidChapterIndex(t *testing.T) {
 	engine := &generationTestEngine{}
 	server := newServer(engine, nil)

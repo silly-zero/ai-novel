@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -2466,6 +2467,46 @@ type CancelGenerationRequest struct {
 	GenerationID string `json:"generation_id"`
 }
 
+var errRequestBodyTooLarge = errors.New("request body too large")
+
+func decodeStrictJSONObject(w http.ResponseWriter, r *http.Request, dst any, fields []string) error {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return errRequestBodyTooLarge
+		}
+		return fmt.Errorf("invalid json: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return errRequestBodyTooLarge
+		}
+		if err == nil {
+			return errors.New("request body must contain one JSON object")
+		}
+		return fmt.Errorf("invalid trailing json: %w", err)
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return errors.New("request body must be a JSON object")
+	}
+	for _, field := range fields {
+		if value, ok := object[field]; ok && string(bytes.TrimSpace(value)) == "null" {
+			return fmt.Errorf("%s must not be null", field)
+		}
+	}
+	strict := json.NewDecoder(bytes.NewReader(raw))
+	strict.DisallowUnknownFields()
+	if err := strict.Decode(dst); err != nil {
+		return fmt.Errorf("invalid json: %w", err)
+	}
+	return nil
+}
+
 type GenerateChapterRequest struct {
 	NovelID         *int   `json:"novel_id"`
 	ChapterID       *int   `json:"chapter_id,omitempty"`
@@ -2482,22 +2523,8 @@ type GenerateChapterRequest struct {
 
 func decodeGenerateChapterRequest(w http.ResponseWriter, r *http.Request) (GenerateChapterRequest, error) {
 	var req GenerateChapterRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		if _, ok := err.(*http.MaxBytesError); ok {
-			return req, fmt.Errorf("request body too large")
-		}
-		return req, fmt.Errorf("invalid json: %w", err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return req, errors.New("request body must contain one JSON object")
-		}
-		return req, fmt.Errorf("invalid trailing json: %w", err)
-	}
-	return req, nil
+	err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_id", "persist", "chapter_index", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"})
+	return req, err
 }
 
 func normalizeGenerateChapterRequest(req GenerateChapterRequest) (GenerateChapterRequest, error) {
@@ -2692,7 +2719,7 @@ func (s *Server) HandleCancelGeneration(
 func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	request, err := decodeGenerateChapterRequest(w, r)
 	if err != nil {
-		if strings.Contains(err.Error(), "too large") {
+		if errors.Is(err, errRequestBodyTooLarge) {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 		} else {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -3085,20 +3112,8 @@ type PreviewContextRequest struct {
 
 func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (PreviewContextRequest, error) {
 	var req PreviewContextRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&req); err != nil {
-		if _, ok := err.(*http.MaxBytesError); ok {
-			return req, errors.New("request body too large")
-		}
-		return req, fmt.Errorf("invalid json: %w", err)
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		if err == nil {
-			return req, errors.New("request body must contain one JSON object")
-		}
-		return req, fmt.Errorf("invalid trailing json: %w", err)
+	if err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_index", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"}); err != nil {
+		return req, err
 	}
 	if req.NovelID == nil || *req.NovelID <= 0 {
 		return req, errors.New("novel_id must be a positive integer")
@@ -3127,7 +3142,7 @@ func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (Previe
 func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	req, err := decodePreviewContextRequest(w, r)
 	if err != nil {
-		if strings.Contains(err.Error(), "too large") {
+		if errors.Is(err, errRequestBodyTooLarge) {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 		} else {
 			http.Error(w, err.Error(), http.StatusBadRequest)
