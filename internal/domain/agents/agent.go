@@ -125,6 +125,7 @@ type GenerationState struct {
 	SceneCard            string                       // 导演拆解出的场景卡
 	EditorNotes          string                       // 人工干预：作者/编辑给出的指令或限制
 	ManualContext        string                       // 人工补充的资料片段（优先注入到 Context）
+	ContextPrepared      bool                         // 本次生成是否已完成上下文准备
 	Context              string                       // 图书管理员检索出的背景资料 (角色设定、前情提要)
 	PreviousContinuity   ContinuityPacket             // 上一章的结构化接力状态
 	Draft                string                       // 主笔生成的草稿

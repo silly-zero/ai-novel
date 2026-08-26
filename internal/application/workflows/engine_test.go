@@ -92,10 +92,14 @@ func TestRunChapterGenerationStopsAtInvalidStructuredOutline(t *testing.T) {
 	}
 
 	finalState, err := engine.RunChapterGeneration(context.Background(), state)
-	if err == nil || !strings.Contains(err.Error(), "current_chapter_missing") {
-		t.Fatalf("error = %v", err)
+	var stageErr *WorkflowStageError
+	if !errors.As(err, &stageErr) || stageErr.Stage != WorkflowStageArchitect {
+		t.Fatalf("error = %v, want architect stage", err)
 	}
-	if strings.Contains(err.Error(), outline) {
+	if !strings.Contains(err.Error(), "workflow stage failed") {
+		t.Fatalf("unexpected safe error = %q", err.Error())
+	}
+	if strings.Contains(err.Error(), outline) || strings.Contains(err.Error(), "current_chapter_missing") {
 		t.Fatalf("error leaked outline: %v", err)
 	}
 	if finalState != nil {
@@ -126,6 +130,96 @@ func TestRunChapterGenerationKeepsNonstandardManualOutlineCompatible(t *testing.
 	}
 }
 
+func TestPreparedContextIsReusedByChapterGeneration(t *testing.T) {
+	llm := &workflowLLMFake{passOn: 1}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		FullOutline:  "人工大纲：主角调查身世",
+		ChapterIndex: 1,
+	}
+
+	prepared, err := engine.PrepareContext(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared.ContextPrepared {
+		t.Fatal("prepared context was not marked ready")
+	}
+	prepared.Context = "本次已冻结的背景"
+
+	finalState, err := engine.RunChapterGeneration(context.Background(), prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalState.Context != "本次已冻结的背景" || !finalState.ContextPrepared {
+		t.Fatalf("final context state = %#v", finalState)
+	}
+	if llm.plotCalls != 1 || llm.directorCalls != 1 {
+		t.Fatalf("context agents reran: plot=%d director=%d", llm.plotCalls, llm.directorCalls)
+	}
+}
+
+func TestDirectChapterGenerationStillPreparesContext(t *testing.T) {
+	llm := &workflowLLMFake{passOn: 1}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		FullOutline:  "人工大纲：主角调查身世",
+		ChapterIndex: 1,
+		Context:      "外部旧背景",
+	}
+
+	finalState, err := engine.RunChapterGeneration(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !finalState.ContextPrepared || finalState.Context != "（暂无背景资料，请根据大纲自由发挥）" {
+		t.Fatalf("final context state = %#v", finalState)
+	}
+}
+
+func TestFailedContextPreparationDoesNotSetReadyMarker(t *testing.T) {
+	llm := &workflowLLMFake{}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		FullOutline: "人工大纲：主角调查身世",
+	}
+
+	if _, err := engine.PrepareContext(context.Background(), state); err == nil {
+		t.Fatal("PrepareContext() error = nil")
+	}
+	if state.ContextPrepared {
+		t.Fatal("failed preparation marked context ready")
+	}
+}
+
+func assertReviewRetryLimit(t *testing.T, err error) {
+	t.Helper()
+	if !errors.Is(err, ErrReviewRetryLimit) {
+		t.Fatalf("error = %v, want review retry limit", err)
+	}
+	var stageErr *WorkflowStageError
+	if !errors.As(err, &stageErr) || stageErr.Stage != WorkflowStageReviewer {
+		t.Fatalf("error = %v, want reviewer stage", err)
+	}
+	if err.Error() != "workflow stage failed" {
+		t.Fatalf("unsafe retry-limit error = %q", err.Error())
+	}
+}
+
+func TestWorkflowStageErrorDoesNotRenderCause(t *testing.T) {
+	cause := errors.New("CANARY_PROMPT CANARY_DRAFT CANARY_RESPONSE CANARY_EVIDENCE")
+	err := NewWorkflowStageError(WorkflowStageWriter, cause)
+	if err.Error() != "workflow stage failed" {
+		t.Fatalf("Error() = %q", err.Error())
+	}
+	if !errors.Is(err, cause) {
+		t.Fatal("stage error did not preserve cause chain")
+	}
+	if strings.Contains(err.Error(), "CANARY") {
+		t.Fatalf("stage error leaked cause: %s", err)
+	}
+}
+
 func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	llm := &workflowLLMFake{}
 	engine := newReviewerLoopEngine(t, llm)
@@ -151,9 +245,7 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	}
 
 	finalState, err := engine.RunChapterGeneration(context.Background(), state)
-	if err == nil || !strings.Contains(err.Error(), "after 3 retries") {
-		t.Fatalf("error = %v, want retry-limit failure", err)
-	}
+	assertReviewRetryLimit(t, err)
 	if strings.Contains(err.Error(), "正文没有找到线索") {
 		t.Fatalf("retry-limit error leaked critique: %v", err)
 	}
@@ -187,9 +279,7 @@ func TestRunChapterGenerationRetriesDeterministicFailuresWithoutReviewerLLM(t *t
 	}
 
 	finalState, err := engine.RunChapterGeneration(context.Background(), state)
-	if err == nil || !strings.Contains(err.Error(), "after 3 retries") {
-		t.Fatalf("error = %v, want retry-limit failure", err)
-	}
+	assertReviewRetryLimit(t, err)
 	if strings.Contains(err.Error(), "内部提示标签") {
 		t.Fatalf("retry-limit error leaked deterministic critique: %v", err)
 	}

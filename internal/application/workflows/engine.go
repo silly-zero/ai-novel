@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,49 @@ import (
 	"github.com/ai-novel/studio/internal/domain/events"
 	"github.com/cloudwego/eino/compose"
 )
+
+type WorkflowStage string
+
+const (
+	WorkflowStageArchitect WorkflowStage = "architect"
+	WorkflowStagePlot      WorkflowStage = "plot"
+	WorkflowStageDirector  WorkflowStage = "director"
+	WorkflowStageLibrarian WorkflowStage = "librarian"
+	WorkflowStageWriter    WorkflowStage = "writer"
+	WorkflowStageReviewer  WorkflowStage = "reviewer"
+)
+
+var ErrReviewRetryLimit = errors.New("review retry limit reached")
+
+type WorkflowStageError struct {
+	Stage WorkflowStage
+	cause error
+}
+
+func NewWorkflowStageError(stage WorkflowStage, cause error) *WorkflowStageError {
+	return &WorkflowStageError{Stage: stage, cause: cause}
+}
+
+func (e *WorkflowStageError) Error() string {
+	return "workflow stage failed"
+}
+
+func (e *WorkflowStageError) Unwrap() error {
+	return e.cause
+}
+
+func runWorkflowStage(
+	ctx context.Context,
+	state *agents.GenerationState,
+	stage WorkflowStage,
+	run func(context.Context, *agents.GenerationState) (*agents.GenerationState, error),
+) (*agents.GenerationState, error) {
+	result, err := run(ctx, state)
+	if err != nil {
+		return result, NewWorkflowStageError(stage, err)
+	}
+	return result, nil
+}
 
 // WorkflowEngine 是基于 eino 框架的状态机引擎，用于控制 Agent 之间的流转
 type derivedProcessor interface {
@@ -40,22 +84,35 @@ func NewWorkflowEngine(
 
 	// 2. 将 Agent 注册为 Graph 中的 Lambda Node
 	_ = g.AddLambdaNode("architect", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return architect.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStageArchitect, architect.Run)
 	}))
 	_ = g.AddLambdaNode("plot", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return plot.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStagePlot, plot.Run)
 	}))
 	_ = g.AddLambdaNode("director", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return director.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStageDirector, director.Run)
 	}))
 	_ = g.AddLambdaNode("librarian", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return librarian.Run(ctx, s)
+		if s.ContextPrepared {
+			return s, nil
+		}
+		prepared, err := runWorkflowStage(
+			ctx,
+			s,
+			WorkflowStageLibrarian,
+			librarian.Run,
+		)
+		if err != nil {
+			return prepared, err
+		}
+		prepared.ContextPrepared = true
+		return prepared, nil
 	}))
 	_ = g.AddLambdaNode("writer", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return writer.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStageWriter, writer.Run)
 	}))
 	_ = g.AddLambdaNode("reviewer", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return reviewer.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStageReviewer, reviewer.Run)
 	}))
 
 	// 3. 定义图的边 (Edges) - 正常顺序流转
@@ -100,16 +157,26 @@ func NewWorkflowEngine(
 	// 构建仅用于生成上下文的精简图：architect -> plot -> director -> librarian
 	gCtx := compose.NewGraph[*agents.GenerationState, *agents.GenerationState]()
 	_ = gCtx.AddLambdaNode("architect", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return architect.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStageArchitect, architect.Run)
 	}))
 	_ = gCtx.AddLambdaNode("plot", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return plot.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStagePlot, plot.Run)
 	}))
 	_ = gCtx.AddLambdaNode("director", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return director.Run(ctx, s)
+		return runWorkflowStage(ctx, s, WorkflowStageDirector, director.Run)
 	}))
 	_ = gCtx.AddLambdaNode("librarian", compose.InvokableLambda(func(ctx context.Context, s *agents.GenerationState) (*agents.GenerationState, error) {
-		return librarian.Run(ctx, s)
+		prepared, err := runWorkflowStage(
+			ctx,
+			s,
+			WorkflowStageLibrarian,
+			librarian.Run,
+		)
+		if err != nil {
+			return prepared, err
+		}
+		prepared.ContextPrepared = true
+		return prepared, nil
 	}))
 	_ = gCtx.AddEdge(compose.START, "architect")
 	_ = gCtx.AddEdge("architect", "plot")
@@ -142,9 +209,9 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	}
 
 	if !finalState.IsApproved {
-		return finalState, fmt.Errorf(
-			"failed to generate acceptable chapter after %d retries",
-			finalState.RetryCount,
+		return finalState, NewWorkflowStageError(
+			WorkflowStageReviewer,
+			ErrReviewRetryLimit,
 		)
 	}
 

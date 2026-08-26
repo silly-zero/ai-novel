@@ -2657,7 +2657,7 @@ func logGenerationDiagnostic(
 	stage string,
 	status string,
 	errorCode string,
-	providerStatus int,
+	diagnosticErr error,
 ) {
 	if !generationDiagnosticStages[stage] {
 		stage = "admission"
@@ -2668,8 +2668,19 @@ func logGenerationDiagnostic(
 	if errorCode != "" && !generationDiagnosticErrorCodes[errorCode] {
 		errorCode = "generation_failed"
 	}
-	if providerStatus < 100 || providerStatus > 599 {
-		providerStatus = 0
+	providerStatus := generationProviderStatus(diagnosticErr)
+	workflowStage := ""
+	var stageErr *workflows.WorkflowStageError
+	if errors.As(diagnosticErr, &stageErr) {
+		switch stageErr.Stage {
+		case workflows.WorkflowStageArchitect,
+			workflows.WorkflowStagePlot,
+			workflows.WorkflowStageDirector,
+			workflows.WorkflowStageLibrarian,
+			workflows.WorkflowStageWriter,
+			workflows.WorkflowStageReviewer:
+			workflowStage = string(stageErr.Stage)
+		}
 	}
 
 	fields := fmt.Sprintf(
@@ -2683,6 +2694,9 @@ func logGenerationDiagnostic(
 	}
 	if providerStatus != 0 {
 		fields += " provider_status=" + strconv.Itoa(providerStatus)
+	}
+	if workflowStage != "" {
+		fields += " workflow_stage=" + workflowStage
 	}
 	log.Print(fields)
 }
@@ -2710,6 +2724,18 @@ func generationProviderStatus(err error) int {
 	return 0
 }
 
+type contextPreparationError struct {
+	cause error
+}
+
+func (e *contextPreparationError) Error() string {
+	return "context preparation failed"
+}
+
+func (e *contextPreparationError) Unwrap() error {
+	return e.cause
+}
+
 func publicGenerationError(err error) (string, string) {
 	if errors.Is(err, errGenerationCancelled) || errors.Is(err, context.Canceled) {
 		return "generation_cancelled", "生成已取消"
@@ -2730,12 +2756,24 @@ func publicGenerationError(err error) (string, string) {
 		}
 		return "provider_error", "模型服务请求失败，请检查配置后重试"
 	}
-	message := strings.ToLower(err.Error())
-	if strings.HasPrefix(message, "reviewer agent") || strings.Contains(message, "failed to generate acceptable chapter") {
+	var contextErr *contextPreparationError
+	if errors.As(err, &contextErr) {
+		return "context_preparation_failed", "上下文准备失败，请重试"
+	}
+	if errors.Is(err, workflows.ErrReviewRetryLimit) {
 		return "review_failed", "正文审查未通过，请重试"
 	}
-	if strings.HasPrefix(message, "context preparation failed") || strings.HasPrefix(message, "architect agent") || strings.HasPrefix(message, "librarian") {
-		return "context_preparation_failed", "上下文准备失败，请重试"
+	var stageErr *workflows.WorkflowStageError
+	if errors.As(err, &stageErr) {
+		switch stageErr.Stage {
+		case workflows.WorkflowStageArchitect,
+			workflows.WorkflowStagePlot,
+			workflows.WorkflowStageDirector,
+			workflows.WorkflowStageLibrarian:
+			return "context_preparation_failed", "上下文准备失败，请重试"
+		case workflows.WorkflowStageReviewer:
+			return "review_failed", "正文审查未通过，请重试"
+		}
 	}
 	return "generation_failed", "生成失败，请重试"
 }
@@ -2892,7 +2930,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			"admission",
 			"error",
 			"write_deadline_clear_failed",
-			0,
+			nil,
 		)
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -2920,9 +2958,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		capacityOwnedByHandler = false
 		if r.Context().Err() == nil {
 			if terminalErr := sse.terminal(result); terminalErr != nil {
-				logGenerationDiagnostic(generationID, "terminal_delivery", "error", "terminal_delivery_failed", 0)
+				logGenerationDiagnostic(generationID, "terminal_delivery", "error", "terminal_delivery_failed", nil)
 			} else if result.Status == generationStatusSuccess {
-				logGenerationDiagnostic(generationID, "terminal_delivery", "success", "", 0)
+				logGenerationDiagnostic(generationID, "terminal_delivery", "success", "", nil)
 			}
 		}
 	}
@@ -3039,17 +3077,17 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}(),
 	}
 
-	logGenerationDiagnostic(generationID, "context_preparation", "started", "", 0)
+	logGenerationDiagnostic(generationID, "context_preparation", "started", "", nil)
 	prepared, prepErr := s.engine.PrepareContext(ctx, state)
 	if prepErr != nil {
-		contextErr := fmt.Errorf("context preparation failed: %w", prepErr)
+		contextErr := &contextPreparationError{cause: prepErr}
 		code, _ := publicGenerationError(contextErr)
 		logGenerationDiagnostic(
 			generationID,
 			"context_preparation",
 			"error",
 			code,
-			generationProviderStatus(contextErr),
+			contextErr,
 		)
 		finishSync(contextErr, nil)
 		return
@@ -3060,9 +3098,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			"context_preparation",
 			"error",
 			"context_preparation_failed",
-			0,
+			&contextPreparationError{cause: errors.New("no state returned")},
 		)
-		finishSync(errors.New("context preparation failed: no state returned"), nil)
+		finishSync(&contextPreparationError{cause: errors.New("no state returned")}, nil)
 		return
 	}
 	prepared.GenerationID = generationID
@@ -3108,9 +3146,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		cause := s.generationGuard.finish(novelIDInt, generationID)
 		result := classifyGenerationResult(generationID, cause, runErr, finalState)
 		if result.Status == generationStatusError {
-			logGenerationDiagnostic(generationID, failedStage, "error", result.ErrorCode, generationProviderStatus(runErr))
+			logGenerationDiagnostic(generationID, failedStage, "error", result.ErrorCode, runErr)
 		} else if result.Status == generationStatusCancelled {
-			logGenerationDiagnostic(generationID, failedStage, "cancelled", result.ErrorCode, generationProviderStatus(runErr))
+			logGenerationDiagnostic(generationID, failedStage, "cancelled", result.ErrorCode, runErr)
 		}
 
 		if result.Status == generationStatusSuccess && persist {
@@ -3124,7 +3162,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			saveCancel()
 			if saveErr != nil {
 				code, message := publicGenerationError(saveErr)
-				logGenerationDiagnostic(generationID, "persistence", "error", code, generationProviderStatus(saveErr))
+				logGenerationDiagnostic(generationID, "persistence", "error", code, saveErr)
 				result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: message, ErrorCode: code}
 			} else {
 				finalState.ChapterID = strconv.Itoa(chapterID)
@@ -3140,7 +3178,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				)
 				statusCancel()
 				if derivedErr != nil {
-					logGenerationDiagnostic(generationID, "derived_processing", "error", "derived_processing_failed", 0)
+					logGenerationDiagnostic(generationID, "derived_processing", "error", "derived_processing_failed", derivedErr)
 					result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "正文已保存，但派生处理失败", ErrorCode: "derived_processing_failed", ChapterID: strconv.Itoa(chapterID), Persisted: true}
 				}
 			}
@@ -3165,10 +3203,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "生成连接协议异常", ErrorCode: "generation_protocol_error"}
 			}
 			if terminalErr := sse.terminal(result); terminalErr != nil {
-				logGenerationDiagnostic(generationID, "terminal_delivery", "error", "terminal_delivery_failed", 0)
+				logGenerationDiagnostic(generationID, "terminal_delivery", "error", "terminal_delivery_failed", nil)
 				cancelGeneration(terminalErr)
 			} else if result.Status == generationStatusSuccess {
-				logGenerationDiagnostic(generationID, "terminal_delivery", "success", "", 0)
+				logGenerationDiagnostic(generationID, "terminal_delivery", "success", "", nil)
 			}
 			return
 		case streamEvent := <-streamEvents:

@@ -33,7 +33,13 @@ func normalizeProviderError(operation string, ctx context.Context, err error) er
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if err == context.DeadlineExceeded {
 		return err
 	}
 	status, code := 0, ""
@@ -67,7 +73,16 @@ type retryPolicy struct {
 }
 
 func defaultRetryPolicy() retryPolicy {
-	return retryPolicy{maxAttempts: 3, backoffs: []time.Duration{500 * time.Millisecond, time.Second}, wait: waitForRetry}
+	return retryPolicy{
+		maxAttempts: 5,
+		backoffs: []time.Duration{
+			time.Second,
+			2 * time.Second,
+			4 * time.Second,
+			8 * time.Second,
+		},
+		wait: waitForRetry,
+	}
 }
 
 func waitForRetry(ctx context.Context, delay time.Duration) error {
@@ -81,7 +96,20 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-func withRetry[T any](ctx context.Context, policy retryPolicy, operation func() (T, error)) (T, error) {
+func withRetry[T any](
+	ctx context.Context,
+	policy retryPolicy,
+	operation func() (T, error),
+) (T, error) {
+	return withRetryIf(ctx, policy, operation, nil)
+}
+
+func withRetryIf[T any](
+	ctx context.Context,
+	policy retryPolicy,
+	operation func() (T, error),
+	allowRetry func(T, error) bool,
+) (T, error) {
 	var zero T
 	if policy.maxAttempts < 1 {
 		policy.maxAttempts = 1
@@ -98,7 +126,10 @@ func withRetry[T any](ctx context.Context, policy retryPolicy, operation func() 
 			return value, nil
 		}
 		var providerErr *ProviderError
-		if !errors.As(err, &providerErr) || !providerErr.Retryable || attempt+1 >= policy.maxAttempts {
+		if !errors.As(err, &providerErr) ||
+			!providerErr.Retryable ||
+			(allowRetry != nil && !allowRetry(value, err)) ||
+			attempt+1 >= policy.maxAttempts {
 			return zero, err
 		}
 		delay := time.Duration(0)

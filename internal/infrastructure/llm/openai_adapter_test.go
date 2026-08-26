@@ -6,16 +6,26 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
+	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
-type adapterTestChatModel struct {
+type streamTestResult struct {
 	stream *schema.StreamReader[*schema.Message]
 	err    error
+}
+
+type adapterTestChatModel struct {
+	stream  *schema.StreamReader[*schema.Message]
+	err     error
+	results []streamTestResult
+	calls   int
 }
 
 func (f *adapterTestChatModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
@@ -23,6 +33,12 @@ func (f *adapterTestChatModel) Generate(context.Context, []*schema.Message, ...m
 }
 
 func (f *adapterTestChatModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	f.calls++
+	if len(f.results) > 0 {
+		result := f.results[0]
+		f.results = f.results[1:]
+		return result.stream, result.err
+	}
 	return f.stream, f.err
 }
 
@@ -85,6 +101,7 @@ func TestNewOpenAIAdapterAppliesTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOpenAIAdapter returned error: %v", err)
 	}
+	adapter.retryPolicy = retryPolicy{maxAttempts: 1}
 	_, err = adapter.Generate(context.Background(), "system", "user")
 	var providerErr *ProviderError
 	if !errors.As(err, &providerErr) || !providerErr.Retryable {
@@ -178,6 +195,153 @@ func TestOpenAIAdapterStreamGenerateReturnsCallbackError(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("callback calls = %d, want 1", calls)
+	}
+}
+
+func noWaitRetryPolicy(maxAttempts int) retryPolicy {
+	return retryPolicy{
+		maxAttempts: maxAttempts,
+		backoffs:    []time.Duration{time.Millisecond},
+		wait:        func(context.Context, time.Duration) error { return nil },
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateRetriesStartupBeforeContent(t *testing.T) {
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{err: &einoopenai.APIError{
+			HTTPStatusCode: 429,
+			Message:        "CANARY_PROVIDER_MESSAGE",
+		}},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var content string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		content += chunk
+		return nil
+	})
+
+	if err != nil || model.calls != 2 || content != "正文" {
+		t.Fatalf("err=%v calls=%d content=%q", err, model.calls, content)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateDoesNotRetryPermanentStartupError(t *testing.T) {
+	cause := &einoopenai.APIError{HTTPStatusCode: 401, Message: "CANARY_PROVIDER_MESSAGE"}
+	model := &adapterTestChatModel{err: cause}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(string) error { return nil })
+
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.StatusCode != 401 ||
+		providerErr.Retryable || model.calls != 1 {
+		t.Fatalf("err=%#v calls=%d", err, model.calls)
+	}
+	if strings.Contains(err.Error(), "CANARY_PROVIDER_MESSAGE") {
+		t.Fatalf("stream error leaked provider message: %s", err)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateRetriesReceiveFailureBeforeContent(t *testing.T) {
+	failedReader, failedWriter := schema.Pipe[*schema.Message](1)
+	failedWriter.Send(nil, &einoopenai.APIError{HTTPStatusCode: 503})
+	failedWriter.Close()
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{stream: failedReader},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var chunks []string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
+
+	if err != nil || model.calls != 2 || !slices.Equal(chunks, []string{"正文"}) {
+		t.Fatalf("err=%v calls=%d chunks=%v", err, model.calls, chunks)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateRetriesAfterEmptyContent(t *testing.T) {
+	failedReader, failedWriter := schema.Pipe[*schema.Message](1)
+	failedWriter.Send(
+		schema.AssistantMessage("", nil),
+		&einoopenai.APIError{HTTPStatusCode: 503},
+	)
+	failedWriter.Close()
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{stream: failedReader},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var chunks []string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
+
+	if err != nil || model.calls != 2 || !slices.Equal(chunks, []string{"正文"}) {
+		t.Fatalf("err=%v calls=%d chunks=%v", err, model.calls, chunks)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateStopsWhenBackoffIsCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	model := &adapterTestChatModel{err: &einoopenai.APIError{HTTPStatusCode: 429}}
+	adapter := &OpenAIAdapter{
+		chatModel: model,
+		retryPolicy: retryPolicy{
+			maxAttempts: 3,
+			backoffs:    []time.Duration{time.Second},
+			wait: func(context.Context, time.Duration) error {
+				cancel()
+				return context.Canceled
+			},
+		},
+	}
+
+	err := adapter.StreamGenerate(ctx, "system", "user", func(string) error { return nil })
+
+	if !errors.Is(err, context.Canceled) || model.calls != 1 {
+		t.Fatalf("err=%v calls=%d", err, model.calls)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateDoesNotRetryAfterContent(t *testing.T) {
+	failedReader, failedWriter := schema.Pipe[*schema.Message](1)
+	failedWriter.Send(
+		schema.AssistantMessage("部分正文", nil),
+		&einoopenai.APIError{HTTPStatusCode: 429},
+	)
+	failedWriter.Close()
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{stream: failedReader},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("重复正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var chunks []string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
+
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.StatusCode != 429 ||
+		model.calls != 1 || !slices.Equal(chunks, []string{"部分正文"}) {
+		t.Fatalf("err=%#v calls=%d chunks=%v", err, model.calls, chunks)
 	}
 }
 

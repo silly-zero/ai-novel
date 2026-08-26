@@ -70,18 +70,47 @@ func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt s
 	return resp.Content, nil
 }
 
+type streamAttemptResult struct {
+	contentDelivered bool
+}
+
 // StreamGenerate 实现领域层的 agents.LLMService 接口，支持流式输出
-func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, systemPrompt, userPrompt string, onChunk func(string) error) error {
+func (a *OpenAIAdapter) StreamGenerate(
+	ctx context.Context,
+	systemPrompt string,
+	userPrompt string,
+	onChunk func(string) error,
+) error {
 	if onChunk == nil {
 		return fmt.Errorf("openai stream callback is nil")
 	}
 
+	_, err := withRetryIf(
+		ctx,
+		a.retryPolicy,
+		func() (streamAttemptResult, error) {
+			return a.streamGenerateAttempt(ctx, systemPrompt, userPrompt, onChunk)
+		},
+		func(result streamAttemptResult, _ error) bool {
+			return !result.contentDelivered
+		},
+	)
+	return err
+}
+
+func (a *OpenAIAdapter) streamGenerateAttempt(
+	ctx context.Context,
+	systemPrompt string,
+	userPrompt string,
+	onChunk func(string) error,
+) (streamAttemptResult, error) {
+	var result streamAttemptResult
 	sr, err := a.chatModel.Stream(ctx, messagesFor(systemPrompt, userPrompt))
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		return fmt.Errorf("openai stream error: %w", err)
+		return result, normalizeProviderError("chat stream start", ctx, err)
+	}
+	if sr == nil {
+		return result, errors.New("openai returned nil stream")
 	}
 
 	var closeOnce sync.Once
@@ -105,22 +134,23 @@ func (a *OpenAIAdapter) StreamGenerate(ctx context.Context, systemPrompt, userPr
 
 	for {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return result, ctxErr
 		}
 		msg, recvErr := sr.Recv()
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
+			return result, ctxErr
 		}
 		if msg != nil && msg.Content != "" {
+			result.contentDelivered = true
 			if err := onChunk(msg.Content); err != nil {
-				return err
+				return result, err
 			}
 		}
 		if errors.Is(recvErr, io.EOF) {
-			return nil
+			return result, nil
 		}
 		if recvErr != nil {
-			return fmt.Errorf("openai stream receive error: %w", recvErr)
+			return result, normalizeProviderError("chat stream receive", ctx, recvErr)
 		}
 	}
 }

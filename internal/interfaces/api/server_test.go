@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ai-novel/studio/ent"
+	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 	llminfra "github.com/ai-novel/studio/internal/infrastructure/llm"
@@ -537,18 +538,22 @@ func TestGenerationDiagnosticLogContainsOnlySafeMetadata(t *testing.T) {
 
 	logGenerationDiagnostic(
 		"generation-log-test",
-		"context_preparation",
+		"chapter_generation",
 		"error",
-		"context_preparation_failed",
-		429,
+		"provider_busy",
+		workflows.NewWorkflowStageError(
+			workflows.WorkflowStageReviewer,
+			&llminfra.ProviderError{StatusCode: 429, Retryable: true},
+		),
 	)
 	got := output.String()
 	for _, want := range []string{
 		"generation_id=generation-log-test",
-		"stage=context_preparation",
+		"stage=chapter_generation",
 		"status=error",
-		"error_code=context_preparation_failed",
+		"error_code=provider_busy",
 		"provider_status=429",
+		"workflow_stage=reviewer",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log missing %q: %s", want, got)
@@ -563,6 +568,29 @@ func TestGenerationDiagnosticLogContainsOnlySafeMetadata(t *testing.T) {
 		if strings.Contains(got, secret) {
 			t.Fatalf("log leaked %q: %s", secret, got)
 		}
+	}
+}
+
+func TestGenerationDiagnosticLogOmitsUnknownWorkflowStage(t *testing.T) {
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	logGenerationDiagnostic(
+		"generation-log-test",
+		"chapter_generation",
+		"error",
+		"generation_failed",
+		workflows.NewWorkflowStageError("CANARY_STAGE\nforged=true", errors.New("CANARY_CAUSE")),
+	)
+	got := output.String()
+	if strings.Contains(got, "workflow_stage=") || strings.Contains(got, "CANARY") {
+		t.Fatalf("log leaked untrusted stage or cause: %s", got)
 	}
 }
 
@@ -581,7 +609,7 @@ func TestGenerationDiagnosticLogRejectsUntrustedFields(t *testing.T) {
 		"CANARY_DRAFT",
 		"CANARY_RESPONSE",
 		"CANARY_EVIDENCE",
-		999,
+		workflows.NewWorkflowStageError("CANARY_STAGE", errors.New("CANARY_CAUSE")),
 	)
 	got := output.String()
 	for _, want := range []string{
@@ -709,8 +737,16 @@ func TestPublicGenerationErrorClassification(t *testing.T) {
 	}{
 		{"retryable provider", &llminfra.ProviderError{Operation: "chat", StatusCode: 429, Retryable: true}, "provider_busy"},
 		{"permanent provider", &llminfra.ProviderError{Operation: "chat", StatusCode: 401}, "provider_error"},
-		{"context response preview", errors.New("context preparation failed: librarian response preview contains review"), "context_preparation_failed"},
-		{"reviewer preview contains librarian", errors.New("reviewer agent failed: response preview librarian"), "review_failed"},
+		{"context marker", &contextPreparationError{cause: errors.New("CANARY_CONTEXT")}, "context_preparation_failed"},
+		{"architect stage", workflows.NewWorkflowStageError(workflows.WorkflowStageArchitect, errors.New("CANARY_ARCHITECT")), "context_preparation_failed"},
+		{"plot stage", workflows.NewWorkflowStageError(workflows.WorkflowStagePlot, errors.New("CANARY_PLOT")), "context_preparation_failed"},
+		{"director stage", workflows.NewWorkflowStageError(workflows.WorkflowStageDirector, errors.New("CANARY_DIRECTOR")), "context_preparation_failed"},
+		{"librarian stage", workflows.NewWorkflowStageError(workflows.WorkflowStageLibrarian, errors.New("CANARY_LIBRARIAN")), "context_preparation_failed"},
+		{"writer stage", workflows.NewWorkflowStageError(workflows.WorkflowStageWriter, errors.New("CANARY_WRITER")), "generation_failed"},
+		{"reviewer stage", workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, errors.New("CANARY_REVIEWER")), "review_failed"},
+		{"review retry limit", workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, workflows.ErrReviewRetryLimit), "review_failed"},
+		{"old context text", errors.New("context preparation failed: CANARY_CONTEXT"), "generation_failed"},
+		{"old reviewer text", errors.New("reviewer agent failed: CANARY_REVIEWER"), "generation_failed"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -719,6 +755,21 @@ func TestPublicGenerationErrorClassification(t *testing.T) {
 				t.Fatalf("code=%s want=%s", code, test.code)
 			}
 		})
+	}
+}
+
+func TestPublicGenerationErrorClassificationPreservesPrecedence(t *testing.T) {
+	providerErr := &llminfra.ProviderError{Operation: "chat", StatusCode: 429, Retryable: true}
+	stageErr := workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, providerErr)
+	code, _ := publicGenerationError(stageErr)
+	if code != "provider_busy" {
+		t.Fatalf("provider code=%s, want provider_busy", code)
+	}
+
+	cancelErr := workflows.NewWorkflowStageError(workflows.WorkflowStageWriter, context.Canceled)
+	code, _ = publicGenerationError(cancelErr)
+	if code != "generation_cancelled" {
+		t.Fatalf("cancel code=%s, want generation_cancelled", code)
 	}
 }
 

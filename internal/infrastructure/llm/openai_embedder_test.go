@@ -67,6 +67,7 @@ func TestNewOpenAIEmbedderAppliesTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOpenAIEmbedder returned error: %v", err)
 	}
+	embedder.retryPolicy = retryPolicy{maxAttempts: 1}
 	_, err = embedder.EmbedText(context.Background(), "text")
 	var providerErr *ProviderError
 	if !errors.As(err, &providerErr) || !providerErr.Retryable {
