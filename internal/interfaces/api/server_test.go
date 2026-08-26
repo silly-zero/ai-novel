@@ -15,6 +15,7 @@ import (
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/internal/domain/agents"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
+	llminfra "github.com/ai-novel/studio/internal/infrastructure/llm"
 )
 
 type generationTestEngine struct {
@@ -522,6 +523,27 @@ func TestPreviewUsesGlobalModelCapacity(t *testing.T) {
 	waitForSignal(t, previewDone)
 }
 
+func TestPublicGenerationErrorClassification(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code string
+	}{
+		{"retryable provider", &llminfra.ProviderError{Operation: "chat", StatusCode: 429, Retryable: true}, "provider_busy"},
+		{"permanent provider", &llminfra.ProviderError{Operation: "chat", StatusCode: 401}, "provider_error"},
+		{"context response preview", errors.New("context preparation failed: librarian response preview contains review"), "context_preparation_failed"},
+		{"reviewer preview contains librarian", errors.New("reviewer agent failed: response preview librarian"), "review_failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			code, _ := publicGenerationError(test.err)
+			if code != test.code {
+				t.Fatalf("code=%s want=%s", code, test.code)
+			}
+		})
+	}
+}
+
 func TestGenerationOverallDeadlineProducesErrorTerminal(t *testing.T) {
 	engine := &generationTestEngine{run: func(ctx context.Context, _ *agents.GenerationState) (*agents.GenerationState, error) {
 		<-ctx.Done()
@@ -534,7 +556,7 @@ func TestGenerationOverallDeadlineProducesErrorTerminal(t *testing.T) {
 
 	server.HandleGenerateChapter(recorder, generateRequest(context.Background(), "7", 1))
 	if !strings.Contains(recorder.Body.String(), `"status":"error"`) ||
-		!strings.Contains(recorder.Body.String(), "context deadline exceeded") {
+		!strings.Contains(recorder.Body.String(), `"error_code":"generation_timeout"`) {
 		t.Fatalf("deadline SSE body = %s", recorder.Body.String())
 	}
 }
@@ -595,7 +617,7 @@ func TestGenerationOverallDeadlineCoversChapterSave(t *testing.T) {
 		generateRequestWithPersist(context.Background(), "7", 1, true),
 	)
 	if !strings.Contains(recorder.Body.String(), `"status":"error"`) ||
-		!strings.Contains(recorder.Body.String(), "context deadline exceeded") {
+		!strings.Contains(recorder.Body.String(), `"error_code":"generation_timeout"`) {
 		t.Fatalf("save deadline SSE body = %s", recorder.Body.String())
 	}
 
@@ -819,7 +841,7 @@ func TestHandleGenerateChapterReleasesLeaseAfterPrepareFailure(t *testing.T) {
 
 	first := httptest.NewRecorder()
 	server.HandleGenerateChapter(first, generateRequest(context.Background(), "7", 1))
-	if !strings.Contains(first.Body.String(), "prepare failed") {
+	if !strings.Contains(first.Body.String(), `"error_code":"generation_failed"`) || strings.Contains(first.Body.String(), "prepare failed") {
 		t.Fatalf("first response = %q, want prepare error", first.Body.String())
 	}
 
@@ -1427,8 +1449,7 @@ func TestHandleGenerateChapterPersistRequiresChapterStore(t *testing.T) {
 	)
 
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, "database not configured") {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, "database not configured") {
 		t.Fatalf("SSE body missing database error terminal: %s", body)
 	}
 	if runCalled {
@@ -1477,9 +1498,7 @@ func TestHandleGenerateChapterMissingPreviousChapterFailsClosed(t *testing.T) {
 	if count := strings.Count(body, "event: terminal"); count != 1 {
 		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
 	}
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, "chapter 2") ||
-		!strings.Contains(body, "novel 7") {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, "chapter 2") || strings.Contains(body, "novel 7") {
 		t.Fatalf("SSE body missing missing-predecessor error: %s", body)
 	}
 	if prepareContextCalls != 0 || runCalls != 0 || extractCalls != 0 || publishCalls != 0 {
@@ -1687,8 +1706,7 @@ func TestHandleGenerateChapterInvalidFinalStateDoesNotPublish(t *testing.T) {
 	)
 
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, "prompt_label_leak") {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, "prompt_label_leak") {
 		t.Fatalf("SSE body missing content validation error: %s", body)
 	}
 	if published {
@@ -1731,8 +1749,7 @@ func TestHandleGenerateChapterSaveFailureUsesErrorTerminal(t *testing.T) {
 	if count := strings.Count(body, "event: terminal"); count != 1 {
 		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
 	}
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, "save generated chapter: database unavailable") {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, "database unavailable") {
 		t.Fatalf("SSE body missing save error terminal: %s", body)
 	}
 	if strings.Contains(body, `"persisted":true`) {
@@ -1881,8 +1898,7 @@ func TestHandleGenerateChapterDerivedFailureUsesErrorAndReleasesLease(t *testing
 
 	body := first.Body.String()
 	terminal := generationTerminalFromSSE(t, body)
-	if terminal.Status != generationStatusError || terminal.ChapterID != "11" || !terminal.Persisted ||
-		!strings.Contains(terminal.Message, "update chapter derived data") {
+	if terminal.Status != generationStatusError || terminal.ChapterID != "11" || !terminal.Persisted || terminal.ErrorCode != "derived_processing_failed" {
 		t.Fatalf("derived failure terminal=%#v body=%s", terminal, body)
 	}
 
@@ -2148,8 +2164,7 @@ func TestHandleGenerateChapterEmitsSingleErrorTerminal(t *testing.T) {
 	if count := strings.Count(body, "event: terminal"); count != 1 {
 		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
 	}
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, `provider failed\nwith details`) {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, `provider failed`) {
 		t.Fatalf("SSE body missing JSON error terminal: %s", body)
 	}
 	if strings.Contains(body, "event: end") || strings.Contains(body, "event: error") {
@@ -2176,8 +2191,7 @@ func TestHandleGenerateChapterPrepareFailureUsesErrorTerminal(t *testing.T) {
 	if count := strings.Count(body, "event: terminal"); count != 1 {
 		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
 	}
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, `prepare failed\nwith details`) {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, `prepare failed`) {
 		t.Fatalf("SSE body missing prepare error terminal: %s", body)
 	}
 }
@@ -2198,8 +2212,7 @@ func TestHandleGenerateChapterTreatsNilFinalStateAsError(t *testing.T) {
 	)
 
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, "generation returned no final state") {
+	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, "generation returned no final state") {
 		t.Fatalf("SSE body missing nil-state error terminal: %s", body)
 	}
 }
@@ -2227,8 +2240,7 @@ func TestHandleGenerateChapterUnknownStreamEventEndsWithError(t *testing.T) {
 	if count := strings.Count(body, "event: terminal"); count != 1 {
 		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
 	}
-	if !strings.Contains(body, `"status":"error"`) ||
-		!strings.Contains(body, errGenerationProtocol.Error()) {
+	if !strings.Contains(body, `"error_code":"generation_protocol_error"`) || strings.Contains(body, errGenerationProtocol.Error()) {
 		t.Fatalf("SSE body missing protocol error terminal: %s", body)
 	}
 }

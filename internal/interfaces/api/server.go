@@ -29,6 +29,7 @@ import (
 	"github.com/ai-novel/studio/internal/domain/agents"
 	domain "github.com/ai-novel/studio/internal/domain/novel"
 	databaseinfra "github.com/ai-novel/studio/internal/infrastructure/database"
+	llminfra "github.com/ai-novel/studio/internal/infrastructure/llm"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -2567,6 +2568,7 @@ type generationResult struct {
 	GenerationID string           `json:"generation_id"`
 	Status       generationStatus `json:"status"`
 	Message      string           `json:"message,omitempty"`
+	ErrorCode    string           `json:"error_code,omitempty"`
 	ChapterID    string           `json:"chapter_id,omitempty"`
 	Persisted    bool             `json:"persisted,omitempty"`
 }
@@ -2617,6 +2619,36 @@ func (w *generationSSEWriter) terminal(result generationResult) error {
 	return w.send("terminal", result)
 }
 
+func publicGenerationError(err error) (string, string) {
+	if errors.Is(err, errGenerationCancelled) || errors.Is(err, context.Canceled) {
+		return "generation_cancelled", "生成已取消"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "generation_timeout", "生成超时，请稍后重试"
+	}
+	if errors.Is(err, errGenerationProtocol) {
+		return "generation_protocol_error", "生成连接协议异常"
+	}
+	if errors.Is(err, errGenerationChapterChanged) {
+		return "chapter_changed", "章节在生成期间已被修改，未覆盖现有内容"
+	}
+	var providerErr *llminfra.ProviderError
+	if errors.As(err, &providerErr) {
+		if providerErr.Retryable {
+			return "provider_busy", "模型服务繁忙，请稍后重试"
+		}
+		return "provider_error", "模型服务请求失败，请检查配置后重试"
+	}
+	message := strings.ToLower(err.Error())
+	if strings.HasPrefix(message, "reviewer agent") || strings.Contains(message, "failed to generate acceptable chapter") {
+		return "review_failed", "正文审查未通过，请重试"
+	}
+	if strings.HasPrefix(message, "context preparation failed") || strings.HasPrefix(message, "architect agent") || strings.HasPrefix(message, "librarian") {
+		return "context_preparation_failed", "上下文准备失败，请重试"
+	}
+	return "generation_failed", "生成失败，请重试"
+}
+
 func classifyGenerationResult(
 	generationID string,
 	cause error,
@@ -2631,35 +2663,15 @@ func classifyGenerationResult(
 	}
 	switch {
 	case errors.Is(cause, errGenerationCancelled):
-		return generationResult{
-			GenerationID: generationID,
-			Status:       generationStatusCancelled,
-			Message:      "生成已取消",
-		}
-	case errors.Is(cause, errGenerationProtocol):
-		return generationResult{
-			GenerationID: generationID,
-			Status:       generationStatusError,
-			Message:      cause.Error(),
-		}
+		return generationResult{GenerationID: generationID, Status: generationStatusCancelled, Message: "生成已取消", ErrorCode: "generation_cancelled"}
 	case cause != nil:
-		return generationResult{
-			GenerationID: generationID,
-			Status:       generationStatusError,
-			Message:      cause.Error(),
-		}
+		code, message := publicGenerationError(cause)
+		return generationResult{GenerationID: generationID, Status: generationStatusError, Message: message, ErrorCode: code}
 	case runErr != nil:
-		return generationResult{
-			GenerationID: generationID,
-			Status:       generationStatusError,
-			Message:      runErr.Error(),
-		}
+		code, message := publicGenerationError(runErr)
+		return generationResult{GenerationID: generationID, Status: generationStatusError, Message: message, ErrorCode: code}
 	case finalState == nil:
-		return generationResult{
-			GenerationID: generationID,
-			Status:       generationStatusError,
-			Message:      "generation returned no final state",
-		}
+		return generationResult{GenerationID: generationID, Status: generationStatusError, Message: "生成失败，请重试", ErrorCode: "generation_failed"}
 	default:
 		return generationResult{
 			GenerationID: generationID,
@@ -2993,15 +3005,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			chapterID, saveErr := s.chapterStore.Save(saveCtx, chapterTarget, finalState)
 			saveCancel()
 			if saveErr != nil {
-				message := fmt.Sprintf("save generated chapter: %v", saveErr)
-				if errors.Is(saveErr, errGenerationChapterChanged) {
-					message = "章节在生成期间已被修改，未覆盖现有内容"
-				}
-				result = generationResult{
-					GenerationID: generationID,
-					Status:       generationStatusError,
-					Message:      message,
-				}
+				code, message := publicGenerationError(saveErr)
+				result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: message, ErrorCode: code}
 			} else {
 				finalState.ChapterID = strconv.Itoa(chapterID)
 				result.ChapterID = strconv.Itoa(chapterID)
@@ -3016,13 +3021,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				)
 				statusCancel()
 				if derivedErr != nil {
-					result = generationResult{
-						GenerationID: generationID,
-						Status:       generationStatusError,
-						Message:      fmt.Sprintf("update chapter derived data: %v", derivedErr),
-						ChapterID:    strconv.Itoa(chapterID),
-						Persisted:    true,
-					}
+					result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "正文已保存，但派生处理失败", ErrorCode: "derived_processing_failed", ChapterID: strconv.Itoa(chapterID), Persisted: true}
 				}
 			}
 		}
@@ -3043,11 +3042,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if protocolFailed {
-				result = generationResult{
-					GenerationID: generationID,
-					Status:       generationStatusError,
-					Message:      errGenerationProtocol.Error(),
-				}
+				result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "生成连接协议异常", ErrorCode: "generation_protocol_error"}
 			}
 			if terminalErr := sse.terminal(result); terminalErr != nil {
 				log.Printf("[Generation] terminal write failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, terminalErr)

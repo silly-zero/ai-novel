@@ -1302,6 +1302,9 @@ func TestReviewerRepairsInvalidContinuityEvidenceOnce(t *testing.T) {
 	if !got.IsApproved || llm.calls != 2 {
 		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
 	}
+	if !strings.Contains(llm.users[1], tailEvidence) || !strings.Contains(llm.users[1], "逐字复制") || !strings.Contains(llm.users[1], `"chapter_head_required":false`) {
+		t.Fatalf("repair prompt missing continuity guidance: %s", llm.users[1])
+	}
 }
 
 func TestReviewerRejectsLegacyContinuityBooleanWithoutAssessment(t *testing.T) {
