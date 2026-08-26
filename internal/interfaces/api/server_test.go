@@ -1,10 +1,12 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -523,6 +525,182 @@ func TestPreviewUsesGlobalModelCapacity(t *testing.T) {
 	waitForSignal(t, previewDone)
 }
 
+func TestGenerationDiagnosticLogContainsOnlySafeMetadata(t *testing.T) {
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	logGenerationDiagnostic(
+		"generation-log-test",
+		"context_preparation",
+		"error",
+		"context_preparation_failed",
+		429,
+	)
+	got := output.String()
+	for _, want := range []string{
+		"generation_id=generation-log-test",
+		"stage=context_preparation",
+		"status=error",
+		"error_code=context_preparation_failed",
+		"provider_status=429",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log missing %q: %s", want, got)
+		}
+	}
+	for _, secret := range []string{
+		"CANARY_DRAFT",
+		"response preview",
+		"prompt=",
+		"evidence=",
+	} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("log leaked %q: %s", secret, got)
+		}
+	}
+}
+
+func TestGenerationDiagnosticLogRejectsUntrustedFields(t *testing.T) {
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	logGenerationDiagnostic(
+		"CANARY_PROMPT\nforged=true",
+		"CANARY_DRAFT",
+		"CANARY_RESPONSE",
+		"CANARY_EVIDENCE",
+		999,
+	)
+	got := output.String()
+	for _, want := range []string{
+		"generation_id=invalid",
+		"stage=admission",
+		"status=error",
+		"error_code=generation_failed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log missing %q: %s", want, got)
+		}
+	}
+	for _, secret := range []string{
+		"CANARY_PROMPT",
+		"CANARY_DRAFT",
+		"CANARY_RESPONSE",
+		"CANARY_EVIDENCE",
+		"provider_status=999",
+		"forged=true",
+	} {
+		if strings.Contains(got, secret) {
+			t.Fatalf("log leaked %q: %s", secret, got)
+		}
+	}
+}
+
+func TestHandleGenerateChapterContextFailureDoesNotLeakDiagnostics(t *testing.T) {
+	const sensitiveError = "CANARY_DRAFT CANARY_PROMPT CANARY_RESPONSE CANARY_EVIDENCE"
+	engine := &generationTestEngine{
+		prepare: func(context.Context, *agents.GenerationState) (*agents.GenerationState, error) {
+			return nil, errors.New(sensitiveError)
+		},
+	}
+	server := newServer(engine, nil)
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	terminal := generationTerminalFromSSE(t, recorder.Body.String())
+	if terminal.Status != generationStatusError ||
+		terminal.ErrorCode != "context_preparation_failed" {
+		t.Fatalf("terminal = %#v", terminal)
+	}
+	got := output.String()
+	for _, want := range []string{
+		"generation_id=" + terminal.GenerationID,
+		"stage=context_preparation",
+		"status=error",
+		"error_code=context_preparation_failed",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log missing %q: %s", want, got)
+		}
+	}
+	for _, secret := range strings.Fields(sensitiveError) {
+		if strings.Contains(got, secret) ||
+			strings.Contains(recorder.Body.String(), secret) {
+			t.Fatalf("diagnostics leaked %q: log=%s body=%s", secret, got, recorder.Body.String())
+		}
+	}
+}
+
+func TestHandleGenerateChapterSuccessDoesNotLogGeneratedContent(t *testing.T) {
+	const sensitiveDraft = "CANARY_DRAFT CANARY_RESPONSE CANARY_EVIDENCE"
+	engine := &generationTestEngine{
+		run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+			state.Draft = sensitiveDraft
+			state.IsApproved = true
+			return state, nil
+		},
+	}
+	server := newServer(engine, nil)
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	terminal := generationTerminalFromSSE(t, recorder.Body.String())
+	if terminal.Status != generationStatusSuccess {
+		t.Fatalf("terminal = %#v", terminal)
+	}
+	got := output.String()
+	for _, want := range []string{
+		"generation_id=" + terminal.GenerationID,
+		"stage=context_preparation status=started",
+		"stage=terminal_delivery status=success",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("log missing %q: %s", want, got)
+		}
+	}
+	for _, secret := range strings.Fields(sensitiveDraft) {
+		if strings.Contains(got, secret) {
+			t.Fatalf("success log leaked %q: %s", secret, got)
+		}
+	}
+}
+
 func TestPublicGenerationErrorClassification(t *testing.T) {
 	tests := []struct {
 		name string
@@ -841,8 +1019,10 @@ func TestHandleGenerateChapterReleasesLeaseAfterPrepareFailure(t *testing.T) {
 
 	first := httptest.NewRecorder()
 	server.HandleGenerateChapter(first, generateRequest(context.Background(), "7", 1))
-	if !strings.Contains(first.Body.String(), `"error_code":"generation_failed"`) || strings.Contains(first.Body.String(), "prepare failed") {
-		t.Fatalf("first response = %q, want prepare error", first.Body.String())
+	if !strings.Contains(first.Body.String(), `"error_code":"context_preparation_failed"`) ||
+		!strings.Contains(first.Body.String(), `"message":"上下文准备失败，请重试"`) ||
+		strings.Contains(first.Body.String(), "prepare failed") {
+		t.Fatalf("first response = %q, want sanitized prepare error", first.Body.String())
 	}
 
 	second := httptest.NewRecorder()
@@ -2191,8 +2371,10 @@ func TestHandleGenerateChapterPrepareFailureUsesErrorTerminal(t *testing.T) {
 	if count := strings.Count(body, "event: terminal"); count != 1 {
 		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
 	}
-	if !strings.Contains(body, `"error_code":"generation_failed"`) || strings.Contains(body, `prepare failed`) {
-		t.Fatalf("SSE body missing prepare error terminal: %s", body)
+	if !strings.Contains(body, `"error_code":"context_preparation_failed"`) ||
+		!strings.Contains(body, `"message":"上下文准备失败，请重试"`) ||
+		strings.Contains(body, `prepare failed`) {
+		t.Fatalf("SSE body missing sanitized prepare error terminal: %s", body)
 	}
 }
 

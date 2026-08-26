@@ -147,7 +147,7 @@ func run() error {
 		localTestWG.Go(func() {
 			generationID, genErr := agents.NewGenerationID()
 			if genErr != nil {
-				log.Printf("生成本地测试运行 ID 失败: %v", genErr)
+				log.Print("[Generation] generation_id=invalid stage=admission status=error error_code=generation_failed")
 				return
 			}
 			if _, runErr := engine.RunChapterGeneration(rootCtx, &agents.GenerationState{
@@ -156,7 +156,10 @@ func run() error {
 				ChapterIndex: 1,
 				Idea:         "一个普通的少年在山洞中捡到了一枚神秘的戒指，从此踏上了修仙之路。",
 			}); runErr != nil && rootCtx.Err() == nil {
-				log.Printf("本地测试运行失败: %v", runErr)
+				log.Printf(
+					"[Generation] generation_id=%s stage=chapter_generation status=error error_code=generation_failed",
+					generationID,
+				)
 			}
 		})
 	}

@@ -2619,6 +2619,97 @@ func (w *generationSSEWriter) terminal(result generationResult) error {
 	return w.send("terminal", result)
 }
 
+var generationDiagnosticStages = map[string]bool{
+	"admission":             true,
+	"context_preparation":   true,
+	"chapter_generation":    true,
+	"continuity_extraction": true,
+	"persistence":           true,
+	"derived_processing":    true,
+	"terminal_delivery":     true,
+}
+
+var generationDiagnosticStatuses = map[string]bool{
+	"started":   true,
+	"success":   true,
+	"error":     true,
+	"cancelled": true,
+	"rejected":  true,
+}
+
+var generationDiagnosticErrorCodes = map[string]bool{
+	"generation_cancelled":        true,
+	"generation_timeout":          true,
+	"generation_protocol_error":   true,
+	"provider_busy":               true,
+	"provider_error":              true,
+	"context_preparation_failed":  true,
+	"review_failed":               true,
+	"chapter_changed":             true,
+	"derived_processing_failed":   true,
+	"generation_failed":           true,
+	"terminal_delivery_failed":    true,
+	"write_deadline_clear_failed": true,
+}
+
+func logGenerationDiagnostic(
+	generationID string,
+	stage string,
+	status string,
+	errorCode string,
+	providerStatus int,
+) {
+	if !generationDiagnosticStages[stage] {
+		stage = "admission"
+	}
+	if !generationDiagnosticStatuses[status] {
+		status = "error"
+	}
+	if errorCode != "" && !generationDiagnosticErrorCodes[errorCode] {
+		errorCode = "generation_failed"
+	}
+	if providerStatus < 100 || providerStatus > 599 {
+		providerStatus = 0
+	}
+
+	fields := fmt.Sprintf(
+		"[Generation] generation_id=%s stage=%s status=%s",
+		sanitizeGenerationDiagnosticID(generationID),
+		stage,
+		status,
+	)
+	if errorCode != "" {
+		fields += " error_code=" + errorCode
+	}
+	if providerStatus != 0 {
+		fields += " provider_status=" + strconv.Itoa(providerStatus)
+	}
+	log.Print(fields)
+}
+
+func sanitizeGenerationDiagnosticID(generationID string) string {
+	if generationID == "" || len(generationID) > 64 {
+		return "invalid"
+	}
+	for _, char := range generationID {
+		if (char < 'a' || char > 'z') &&
+			(char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') &&
+			char != '-' && char != '_' {
+			return "invalid"
+		}
+	}
+	return generationID
+}
+
+func generationProviderStatus(err error) int {
+	var providerErr *llminfra.ProviderError
+	if errors.As(err, &providerErr) && providerErr.StatusCode >= 100 && providerErr.StatusCode <= 599 {
+		return providerErr.StatusCode
+	}
+	return 0
+}
+
 func publicGenerationError(err error) (string, string) {
 	if errors.Is(err, errGenerationCancelled) || errors.Is(err, context.Canceled) {
 		return "generation_cancelled", "生成已取消"
@@ -2796,7 +2887,13 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		log.Printf("[Generation] clear write deadline failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, err)
+		logGenerationDiagnostic(
+			generationID,
+			"admission",
+			"error",
+			"write_deadline_clear_failed",
+			0,
+		)
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-store")
@@ -2823,7 +2920,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		capacityOwnedByHandler = false
 		if r.Context().Err() == nil {
 			if terminalErr := sse.terminal(result); terminalErr != nil {
-				log.Printf("[Generation] terminal write failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, terminalErr)
+				logGenerationDiagnostic(generationID, "terminal_delivery", "error", "terminal_delivery_failed", 0)
+			} else if result.Status == generationStatusSuccess {
+				logGenerationDiagnostic(generationID, "terminal_delivery", "success", "", 0)
 			}
 		}
 	}
@@ -2940,13 +3039,30 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 		}(),
 	}
 
+	logGenerationDiagnostic(generationID, "context_preparation", "started", "", 0)
 	prepared, prepErr := s.engine.PrepareContext(ctx, state)
 	if prepErr != nil {
-		finishSync(prepErr, nil)
+		contextErr := fmt.Errorf("context preparation failed: %w", prepErr)
+		code, _ := publicGenerationError(contextErr)
+		logGenerationDiagnostic(
+			generationID,
+			"context_preparation",
+			"error",
+			code,
+			generationProviderStatus(contextErr),
+		)
+		finishSync(contextErr, nil)
 		return
 	}
 	if prepared == nil {
-		finishSync(errors.New("context preparation returned no state"), nil)
+		logGenerationDiagnostic(
+			generationID,
+			"context_preparation",
+			"error",
+			"context_preparation_failed",
+			0,
+		)
+		finishSync(errors.New("context preparation failed: no state returned"), nil)
 		return
 	}
 	prepared.GenerationID = generationID
@@ -2976,24 +3092,26 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	capacityOwnedByHandler = false
 	go func() {
 		finalState, runErr := s.engine.RunChapterGeneration(ctx, prepared)
+		failedStage := "chapter_generation"
 		if runErr == nil && persist && finalState != nil {
 			if chapterTarget.ID > 0 {
 				finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
 			}
 			finalState.NovelID = novelID
 			finalState.GenerationID = generationID
+			failedStage = "continuity_extraction"
 			finalState, runErr = s.engine.ExtractContinuity(ctx, finalState)
 			if finalState != nil {
 				finalState.GenerationID = generationID
 			}
 		}
 		cause := s.generationGuard.finish(novelIDInt, generationID)
-		result := classifyGenerationResult(
-			generationID,
-			cause,
-			runErr,
-			finalState,
-		)
+		result := classifyGenerationResult(generationID, cause, runErr, finalState)
+		if result.Status == generationStatusError {
+			logGenerationDiagnostic(generationID, failedStage, "error", result.ErrorCode, generationProviderStatus(runErr))
+		} else if result.Status == generationStatusCancelled {
+			logGenerationDiagnostic(generationID, failedStage, "cancelled", result.ErrorCode, generationProviderStatus(runErr))
+		}
 
 		if result.Status == generationStatusSuccess && persist {
 			postprocessCtx, cancelPostprocess := context.WithDeadline(
@@ -3006,6 +3124,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			saveCancel()
 			if saveErr != nil {
 				code, message := publicGenerationError(saveErr)
+				logGenerationDiagnostic(generationID, "persistence", "error", code, generationProviderStatus(saveErr))
 				result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: message, ErrorCode: code}
 			} else {
 				finalState.ChapterID = strconv.Itoa(chapterID)
@@ -3021,6 +3140,7 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				)
 				statusCancel()
 				if derivedErr != nil {
+					logGenerationDiagnostic(generationID, "derived_processing", "error", "derived_processing_failed", 0)
 					result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "正文已保存，但派生处理失败", ErrorCode: "derived_processing_failed", ChapterID: strconv.Itoa(chapterID), Persisted: true}
 				}
 			}
@@ -3045,8 +3165,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "生成连接协议异常", ErrorCode: "generation_protocol_error"}
 			}
 			if terminalErr := sse.terminal(result); terminalErr != nil {
-				log.Printf("[Generation] terminal write failed: generation_id=%s novel_id=%s error=%v", generationID, novelID, terminalErr)
+				logGenerationDiagnostic(generationID, "terminal_delivery", "error", "terminal_delivery_failed", 0)
 				cancelGeneration(terminalErr)
+			} else if result.Status == generationStatusSuccess {
+				logGenerationDiagnostic(generationID, "terminal_delivery", "success", "", 0)
 			}
 			return
 		case streamEvent := <-streamEvents:
