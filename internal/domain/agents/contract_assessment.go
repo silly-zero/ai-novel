@@ -124,14 +124,14 @@ func normalizeContractRequirementAssessment(
 	evidence := strings.TrimSpace(*item.Evidence)
 	if evidence == "" {
 		return ContractRequirementAssessment{}, newReviewerValidationError(
-			"reviewer_validation_other",
+			reviewerIssueEvidenceEmpty,
 			"nonblank",
 			name+".evidence",
 		)
 	}
 	if len([]rune(evidence)) > maxContractAssessmentEvidenceRunes {
 		return ContractRequirementAssessment{}, newReviewerExpectedValidationError(
-			"reviewer_validation_other",
+			reviewerIssueEvidenceTooLong,
 			"max_runes",
 			name+".evidence",
 			maxContractAssessmentEvidenceRunes,
@@ -262,14 +262,14 @@ func decodeCanonConsistencyAssessments(
 		evidence := strings.TrimSpace(*item.Evidence)
 		if evidence == "" {
 			return nil, newReviewerValidationError(
-				"reviewer_validation_other",
+				reviewerIssueEvidenceEmpty,
 				"nonblank",
 				name+".evidence",
 			)
 		}
 		if len([]rune(evidence)) > maxContractAssessmentEvidenceRunes {
 			return nil, newReviewerExpectedValidationError(
-				"reviewer_validation_other",
+				reviewerIssueEvidenceTooLong,
 				"max_runes",
 				name+".evidence",
 				maxContractAssessmentEvidenceRunes,

@@ -604,7 +604,9 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 		"reviewer_evidence_tail",
 		"reviewer_evidence_draft",
 		"reviewer_critique_missing",
-		"reviewer_validation_other",
+		"reviewer_nullability",
+		"reviewer_evidence_empty",
+		"reviewer_evidence_too_long",
 	} {
 		t.Run(issueCode, func(t *testing.T) {
 			oldWriter, oldFlags := log.Writer(), log.Flags()
@@ -640,6 +642,31 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 				t.Fatalf("log leaked cause: %s", got)
 			}
 		})
+	}
+}
+
+func TestGenerationDiagnosticLogOmitsDeprecatedReviewerAggregate(t *testing.T) {
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	logGenerationDiagnostic(
+		"generation-log-test",
+		"chapter_generation",
+		"error",
+		"review_protocol_error",
+		workflows.NewWorkflowStageError(
+			workflows.WorkflowStageReviewer,
+			&generationDiagnosticCodeTestError{code: "reviewer_validation_other"},
+		),
+	)
+	if got := output.String(); strings.Contains(got, "issue_code=") {
+		t.Fatalf("deprecated aggregate leaked into log: %s", got)
 	}
 }
 

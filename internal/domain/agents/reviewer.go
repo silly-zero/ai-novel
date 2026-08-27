@@ -46,6 +46,12 @@ type ReviewResult struct {
 	contractChecked      bool
 }
 
+const (
+	reviewerIssueNullability     = "reviewer_nullability"
+	reviewerIssueEvidenceEmpty   = "reviewer_evidence_empty"
+	reviewerIssueEvidenceTooLong = "reviewer_evidence_too_long"
+)
+
 type reviewerValidationError struct {
 	category  string
 	rule      string
@@ -132,6 +138,7 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 8. 章节契约实际状态：如果存在【本章契约】，必须按原顺序逐项评估 chapter_goal、每条 must_happen、每条 must_not_happen 和 end_state。chapter_goal、must_happen、end_state 为 satisfied=true 时，evidence 必须逐字引用全稿中的单段连续原文；为 false 时写未达成原因。must_not_happen 的 satisfied=false 表示禁止事项实际发生，evidence 必须逐字引用违规原文；为 true 表示禁止事项未发生，只写简短理由，不得虚构正文证据。
 9. 主线事件节拍：如果存在【主线事件节拍】，必须返回 mainline_assessment。current_event.satisfied=true 时 evidence 必须逐字引用全稿连续原文；satisfied=false 时写未完成原因。存在下一章预定事件时，next_event.satisfied=true 表示本章没有提前完成，只写理由；satisfied=false 表示提前完成，evidence 必须逐字引用违规原文。若不存在下一章预定事件，next_event 必须为 null。正文必须实际发生本章事件，不能只口头提及或推迟。
 10. 角色与世界账本一致性：如果存在【冻结账本约束】，必须按原顺序逐项判断正文是否冲突。constraint_index 必须等于冻结约束前的 1-based 序号。satisfied=true 表示正文与该约束一致；satisfied=false 表示正文实际发生冲突，evidence 必须逐字引用全稿中的单段连续原文。角色和世界当前状态可以被正文合理推进，不要把正常状态变化误判为冲突。
+11. 所有 assessment 的 evidence（包括逐字证据、未达成原因和未发生理由）去除首尾空白后都必须非空，且不得超过 300 个 Unicode 字符。
 
 请输出合法 JSON：
 {
@@ -414,7 +421,7 @@ func decodeContinuityAssessment(
 	}
 	if !requireHead && !headIsNull {
 		return ContinuityAssessment{}, false, newReviewerValidationError(
-			"reviewer_validation_other",
+			reviewerIssueNullability,
 			"must_be_null",
 			"continuity_assessment.chapter_head",
 		)
@@ -469,15 +476,20 @@ func reviewerEvidenceWindow(draft string, head bool) string {
 
 func reviewerContinuityGuidance(state *GenerationState) string {
 	data := map[string]any{
-		"chapter_head_required": !state.PreviousContinuity.IsEmpty(),
-		"chapter_tail_window":   reviewerEvidenceWindow(state.Draft, false),
-		"evidence_max_runes":    300,
-		"rules":                 "satisfied=true时必须逐字复制窗口中的非空连续片段，不得概括、改写、改变标点或拼接；没有可证明目标时设为false并写简短原因",
+		"chapter_head_required":        !state.PreviousContinuity.IsEmpty(),
+		"chapter_tail_window":          reviewerEvidenceWindow(state.Draft, false),
+		"mainline_next_event_required": strings.TrimSpace(state.MainlineBeat.NextEvent) != "",
+		"evidence_nonblank":            true,
+		"evidence_max_runes":           300,
+		"rules":                        "satisfied=true时必须逐字复制窗口中的非空连续片段，不得概括、改写、改变标点或拼接；没有可证明目标时设为false并写简短原因",
 	}
 	if !state.PreviousContinuity.IsEmpty() {
 		data["chapter_head_window"] = reviewerEvidenceWindow(state.Draft, true)
 	} else {
 		data["chapter_head_must_be"] = nil
+	}
+	if strings.TrimSpace(state.MainlineBeat.NextEvent) == "" {
+		data["mainline_next_event_must_be"] = nil
 	}
 	encoded, _ := json.Marshal(data)
 	return string(encoded)

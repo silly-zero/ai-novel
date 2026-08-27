@@ -1146,6 +1146,39 @@ func TestReviewerCanonValidationRejectsInvalidResults(t *testing.T) {
 	}
 }
 
+func TestCanonEvidenceEmptyAndTooLongCategories(t *testing.T) {
+	constraint := CanonConstraint{Kind: "character_static", Subject: "林云", Statement: "谨慎"}
+	tests := []struct {
+		name     string
+		evidence string
+		category string
+		rule     string
+	}{
+		{name: "empty", evidence: "   ", category: reviewerIssueEvidenceEmpty, rule: "nonblank"},
+		{name: "too long", evidence: strings.Repeat("据", 301), category: reviewerIssueEvidenceTooLong, rule: "max_runes"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := fmt.Sprintf(
+				`[{"constraint_index":1,"satisfied":true,"evidence":%q}]`,
+				test.evidence,
+			)
+			_, err := decodeCanonConsistencyAssessments(
+				[]byte(candidate),
+				[]CanonConstraint{constraint},
+				strings.Repeat("文", 2500),
+			)
+			assertReviewerValidationError(
+				t,
+				err,
+				test.category,
+				test.rule,
+				"canon_assessment[0].evidence",
+			)
+		})
+	}
+}
+
 func TestReviewerRepairsInvalidCanonEvidenceOnce(t *testing.T) {
 	conflictEvidence := "林云宣称自己从未认识苏青。"
 	draft := strings.Repeat("文", 2500-len([]rune(conflictEvidence))) + conflictEvidence
@@ -1341,8 +1374,19 @@ func TestReviewerMainlineEvidenceRuneLimit(t *testing.T) {
 				Draft:        test.evidence + strings.Repeat("文", 2500-len([]rune(test.evidence))),
 				MainlineBeat: beat,
 			})
-			if (err != nil) != test.wantErr {
-				t.Fatalf("error = %v, wantErr = %v", err, test.wantErr)
+			if test.wantErr {
+				validationErr := assertReviewerValidationError(
+					t,
+					err,
+					reviewerIssueEvidenceTooLong,
+					"max_runes",
+					"mainline_assessment.current_event.evidence",
+				)
+				if validationErr.expected == nil || *validationErr.expected != 300 {
+					t.Fatalf("expected=%v", validationErr.expected)
+				}
+			} else if err != nil {
+				t.Fatalf("error = %v", err)
 			}
 		})
 	}
@@ -1444,7 +1488,7 @@ func TestReviewerValidationErrorTaxonomy(t *testing.T) {
 				})
 				return err
 			},
-			category: "reviewer_validation_other",
+			category: reviewerIssueEvidenceEmpty,
 			rule:     "nonblank",
 			field:    "contract_assessment.goal.evidence",
 		},
@@ -1570,7 +1614,7 @@ func TestReviewerContinuityEvidenceGateRejectsInvalidEvidence(t *testing.T) {
 			name:         "requires null head without previous continuity",
 			headJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
 			tailJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
-			wantCategory: "reviewer_validation_other",
+			wantCategory: reviewerIssueNullability,
 			wantRule:     "must_be_null",
 			wantField:    "continuity_assessment.chapter_head",
 		},
@@ -1641,8 +1685,69 @@ func TestReviewerRepairsInvalidContinuityEvidenceOnce(t *testing.T) {
 	if !got.IsApproved || llm.calls != 2 {
 		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
 	}
-	if !strings.Contains(llm.users[1], tailEvidence) || !strings.Contains(llm.users[1], "逐字复制") || !strings.Contains(llm.users[1], `"chapter_head_required":false`) {
-		t.Fatalf("repair prompt missing continuity guidance: %s", llm.users[1])
+	if !strings.Contains(llm.users[1], tailEvidence) ||
+		!strings.Contains(llm.users[1], "逐字复制") ||
+		!strings.Contains(llm.users[1], `"chapter_head_required":false`) ||
+		!strings.Contains(llm.users[1], `"mainline_next_event_required":false`) ||
+		!strings.Contains(llm.users[1], `"mainline_next_event_must_be":null`) ||
+		!strings.Contains(llm.users[1], `"evidence_nonblank":true`) ||
+		!strings.Contains(llm.systems[1], "不得超过 300 个 Unicode 字符") {
+		t.Fatalf("repair prompt missing reviewer guidance: %s", llm.users[1])
+	}
+}
+
+func TestReviewerStateGuidanceCoversConditionalNullsAndEvidenceLimits(t *testing.T) {
+	tests := []struct {
+		name              string
+		previous          ContinuityPacket
+		nextEvent         string
+		headRequired      bool
+		nextRequired      bool
+		wantHeadNull      bool
+		wantNextEventNull bool
+	}{
+		{name: "neither required", wantHeadNull: true, wantNextEventNull: true},
+		{
+			name:         "both required",
+			previous:     ContinuityPacket{LastBeat: "上一章", NextAction: "继续"},
+			nextEvent:    "下一章事件",
+			headRequired: true,
+			nextRequired: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			guidance := reviewerContinuityGuidance(&GenerationState{
+				Draft:              strings.Repeat("文", 2500),
+				PreviousContinuity: test.previous,
+				MainlineBeat: MainlineEventBeat{
+					NextEvent: test.nextEvent,
+				},
+			})
+			var decoded map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(guidance), &decoded); err != nil {
+				t.Fatal(err)
+			}
+			var headRequired, nextRequired, nonblank bool
+			if err := json.Unmarshal(decoded["chapter_head_required"], &headRequired); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(decoded["mainline_next_event_required"], &nextRequired); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(decoded["evidence_nonblank"], &nonblank); err != nil {
+				t.Fatal(err)
+			}
+			if headRequired != test.headRequired || nextRequired != test.nextRequired || !nonblank ||
+				string(decoded["evidence_max_runes"]) != "300" {
+				t.Fatalf("guidance=%s", guidance)
+			}
+			_, hasHeadNull := decoded["chapter_head_must_be"]
+			_, hasNextNull := decoded["mainline_next_event_must_be"]
+			if hasHeadNull != test.wantHeadNull || hasNextNull != test.wantNextEventNull {
+				t.Fatalf("guidance=%s", guidance)
+			}
+		})
 	}
 }
 

@@ -52,7 +52,7 @@ func decodeMainlineAssessment(
 	if strings.TrimSpace(beat.NextEvent) == "" {
 		if wire.NextEvent != nil {
 			return MainlineAssessment{}, false, newReviewerValidationError(
-				"reviewer_validation_other",
+				reviewerIssueNullability,
 				"must_be_null",
 				"mainline_assessment.next_event",
 			)
