@@ -96,6 +96,10 @@ func TestRunChapterGenerationStopsAtInvalidStructuredOutline(t *testing.T) {
 	if !errors.As(err, &stageErr) || stageErr.Stage != WorkflowStageArchitect {
 		t.Fatalf("error = %v, want architect stage", err)
 	}
+	var diagnosticCoder interface{ SafeDiagnosticCode() string }
+	if !errors.As(err, &diagnosticCoder) || diagnosticCoder.SafeDiagnosticCode() != "current_chapter_missing" {
+		t.Fatalf("error did not preserve Architect issue code: %v", err)
+	}
 	if !strings.Contains(err.Error(), "workflow stage failed") {
 		t.Fatalf("unexpected safe error = %q", err.Error())
 	}

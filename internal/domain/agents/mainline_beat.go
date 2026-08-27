@@ -29,8 +29,11 @@ const (
 )
 
 var (
-	outlineBeatLinePattern          = regexp.MustCompile(`^第\s*([0-9]+)\s*章\s*[：:]\s*(.*)$`)
-	generatedOutlineBeatLinePattern = regexp.MustCompile(`^第([0-9]+)章：(.*)$`)
+	outlineBeatLinePattern            = regexp.MustCompile(`^第\s*([0-9]+)\s*章\s*[：:]\s*(.*)$`)
+	generatedOutlineBeatLinePattern   = regexp.MustCompile(`^第\s*([0-9０-９]+)\s*章\s*[：:]\s*(.*)$`)
+	generatedOutlineListPrefixPattern = regexp.MustCompile(`^(?:[-+*]\s+|[0-9０-９]+[.)、]\s*)`)
+	generatedOutlineNumericMarker     = regexp.MustCompile(`第\s*[0-9０-９]+\s*章`)
+	generatedOutlineChineseMarker     = regexp.MustCompile(`第\s*[零〇一二三四五六七八九十百两]+\s*章`)
 )
 
 type outlineChapterEntry struct {
@@ -112,58 +115,104 @@ func inspectMainlineEventBeat(fullOutline string, chapterIndex int) mainlineBeat
 }
 
 func validateGeneratedOutlineSegment(fullOutline string, start, end int) string {
+	_, issue := normalizeGeneratedOutlineSegment(fullOutline, start, end)
+	return issue
+}
+
+func normalizeGeneratedOutlineSegment(
+	fullOutline string,
+	start int,
+	end int,
+) (string, string) {
 	if start <= 0 || end <= 0 || start > end {
-		return outlineIssueInvalidRange
+		return "", outlineIssueInvalidRange
 	}
 
+	normalized := strings.ReplaceAll(fullOutline, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	normalized = strings.TrimPrefix(normalized, string(rune(0xFEFF)))
+	lines := strings.Split(normalized, "\n")
+	canonicalLines := make([]string, 0, end-start+1)
 	events := make(map[int]string)
 	expectedIndex := start
-	normalizedOutline := strings.ReplaceAll(fullOutline, "\r\n", "\n")
-	if strings.Contains(normalizedOutline, "\r") {
-		return outlineIssueMalformedLine
-	}
-	normalizedOutline = strings.TrimSuffix(normalizedOutline, "\n")
-	for _, line := range strings.Split(normalizedOutline, "\n") {
-		if strings.TrimSpace(line) != line || line == "" {
-			return outlineIssueMalformedLine
+	insideChapterBlock := false
+	insideFence := false
+
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if strings.HasPrefix(line, "```") {
+			if insideChapterBlock && len(events) != end-start+1 {
+				return "", outlineIssueMalformedLine
+			}
+			insideFence = !insideFence
+			continue
 		}
+		if line == "" {
+			continue
+		}
+		line = strings.TrimSpace(generatedOutlineListPrefixPattern.ReplaceAllString(line, ""))
+		if strings.HasPrefix(line, "**") && strings.HasSuffix(line, "**") && len(line) >= 4 {
+			line = strings.TrimSpace(line[2 : len(line)-2])
+		}
+
 		matches := generatedOutlineBeatLinePattern.FindStringSubmatch(line)
 		if len(matches) != 3 {
-			return outlineIssueMalformedLine
+			if generatedOutlineNumericMarker.MatchString(line) ||
+				generatedOutlineChineseMarker.MatchString(line) ||
+				(insideChapterBlock && len(events) != end-start+1) {
+				return "", outlineIssueMalformedLine
+			}
+			continue
 		}
-		index, err := strconv.Atoi(matches[1])
+		insideChapterBlock = true
+
+		indexText, ok := normalizeOutlineDigits(matches[1])
+		if !ok {
+			return "", outlineIssueMalformedLine
+		}
+		index, err := strconv.Atoi(indexText)
 		if err != nil || index <= 0 {
-			return outlineIssueInvalidChapter
-		}
-		if strconv.Itoa(index) != matches[1] {
-			return outlineIssueMalformedLine
+			return "", outlineIssueInvalidChapter
 		}
 		if index < start || index > end {
-			return outlineIssueOutOfRange
+			return "", outlineIssueOutOfRange
 		}
 		if _, exists := events[index]; exists {
-			return outlineIssueDuplicateChapter
+			return "", outlineIssueDuplicateChapter
 		}
 		if index != expectedIndex {
-			return outlineIssueOutOfOrder
+			return "", outlineIssueOutOfOrder
 		}
-		event := matches[2]
+		event := strings.TrimSpace(matches[2])
 		if event == "" {
-			return outlineIssueBlankEvent
-		}
-		if strings.TrimSpace(event) != event {
-			return outlineIssueMalformedLine
+			return "", outlineIssueBlankEvent
 		}
 		if len([]rune(event)) > maxMainlineEventRunes {
-			return outlineIssueOversizedEvent
+			return "", outlineIssueOversizedEvent
 		}
 		events[index] = event
+		canonicalLines = append(canonicalLines, fmt.Sprintf("第%d章：%s", index, event))
 		expectedIndex++
 	}
-	if len(events) != end-start+1 {
-		return outlineIssueMissingChapter
+	if insideFence || len(events) != end-start+1 {
+		return "", outlineIssueMissingChapter
 	}
-	return ""
+	return strings.Join(canonicalLines, "\n"), ""
+}
+
+func normalizeOutlineDigits(value string) (string, bool) {
+	var builder strings.Builder
+	for _, char := range value {
+		switch {
+		case char >= '0' && char <= '9':
+			builder.WriteRune(char)
+		case char >= '０' && char <= '９':
+			builder.WriteRune('0' + (char - '０'))
+		default:
+			return "", false
+		}
+	}
+	return builder.String(), builder.Len() > 0
 }
 
 func validateOutlineRangeDoesNotOverlap(fullOutline string, start, end int) string {

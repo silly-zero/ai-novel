@@ -2652,6 +2652,28 @@ var generationDiagnosticErrorCodes = map[string]bool{
 	"write_deadline_clear_failed": true,
 }
 
+var generationDiagnosticIssueCodes = map[string]bool{
+	"invalid_chapter_index":                  true,
+	"current_chapter_missing":                true,
+	"current_chapter_duplicate":              true,
+	"current_event_blank":                    true,
+	"current_event_oversized":                true,
+	"invalid_outline_range":                  true,
+	"generated_outline_malformed_line":       true,
+	"generated_outline_invalid_chapter":      true,
+	"generated_outline_chapter_out_of_range": true,
+	"generated_outline_chapter_out_of_order": true,
+	"generated_outline_duplicate_chapter":    true,
+	"generated_outline_blank_event":          true,
+	"generated_outline_oversized_event":      true,
+	"generated_outline_missing_chapter":      true,
+	"existing_outline_range_overlap":         true,
+}
+
+type safeGenerationDiagnosticCoder interface {
+	SafeDiagnosticCode() string
+}
+
 func logGenerationDiagnostic(
 	generationID string,
 	stage string,
@@ -2683,6 +2705,13 @@ func logGenerationDiagnostic(
 		}
 	}
 
+	issueCode := ""
+	var diagnosticCoder safeGenerationDiagnosticCoder
+	if errors.As(diagnosticErr, &diagnosticCoder) &&
+		generationDiagnosticIssueCodes[diagnosticCoder.SafeDiagnosticCode()] {
+		issueCode = diagnosticCoder.SafeDiagnosticCode()
+	}
+
 	fields := fmt.Sprintf(
 		"[Generation] generation_id=%s stage=%s status=%s",
 		sanitizeGenerationDiagnosticID(generationID),
@@ -2697,6 +2726,9 @@ func logGenerationDiagnostic(
 	}
 	if workflowStage != "" {
 		fields += " workflow_stage=" + workflowStage
+	}
+	if issueCode != "" {
+		fields += " issue_code=" + issueCode
 	}
 	log.Print(fields)
 }

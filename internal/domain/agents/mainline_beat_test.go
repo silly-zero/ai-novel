@@ -118,7 +118,39 @@ func TestSelectMainlineEventBeatOmitsAmbiguousOrInvalidNextEvent(t *testing.T) {
 	}
 }
 
-func TestValidateGeneratedOutlineSegment(t *testing.T) {
+func TestNormalizeGeneratedOutlineSegmentAcceptsHarmlessFormatting(t *testing.T) {
+	tests := []struct {
+		name    string
+		outline string
+	}{
+		{name: "canonical", outline: "第3章：主角进入密室\n第4章：主角追踪祭坛"},
+		{name: "CRLF", outline: "第3章：主角进入密室\r\n第4章：主角追踪祭坛"},
+		{name: "bare CR", outline: "第3章：主角进入密室\r第4章：主角追踪祭坛"},
+		{name: "terminal newlines", outline: "第3章：主角进入密室\n第4章：主角追踪祭坛\n\n"},
+		{name: "preamble and postamble", outline: "以下是大纲：\n第3章：主角进入密室\n第4章：主角追踪祭坛\n以上。"},
+		{name: "fenced", outline: "```text\n第3章：主角进入密室\n第4章：主角追踪祭坛\n```"},
+		{name: "spaced markers", outline: "第 3 章： 主角进入密室\n第 4 章：主角追踪祭坛"},
+		{name: "leading zeros", outline: "第03章：主角进入密室\n第04章：主角追踪祭坛"},
+		{name: "ASCII colons", outline: "第3章: 主角进入密室\n第4章:主角追踪祭坛"},
+		{name: "outer whitespace", outline: "  第3章：主角进入密室  \n\t第4章：主角追踪祭坛\t"},
+		{name: "blank separators", outline: "第3章：主角进入密室\n\n第4章：主角追踪祭坛"},
+		{name: "bullets", outline: "- 第3章：主角进入密室\n* 第4章：主角追踪祭坛"},
+		{name: "numbered list", outline: "1. 第3章：主角进入密室\n2、 第4章：主角追踪祭坛"},
+		{name: "bold", outline: "**第3章：主角进入密室**\n**第4章：主角追踪祭坛**"},
+		{name: "BOM and full width digits", outline: string(rune(0xFEFF)) + "第３章：主角进入密室\n第４章：主角追踪祭坛"},
+	}
+	const want = "第3章：主角进入密室\n第4章：主角追踪祭坛"
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, issue := normalizeGeneratedOutlineSegment(test.outline, 3, 4)
+			if issue != "" || got != want {
+				t.Fatalf("canonical=%q issue=%q, want %q", got, issue, want)
+			}
+		})
+	}
+}
+
+func TestValidateGeneratedOutlineSegmentRejectsSemanticIssues(t *testing.T) {
 	tests := []struct {
 		name    string
 		outline string
@@ -126,24 +158,18 @@ func TestValidateGeneratedOutlineSegment(t *testing.T) {
 		end     int
 		issue   string
 	}{
-		{name: "valid", outline: "第3章：主角进入密室\n第4章：主角追踪祭坛", start: 3, end: 4},
-		{name: "valid CRLF", outline: "第3章：主角进入密室\r\n第4章：主角追踪祭坛", start: 3, end: 4},
-		{name: "valid terminal newline", outline: "第3章：主角进入密室\n第4章：主角追踪祭坛\n", start: 3, end: 4},
-		{name: "bare CR", outline: "第3章：主角进入密室\r第4章：主角追踪祭坛", start: 3, end: 4, issue: outlineIssueMalformedLine},
 		{name: "invalid range", outline: "第3章：主角进入密室", start: 4, end: 3, issue: outlineIssueInvalidRange},
-		{name: "malformed line", outline: "以下是大纲\n第3章：主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
-		{name: "spaced chapter marker", outline: "第 3 章：主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
-		{name: "leading zero chapter", outline: "第03章：主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
-		{name: "ascii colon", outline: "第3章:主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
-		{name: "leading whitespace", outline: " 第3章：主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
-		{name: "trailing whitespace", outline: "第3章：主角进入密室 ", start: 3, end: 3, issue: outlineIssueMalformedLine},
-		{name: "extra blank line", outline: "第3章：主角进入密室\n\n第4章：主角追踪祭坛", start: 3, end: 4, issue: outlineIssueMalformedLine},
-		{name: "out of range", outline: "第2章：主角发现血书\n第3章：主角进入密室", start: 3, end: 4, issue: outlineIssueOutOfRange},
-		{name: "duplicate", outline: "第3章：事件一\n第3章：事件二", start: 3, end: 4, issue: outlineIssueDuplicateChapter},
-		{name: "out of order", outline: "第4章：主角追踪祭坛\n第3章：主角进入密室", start: 3, end: 4, issue: outlineIssueOutOfOrder},
-		{name: "blank event", outline: "第3章：\n第4章：主角追踪祭坛", start: 3, end: 4, issue: outlineIssueBlankEvent},
+		{name: "Chinese chapter number", outline: "第三章：主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
+		{name: "malformed marker", outline: "第3章 主角进入密室", start: 3, end: 3, issue: outlineIssueMalformedLine},
+		{name: "text inside chapter block", outline: "第3章：主角进入密室\n中场说明\n第4章：主角追踪祭坛", start: 3, end: 4, issue: outlineIssueMalformedLine},
+		{name: "out of range", outline: "以下是大纲\n- 第2章：主角发现血书\n- 第3章：主角进入密室", start: 3, end: 4, issue: outlineIssueOutOfRange},
+		{name: "duplicate", outline: "**第3章：事件一**\n**第3章：事件二**", start: 3, end: 4, issue: outlineIssueDuplicateChapter},
+		{name: "out of order", outline: "第4章:主角追踪祭坛\n第3章:主角进入密室", start: 3, end: 4, issue: outlineIssueOutOfOrder},
+		{name: "blank event", outline: "第3章：   \n第4章：主角追踪祭坛", start: 3, end: 4, issue: outlineIssueBlankEvent},
 		{name: "oversized event", outline: "第3章：" + strings.Repeat("事", maxMainlineEventRunes+1), start: 3, end: 3, issue: outlineIssueOversizedEvent},
 		{name: "missing chapter", outline: "第3章：主角进入密室", start: 3, end: 4, issue: outlineIssueMissingChapter},
+		{name: "zero chapter", outline: "第0章：主角进入密室", start: 1, end: 1, issue: outlineIssueInvalidChapter},
+		{name: "overflow chapter", outline: "第999999999999999999999999章：主角进入密室", start: 1, end: 1, issue: outlineIssueInvalidChapter},
 	}
 
 	for _, test := range tests {

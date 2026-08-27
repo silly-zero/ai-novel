@@ -21,6 +21,23 @@ import (
 	llminfra "github.com/ai-novel/studio/internal/infrastructure/llm"
 )
 
+type generationDiagnosticCodeTestError struct {
+	code  string
+	cause error
+}
+
+func (e *generationDiagnosticCodeTestError) Error() string {
+	return "safe diagnostic test error"
+}
+
+func (e *generationDiagnosticCodeTestError) Unwrap() error {
+	return e.cause
+}
+
+func (e *generationDiagnosticCodeTestError) SafeDiagnosticCode() string {
+	return e.code
+}
+
 type generationTestEngine struct {
 	prepare func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	run     func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
@@ -542,8 +559,11 @@ func TestGenerationDiagnosticLogContainsOnlySafeMetadata(t *testing.T) {
 		"error",
 		"provider_busy",
 		workflows.NewWorkflowStageError(
-			workflows.WorkflowStageReviewer,
-			&llminfra.ProviderError{StatusCode: 429, Retryable: true},
+			workflows.WorkflowStageArchitect,
+			&generationDiagnosticCodeTestError{
+				code:  "generated_outline_missing_chapter",
+				cause: &llminfra.ProviderError{StatusCode: 429, Retryable: true},
+			},
 		),
 	)
 	got := output.String()
@@ -553,7 +573,8 @@ func TestGenerationDiagnosticLogContainsOnlySafeMetadata(t *testing.T) {
 		"status=error",
 		"error_code=provider_busy",
 		"provider_status=429",
-		"workflow_stage=reviewer",
+		"workflow_stage=architect",
+		"issue_code=generated_outline_missing_chapter",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("log missing %q: %s", want, got)
@@ -586,10 +607,13 @@ func TestGenerationDiagnosticLogOmitsUnknownWorkflowStage(t *testing.T) {
 		"chapter_generation",
 		"error",
 		"generation_failed",
-		workflows.NewWorkflowStageError("CANARY_STAGE\nforged=true", errors.New("CANARY_CAUSE")),
+		workflows.NewWorkflowStageError(
+			"CANARY_STAGE\nforged=true",
+			&generationDiagnosticCodeTestError{code: "CANARY_ISSUE\nforged=true", cause: errors.New("CANARY_CAUSE")},
+		),
 	)
 	got := output.String()
-	if strings.Contains(got, "workflow_stage=") || strings.Contains(got, "CANARY") {
+	if strings.Contains(got, "workflow_stage=") || strings.Contains(got, "issue_code=") || strings.Contains(got, "CANARY") {
 		t.Fatalf("log leaked untrusted stage or cause: %s", got)
 	}
 }

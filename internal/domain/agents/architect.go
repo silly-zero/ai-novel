@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const maxArchitectRepairSourceRunes = 8192
+
 // ArchitectAgent 是架构师智能体，负责根据 Idea 构建全书的章节大纲映射
 type ArchitectAgent struct {
 	llm LLMService
@@ -100,15 +102,18 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if err := ctx.Err(); err != nil {
 		return state, err
 	}
-	if issue := validateGeneratedOutlineSegment(fullOutline, start, end); issue != "" {
+	canonicalOutline, issue := normalizeGeneratedOutlineSegment(fullOutline, start, end)
+	if issue != "" {
 		fullOutline, repairErr := a.repairOutline(ctx, start, end, fullOutline, issue)
 		if repairErr != nil {
 			return state, repairErr
 		}
-		if issue = validateGeneratedOutlineSegment(fullOutline, start, end); issue != "" {
+		canonicalOutline, issue = normalizeGeneratedOutlineSegment(fullOutline, start, end)
+		if issue != "" {
 			return state, architectOutlineError(issue)
 		}
 	}
+	fullOutline = canonicalOutline
 
 	mergedOutline := fullOutline
 	if existingOutline != "" {
@@ -139,7 +144,11 @@ func (a *ArchitectAgent) repairOutline(ctx context.Context, start, end int, prev
 	systemPrompt := fmt.Sprintf(`你是小说大纲格式修复器。只修复格式，不改变剧情含义。
 必须严格输出第 %d 章到第 %d 章，每章一行，格式为：第N章：事件。
 只能使用 ASCII 数字、中文“第”和“章”、全角冒号“：”；禁止 Markdown、标题、解释、开场白、空行和结尾说明。`, start, end)
-	userPrompt := fmt.Sprintf("校验错误：%s\n原始大纲：\n%s", issue, truncateArchitectText(previous, 512))
+	userPrompt := fmt.Sprintf(
+		"校验错误：%s\n原始大纲：\n%s",
+		issue,
+		truncateArchitectText(previous, maxArchitectRepairSourceRunes),
+	)
 	fixed, err := a.llm.Generate(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		return "", fmt.Errorf("architect outline repair failed: %w", err)
@@ -176,6 +185,18 @@ func validatedExistingMainlineBeat(fullOutline string, chapterIndex int) (Mainli
 	return selection.Beat, nil
 }
 
+type architectOutlineValidationError struct {
+	issueCode string
+}
+
+func (e *architectOutlineValidationError) Error() string {
+	return fmt.Sprintf("architect outline validation failed: %s", e.issueCode)
+}
+
+func (e *architectOutlineValidationError) SafeDiagnosticCode() string {
+	return e.issueCode
+}
+
 func architectOutlineError(issueCode string) error {
-	return fmt.Errorf("architect outline validation failed: %s", issueCode)
+	return &architectOutlineValidationError{issueCode: issueCode}
 }

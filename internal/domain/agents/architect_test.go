@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -257,9 +258,25 @@ func TestArchitectDoesNotCommitAfterProviderReturnsIntoCancelledContext(t *testi
 	}
 }
 
-func TestArchitectRepairsMalformedGeneratedOutline(t *testing.T) {
+func TestArchitectCanonicalizesHarmlessGeneratedOutlineWithoutRepair(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
-		"以下是大纲：\n第3章：主角进入密室\n第4章：主角追踪祭坛",
+		"以下是大纲：\n- 第 03 章: 主角进入密室  \n- **第０４章：主角追踪祭坛**\n以上。",
+	}}
+	state := &GenerationState{Idea: "调查身世", OutlineStart: 3, OutlineEnd: 4, ChapterIndex: 3}
+	got, err := NewArchitectAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "第3章：主角进入密室\n第4章：主角追踪祭坛"
+	if llm.calls != 1 || got.FullOutline != want ||
+		got.MainlineBeat.CurrentEvent != "主角进入密室" {
+		t.Fatalf("calls=%d state=%#v", llm.calls, got)
+	}
+}
+
+func TestArchitectRepairsSemanticOutlineFailure(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{
+		"第3章：主角进入密室",
 		"第3章：主角进入密室\n第4章：主角追踪祭坛",
 	}}
 	state := &GenerationState{Idea: "调查身世", OutlineStart: 3, OutlineEnd: 4, ChapterIndex: 3}
@@ -267,11 +284,50 @@ func TestArchitectRepairsMalformedGeneratedOutline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if llm.calls != 2 || got.MainlineBeat.CurrentEvent != "主角进入密室" || !strings.Contains(got.FullOutline, "第4章：主角追踪祭坛") {
+	if llm.calls != 2 || got.MainlineBeat.CurrentEvent != "主角进入密室" ||
+		!strings.Contains(got.FullOutline, "第4章：主角追踪祭坛") {
 		t.Fatalf("calls=%d state=%#v", llm.calls, got)
 	}
-	if !strings.Contains(llm.systems[1], "全角冒号") || !strings.Contains(llm.users[1], "generated_outline_malformed_line") {
+	if !strings.Contains(llm.systems[1], "全角冒号") ||
+		!strings.Contains(llm.users[1], outlineIssueMissingChapter) {
 		t.Fatalf("repair prompt missing constraints: system=%s user=%s", llm.systems[1], llm.users[1])
+	}
+}
+
+func TestArchitectRepairReceivesCompleteBoundedOutline(t *testing.T) {
+	longEvent := strings.Repeat("事", 70)
+	lines := make([]string, 0, 10)
+	for index := 1; index <= 10; index++ {
+		lines = append(lines, fmt.Sprintf("第%d章：%s-%d", index, longEvent, index))
+	}
+	malformed := strings.Join(lines[:9], "\n")
+	fixed := strings.Join(lines, "\n")
+	if len([]rune(malformed)) <= 512 {
+		t.Fatal("test outline must exceed the old repair limit")
+	}
+	llm := &queuedStructuredLLM{responses: []string{malformed, fixed}}
+	state := &GenerationState{Idea: "调查身世", ChapterIndex: 1}
+
+	got, err := NewArchitectAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(llm.users[1], lines[8]) || strings.Contains(llm.users[1], "...") {
+		t.Fatal("repair prompt truncated a bounded outline")
+	}
+	if got.FullOutline != fixed {
+		t.Fatalf("FullOutline length=%d, want=%d", len([]rune(got.FullOutline)), len([]rune(fixed)))
+	}
+}
+
+func TestArchitectOutlineErrorExposesOnlySafeIssueCode(t *testing.T) {
+	err := architectOutlineError(outlineIssueMissingChapter)
+	var coded interface{ SafeDiagnosticCode() string }
+	if !errors.As(err, &coded) || coded.SafeDiagnosticCode() != outlineIssueMissingChapter {
+		t.Fatalf("error = %#v", err)
+	}
+	if strings.Contains(err.Error(), "CANARY") {
+		t.Fatalf("error leaked unexpected content: %s", err)
 	}
 }
 
