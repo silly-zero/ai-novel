@@ -392,22 +392,34 @@ func (e *syntheticRepairContextError) structuredRepairReference() string {
 
 func TestStructuredRepairSupplementIncludesExactEvidenceWindow(t *testing.T) {
 	tailWindow := strings.Repeat("尾", 499) + "🙂"
+	candidate := continuityEvidenceCandidate{
+		ID:    continuityTailCandidateID,
+		Scope: "chapter_tail",
+		Text:  tailWindow,
+	}
 	err := newReviewerEvidenceWindowError(
 		"reviewer_evidence_tail",
 		"continuity_assessment.chapter_tail.evidence",
-		tailWindow,
+		candidate,
 	)
 	supplement := structuredRepairSupplement(err)
+	reference := err.structuredRepairReference()
+	var decoded continuityEvidenceCandidate
+	if jsonErr := json.Unmarshal([]byte(reference), &decoded); jsonErr != nil || decoded != candidate {
+		t.Fatalf("reference=%q decoded=%#v err=%v", reference, decoded, jsonErr)
+	}
 	if !strings.Contains(supplement, "修复要求：") ||
-		!strings.Contains(supplement, "<repair_reference>\n"+tailWindow+"\n</repair_reference>") {
+		!strings.Contains(supplement, "<repair_reference>\n"+reference+"\n</repair_reference>") {
 		t.Fatalf("supplement=%s", supplement)
 	}
 }
 
 func TestBoundedRepairReferenceUsesRuneLimitWithoutEllipsis(t *testing.T) {
-	value := strings.Repeat("界", 500) + "🙂TAIL_CANARY"
+	value := strings.Repeat("界", structuredRepairReferenceRunes) + "🙂TAIL_CANARY"
 	got := boundedRepairReference(value)
-	if len([]rune(got)) != 500 || got != strings.Repeat("界", 500) || strings.Contains(got, "...") {
+	if len([]rune(got)) != structuredRepairReferenceRunes ||
+		got != strings.Repeat("界", structuredRepairReferenceRunes) ||
+		strings.Contains(got, "...") {
 		t.Fatalf("reference length=%d suffix=%q", len([]rune(got)), got[max(0, len(got)-8):])
 	}
 }
@@ -1577,6 +1589,136 @@ func TestReviewerValidationErrorTaxonomy(t *testing.T) {
 	}
 }
 
+func TestReviewerEvidenceCandidatesMatchExactWindows(t *testing.T) {
+	head := "HEAD🙂"
+	tail := "TAIL界"
+	draft := head + strings.Repeat("文", reviewerContinuityWindowRunes*2) + tail
+	headCandidate := reviewerEvidenceCandidate(draft, true)
+	tailCandidate := reviewerEvidenceCandidate(draft, false)
+
+	if headCandidate.ID != continuityHeadCandidateID ||
+		headCandidate.Scope != "chapter_head" ||
+		headCandidate.Text != reviewerEvidenceWindow(draft, true) ||
+		len([]rune(headCandidate.Text)) != reviewerContinuityWindowRunes {
+		t.Fatalf("head candidate=%#v", headCandidate)
+	}
+	if tailCandidate.ID != continuityTailCandidateID ||
+		tailCandidate.Scope != "chapter_tail" ||
+		tailCandidate.Text != reviewerEvidenceWindow(draft, false) ||
+		len([]rune(tailCandidate.Text)) != reviewerContinuityWindowRunes {
+		t.Fatalf("tail candidate=%#v", tailCandidate)
+	}
+	if headCandidate.ID == tailCandidate.ID {
+		t.Fatal("head and tail candidates share ID")
+	}
+}
+
+func TestContinuityEvidenceSpanIDCompatibility(t *testing.T) {
+	draft := strings.Repeat("文", 600) + "章尾明确留下继续追查怀表来源的目标。"
+	tailEvidence := "继续追查怀表来源的目标"
+	tests := []struct {
+		name        string
+		json        string
+		wantErrCode string
+		wantRule    string
+		wantField   string
+	}{
+		{
+			name: "positive correct id",
+			json: fmt.Sprintf(
+				`{"satisfied":true,"evidence":%q,"evidence_span_id":%q}`,
+				tailEvidence,
+				continuityTailCandidateID,
+			),
+		},
+		{
+			name: "positive missing id legacy fallback",
+			json: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+		},
+		{
+			name: "positive null id legacy fallback",
+			json: fmt.Sprintf(`{"satisfied":true,"evidence":%q,"evidence_span_id":null}`, tailEvidence),
+		},
+		{
+			name: "positive wrong scope id",
+			json: fmt.Sprintf(
+				`{"satisfied":true,"evidence":%q,"evidence_span_id":%q}`,
+				tailEvidence,
+				continuityHeadCandidateID,
+			),
+			wantErrCode: "reviewer_evidence_span",
+			wantRule:    "required_candidate",
+		},
+		{
+			name:        "positive empty id",
+			json:        fmt.Sprintf(`{"satisfied":true,"evidence":%q,"evidence_span_id":""}`, tailEvidence),
+			wantErrCode: "reviewer_evidence_span",
+			wantRule:    "required_candidate",
+		},
+		{
+			name: "positive correct id but invalid evidence",
+			json: fmt.Sprintf(
+				`{"satisfied":true,"evidence":"NOT_IN_TAIL","evidence_span_id":%q}`,
+				continuityTailCandidateID,
+			),
+			wantErrCode: "reviewer_evidence_tail",
+			wantRule:    "exact_substring",
+			wantField:   "continuity_assessment.chapter_tail.evidence",
+		},
+		{
+			name: "negative null id",
+			json: `{"satisfied":false,"evidence":"章尾没有具体行动目标","evidence_span_id":null}`,
+		},
+		{
+			name: "negative missing id legacy",
+			json: `{"satisfied":false,"evidence":"章尾没有具体行动目标"}`,
+		},
+		{
+			name: "negative non-null id",
+			json: fmt.Sprintf(
+				`{"satisfied":false,"evidence":"章尾没有具体行动目标","evidence_span_id":%q}`,
+				continuityTailCandidateID,
+			),
+			wantErrCode: "reviewer_evidence_span",
+			wantRule:    "must_be_null",
+		},
+		{
+			name:        "wrong id type",
+			json:        `{"satisfied":true,"evidence":"文","evidence_span_id":123}`,
+			wantErrCode: "reviewer_evidence_span",
+			wantRule:    "string",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := decodeContinuityEvidence(
+				"continuity_assessment.chapter_tail",
+				[]byte(test.json),
+				draft,
+				false,
+			)
+			if test.wantErrCode == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			wantField := test.wantField
+			if wantField == "" {
+				wantField = "continuity_assessment.chapter_tail.evidence_span_id"
+			}
+			var validationErr *reviewerValidationError
+			if !errors.As(err, &validationErr) ||
+				validationErr.category != test.wantErrCode ||
+				validationErr.rule != test.wantRule ||
+				validationErr.fieldPath != wantField {
+				t.Fatalf("error=%#v", err)
+			}
+		})
+	}
+}
+
 func TestReviewerEvidenceWindowErrorKeepsReferencePrivate(t *testing.T) {
 	headEvidence := "HEAD_CANARY章首。"
 	tailEvidence := "TAIL_CANARY章尾。"
@@ -1612,9 +1754,14 @@ func TestReviewerEvidenceWindowErrorKeepsReferencePrivate(t *testing.T) {
 			var validationErr *reviewerValidationError
 			if !errors.As(err, &validationErr) ||
 				validationErr.category != test.wantCategory ||
-				validationErr.structuredRepairReference() != test.wantWindow ||
 				validationErr.structuredRepairInstruction() == "" {
 				t.Fatalf("error=%#v", err)
+			}
+			var repairCandidate continuityEvidenceCandidate
+			reference := validationErr.structuredRepairReference()
+			if jsonErr := json.Unmarshal([]byte(reference), &repairCandidate); jsonErr != nil ||
+				repairCandidate.Text != test.wantWindow {
+				t.Fatalf("reference=%q candidate=%#v err=%v", reference, repairCandidate, jsonErr)
 			}
 			for _, publicValue := range []string{
 				validationErr.Error(),
@@ -1867,11 +2014,19 @@ func TestReviewerStateGuidanceCoversConditionalNullsAndEvidenceLimits(t *testing
 			}
 			_, hasHeadNull := decoded["chapter_head_must_be"]
 			_, hasHeadTrueRule := decoded["chapter_head_true_rule"]
+			_, hasHeadCandidate := decoded["chapter_head_candidate"]
 			_, hasNextNull := decoded["mainline_next_event_must_be"]
 			if hasHeadNull != test.wantHeadNull ||
 				hasHeadTrueRule != test.headRequired ||
+				hasHeadCandidate != test.headRequired ||
 				hasNextNull != test.wantNextEventNull {
 				t.Fatalf("guidance=%s", guidance)
+			}
+			var tailCandidate continuityEvidenceCandidate
+			if err := json.Unmarshal(decoded["chapter_tail_candidate"], &tailCandidate); err != nil ||
+				tailCandidate.ID != continuityTailCandidateID ||
+				tailCandidate.Text != reviewerEvidenceWindow(strings.Repeat("文", 2500), false) {
+				t.Fatalf("tail candidate=%#v err=%v guidance=%s", tailCandidate, err, guidance)
 			}
 		})
 	}

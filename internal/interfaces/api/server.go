@@ -2678,6 +2678,7 @@ var generationDiagnosticIssueCodes = map[string]bool{
 	"reviewer_evidence_head":                 true,
 	"reviewer_evidence_tail":                 true,
 	"reviewer_evidence_draft":                true,
+	"reviewer_evidence_span":                 true,
 	"reviewer_critique_missing":              true,
 	"reviewer_nullability":                   true,
 	"reviewer_evidence_empty":                true,

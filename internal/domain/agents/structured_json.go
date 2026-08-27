@@ -12,7 +12,7 @@ import (
 
 const (
 	structuredResponsePreviewRunes = 512
-	structuredRepairReferenceRunes = 500
+	structuredRepairReferenceRunes = 4096
 	structuredJSONRecoveryLimit    = 32
 )
 

@@ -603,6 +603,7 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 		"reviewer_evidence_head",
 		"reviewer_evidence_tail",
 		"reviewer_evidence_draft",
+		"reviewer_evidence_span",
 		"reviewer_critique_missing",
 		"reviewer_nullability",
 		"reviewer_evidence_empty",
