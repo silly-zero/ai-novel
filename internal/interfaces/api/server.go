@@ -2645,6 +2645,7 @@ var generationDiagnosticErrorCodes = map[string]bool{
 	"provider_error":              true,
 	"context_preparation_failed":  true,
 	"review_failed":               true,
+	"review_protocol_error":       true,
 	"chapter_changed":             true,
 	"derived_processing_failed":   true,
 	"generation_failed":           true,
@@ -2668,6 +2669,9 @@ var generationDiagnosticIssueCodes = map[string]bool{
 	"generated_outline_oversized_event":      true,
 	"generated_outline_missing_chapter":      true,
 	"existing_outline_range_overlap":         true,
+	"empty_model_response":                   true,
+	"structured_response_invalid":            true,
+	"reviewer_empty_draft":                   true,
 }
 
 type safeGenerationDiagnosticCoder interface {
@@ -2804,7 +2808,7 @@ func publicGenerationError(err error) (string, string) {
 			workflows.WorkflowStageLibrarian:
 			return "context_preparation_failed", "上下文准备失败，请重试"
 		case workflows.WorkflowStageReviewer:
-			return "review_failed", "正文审查未通过，请重试"
+			return "review_protocol_error", "审查响应异常，请稍后重试"
 		}
 	}
 	return "generation_failed", "生成失败，请重试"

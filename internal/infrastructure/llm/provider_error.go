@@ -12,6 +12,16 @@ import (
 	openai "github.com/meguminnnnnnnnn/go-openai"
 )
 
+type ModelResponseError struct{}
+
+func (e *ModelResponseError) Error() string {
+	return "model returned an empty response"
+}
+
+func (e *ModelResponseError) SafeDiagnosticCode() string {
+	return "empty_model_response"
+}
+
 type ProviderError struct {
 	Operation  string
 	StatusCode int
@@ -96,6 +106,15 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 	}
 }
 
+func isRetryableModelError(err error) bool {
+	var providerErr *ProviderError
+	if errors.As(err, &providerErr) {
+		return providerErr.Retryable
+	}
+	var responseErr *ModelResponseError
+	return errors.As(err, &responseErr)
+}
+
 func withRetry[T any](
 	ctx context.Context,
 	policy retryPolicy,
@@ -125,9 +144,7 @@ func withRetryIf[T any](
 		if err == nil {
 			return value, nil
 		}
-		var providerErr *ProviderError
-		if !errors.As(err, &providerErr) ||
-			!providerErr.Retryable ||
+		if !isRetryableModelError(err) ||
 			(allowRetry != nil && !allowRetry(value, err)) ||
 			attempt+1 >= policy.maxAttempts {
 			return zero, err

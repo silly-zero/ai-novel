@@ -16,20 +16,33 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+type generateTestResult struct {
+	message *schema.Message
+	err     error
+}
+
 type streamTestResult struct {
 	stream *schema.StreamReader[*schema.Message]
 	err    error
 }
 
 type adapterTestChatModel struct {
-	stream  *schema.StreamReader[*schema.Message]
-	err     error
-	results []streamTestResult
-	calls   int
+	generateResults []generateTestResult
+	generateCalls   int
+	stream          *schema.StreamReader[*schema.Message]
+	err             error
+	results         []streamTestResult
+	calls           int
 }
 
 func (f *adapterTestChatModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
-	return nil, nil
+	f.generateCalls++
+	if len(f.generateResults) == 0 {
+		return nil, nil
+	}
+	result := f.generateResults[0]
+	f.generateResults = f.generateResults[1:]
+	return result.message, result.err
 }
 
 func (f *adapterTestChatModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
@@ -203,6 +216,111 @@ func noWaitRetryPolicy(maxAttempts int) retryPolicy {
 		maxAttempts: maxAttempts,
 		backoffs:    []time.Duration{time.Millisecond},
 		wait:        func(context.Context, time.Duration) error { return nil },
+	}
+}
+
+func TestOpenAIAdapterGenerateRetriesEmptyResponses(t *testing.T) {
+	model := &adapterTestChatModel{generateResults: []generateTestResult{
+		{},
+		{message: schema.AssistantMessage("   ", nil)},
+		{message: schema.AssistantMessage("有效响应", nil)},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(5)}
+
+	got, err := adapter.Generate(context.Background(), "system", "user")
+
+	if err != nil || got != "有效响应" || model.generateCalls != 3 {
+		t.Fatalf("got=%q err=%v calls=%d", got, err, model.generateCalls)
+	}
+}
+
+func TestOpenAIAdapterGenerateReturnsTypedErrorAfterEmptyResponses(t *testing.T) {
+	model := &adapterTestChatModel{}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+
+	_, err := adapter.Generate(context.Background(), "system", "user")
+
+	var responseErr *ModelResponseError
+	var providerErr *ProviderError
+	if !errors.As(err, &responseErr) || errors.As(err, &providerErr) ||
+		responseErr.SafeDiagnosticCode() != "empty_model_response" ||
+		model.generateCalls != 3 {
+		t.Fatalf("err=%#v calls=%d", err, model.generateCalls)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateRetriesEmptyEOF(t *testing.T) {
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{stream: schema.StreamReaderFromArray([]*schema.Message{})},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var chunks []string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
+
+	if err != nil || model.calls != 2 || !slices.Equal(chunks, []string{"正文"}) {
+		t.Fatalf("err=%v calls=%d chunks=%v", err, model.calls, chunks)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateRetriesWhitespaceOnlyEOF(t *testing.T) {
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("  \n", nil),
+		})},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var chunks []string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		chunks = append(chunks, chunk)
+		return nil
+	})
+
+	if err != nil || model.calls != 2 || !slices.Equal(chunks, []string{"正文"}) {
+		t.Fatalf("err=%v calls=%d chunks=%q", err, model.calls, chunks)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateRetriesNilStream(t *testing.T) {
+	model := &adapterTestChatModel{results: []streamTestResult{
+		{},
+		{stream: schema.StreamReaderFromArray([]*schema.Message{
+			schema.AssistantMessage("正文", nil),
+		})},
+	}}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+	var content string
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(chunk string) error {
+		content += chunk
+		return nil
+	})
+
+	if err != nil || model.calls != 2 || content != "正文" {
+		t.Fatalf("err=%v calls=%d content=%q", err, model.calls, content)
+	}
+}
+
+func TestOpenAIAdapterStreamGenerateExhaustsEmptyResponses(t *testing.T) {
+	model := &adapterTestChatModel{}
+	adapter := &OpenAIAdapter{chatModel: model, retryPolicy: noWaitRetryPolicy(3)}
+
+	err := adapter.StreamGenerate(context.Background(), "system", "user", func(string) error { return nil })
+
+	var responseErr *ModelResponseError
+	var providerErr *ProviderError
+	if !errors.As(err, &responseErr) || errors.As(err, &providerErr) || model.calls != 3 {
+		t.Fatalf("err=%#v calls=%d", err, model.calls)
 	}
 }
 

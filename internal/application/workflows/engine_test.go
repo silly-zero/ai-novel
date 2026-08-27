@@ -3,6 +3,7 @@ package workflows
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -23,12 +24,13 @@ func (b *workflowEventBusFake) Subscribe(string, events.Handler) string { return
 func (b *workflowEventBusFake) Unsubscribe(string, string)              {}
 
 type workflowLLMFake struct {
-	streamCalls   int
-	reviewCalls   int
-	plotCalls     int
-	directorCalls int
-	passOn        int
-	draft         string
+	streamCalls          int
+	reviewCalls          int
+	plotCalls            int
+	directorCalls        int
+	passOn               int
+	reviewProtocolFailOn int
+	draft                string
 }
 
 func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (string, error) {
@@ -41,7 +43,13 @@ func (f *workflowLLMFake) Generate(_ context.Context, systemPrompt, _ string) (s
 		return "场景卡", nil
 	}
 	if strings.Contains(systemPrompt, "审查员") {
-		f.reviewCalls++
+		isRepair := strings.Contains(systemPrompt, "修复上一次输出")
+		if !isRepair {
+			f.reviewCalls++
+		}
+		if f.reviewProtocolFailOn > 0 && f.reviewCalls >= f.reviewProtocolFailOn {
+			return "not json CANARY_RESPONSE", nil
+		}
 		passed := f.passOn > 0 && f.reviewCalls >= f.passOn
 		if passed {
 			return `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"主角完成了调查目标。"},"must_happen":[{"satisfied":true,"evidence":"主角找到了关键线索。"}],"must_not_happen":[{"satisfied":true,"evidence":"正文未揭晓真相"}],"end_state":{"satisfied":true,"evidence":"他决定继续追查。"}},"critique":""}`, nil
@@ -298,6 +306,53 @@ func TestRunChapterGenerationRetriesDeterministicFailuresWithoutReviewerLLM(t *t
 	}
 	if !strings.Contains(finalState.Critique, "内部提示标签") {
 		t.Fatalf("critique = %q", finalState.Critique)
+	}
+}
+
+func TestRunChapterGenerationDistinguishesReviewerProtocolFailure(t *testing.T) {
+	llm := &workflowLLMFake{reviewProtocolFailOn: 3}
+	engine := newReviewerLoopEngine(t, llm)
+	var retries []int
+	state := &agents.GenerationState{
+		ChapterIndex:    1,
+		ExistingOutline: "大纲",
+		Outline:         "本章大纲",
+		ChapterContract: agents.ChapterContract{
+			Goal:          "完成调查",
+			MustHappen:    []string{"找到线索"},
+			MustNotHappen: []string{"揭晓真相"},
+			EndState:      "决定继续追查",
+		},
+		SceneCard: "场景卡",
+		Context:   "背景",
+		StreamSink: func(_ context.Context, event agents.GenerationStreamEvent) error {
+			if event.Type == agents.GenerationStreamEventRetry {
+				retries = append(retries, event.RetryCount)
+			}
+			return nil
+		},
+	}
+
+	finalState, err := engine.RunChapterGeneration(context.Background(), state)
+
+	if finalState != nil || errors.Is(err, ErrReviewRetryLimit) {
+		t.Fatalf("finalState=%#v err=%v", finalState, err)
+	}
+	var stageErr *WorkflowStageError
+	if !errors.As(err, &stageErr) || stageErr.Stage != WorkflowStageReviewer {
+		t.Fatalf("error=%v, want reviewer stage", err)
+	}
+	var diagnosticCoder interface{ SafeDiagnosticCode() string }
+	if !errors.As(err, &diagnosticCoder) ||
+		diagnosticCoder.SafeDiagnosticCode() != "structured_response_invalid" {
+		t.Fatalf("error=%#v", err)
+	}
+	if !slices.Equal(retries, []int{1, 2}) ||
+		llm.streamCalls != 3 || llm.reviewCalls != 3 {
+		t.Fatalf("retries=%v writer=%d reviewer=%d", retries, llm.streamCalls, llm.reviewCalls)
+	}
+	if strings.Contains(err.Error(), "CANARY_RESPONSE") {
+		t.Fatalf("error leaked response: %s", err)
 	}
 }
 

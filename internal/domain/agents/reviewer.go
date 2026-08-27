@@ -46,9 +46,19 @@ type ReviewResult struct {
 	contractChecked      bool
 }
 
+type reviewerEmptyDraftError struct{}
+
+func (e *reviewerEmptyDraftError) Error() string {
+	return "reviewer draft is empty"
+}
+
+func (e *reviewerEmptyDraftError) SafeDiagnosticCode() string {
+	return "reviewer_empty_draft"
+}
+
 func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
-	if state.Draft == "" {
-		return state, fmt.Errorf("draft is empty, nothing to review")
+	if strings.TrimSpace(state.Draft) == "" {
+		return state, &reviewerEmptyDraftError{}
 	}
 
 	if issues := ValidateGeneratedContent(state.Draft); len(issues) > 0 {

@@ -34,6 +34,10 @@ func (e *structuredResponseError) Error() string {
 	)
 }
 
+func (e *structuredResponseError) SafeDiagnosticCode() string {
+	return "structured_response_invalid"
+}
+
 func (e *structuredResponseError) Unwrap() error {
 	return e.cause
 }

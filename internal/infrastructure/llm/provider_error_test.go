@@ -148,6 +148,43 @@ func assertContextProviderError(t *testing.T, ctx context.Context, want error) {
 	}
 }
 
+func TestWithRetryRetriesEmptyModelResponse(t *testing.T) {
+	calls := 0
+	waits := 0
+	policy := retryPolicy{
+		maxAttempts: 3,
+		backoffs:    []time.Duration{time.Millisecond},
+		wait: func(context.Context, time.Duration) error {
+			waits++
+			return nil
+		},
+	}
+
+	value, err := withRetry(context.Background(), policy, func() (string, error) {
+		calls++
+		if calls < 3 {
+			return "", &ModelResponseError{}
+		}
+		return "ok", nil
+	})
+
+	if err != nil || value != "ok" || calls != 3 || waits != 2 {
+		t.Fatalf("value=%q err=%v calls=%d waits=%d", value, err, calls, waits)
+	}
+}
+
+func TestModelResponseErrorContainsOnlySafeMetadata(t *testing.T) {
+	err := &ModelResponseError{}
+	if err.Error() != "model returned an empty response" ||
+		err.SafeDiagnosticCode() != "empty_model_response" {
+		t.Fatalf("error=%q code=%q", err.Error(), err.SafeDiagnosticCode())
+	}
+	var providerErr *ProviderError
+	if errors.As(err, &providerErr) {
+		t.Fatalf("empty response was classified as provider error: %#v", providerErr)
+	}
+}
+
 func TestWithRetrySucceedsAfterTransientErrors(t *testing.T) {
 	calls := 0
 	waits := 0

@@ -464,11 +464,38 @@ func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("ReviewerAgent.Run returned nil error")
 	}
+	var diagnosticCoder interface{ SafeDiagnosticCode() string }
+	if !errors.As(err, &diagnosticCoder) ||
+		diagnosticCoder.SafeDiagnosticCode() != "structured_response_invalid" {
+		t.Fatalf("error = %#v", err)
+	}
 	if state.Critique != "existing critique" || state.RetryCount != 2 || llm.calls != 2 {
 		t.Fatalf("state = %#v, calls = %d", state, llm.calls)
 	}
 	if state.ContractAssessment.Goal != oldAssessment.Goal || !state.IsApproved {
 		t.Fatalf("review state changed after invalid responses: assessment = %#v, approved = %v", state.ContractAssessment, state.IsApproved)
+	}
+}
+
+func TestReviewerRejectsWhitespaceDraftWithSafeDiagnostic(t *testing.T) {
+	llm := &queuedStructuredLLM{}
+	state := &GenerationState{
+		Draft:      " \n\t ",
+		Critique:   "existing critique",
+		IsApproved: true,
+		RetryCount: 2,
+	}
+
+	_, err := NewReviewerAgent(llm).Run(context.Background(), state)
+
+	var diagnosticCoder interface{ SafeDiagnosticCode() string }
+	if !errors.As(err, &diagnosticCoder) ||
+		diagnosticCoder.SafeDiagnosticCode() != "reviewer_empty_draft" {
+		t.Fatalf("error = %#v", err)
+	}
+	if llm.calls != 0 || state.Critique != "existing critique" ||
+		!state.IsApproved || state.RetryCount != 2 {
+		t.Fatalf("state=%#v calls=%d", state, llm.calls)
 	}
 }
 

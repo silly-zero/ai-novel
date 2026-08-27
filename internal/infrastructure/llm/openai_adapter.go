@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,16 +58,17 @@ func messagesFor(systemPrompt, userPrompt string) []*schema.Message {
 func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
 	resp, err := withRetry(ctx, a.retryPolicy, func() (*schema.Message, error) {
 		resp, err := a.chatModel.Generate(ctx, messagesFor(systemPrompt, userPrompt))
-		return resp, normalizeProviderError("chat generate", ctx, err)
+		if err := normalizeProviderError("chat generate", ctx, err); err != nil {
+			return nil, err
+		}
+		if resp == nil || strings.TrimSpace(resp.Content) == "" {
+			return nil, &ModelResponseError{}
+		}
+		return resp, nil
 	})
 	if err != nil {
 		return "", err
 	}
-
-	if resp == nil || resp.Content == "" {
-		return "", fmt.Errorf("openai returned empty response")
-	}
-
 	return resp.Content, nil
 }
 
@@ -110,7 +112,7 @@ func (a *OpenAIAdapter) streamGenerateAttempt(
 		return result, normalizeProviderError("chat stream start", ctx, err)
 	}
 	if sr == nil {
-		return result, errors.New("openai returned nil stream")
+		return result, &ModelResponseError{}
 	}
 
 	var closeOnce sync.Once
@@ -132,6 +134,7 @@ func (a *OpenAIAdapter) streamGenerateAttempt(
 		watcher.Wait()
 	}()
 
+	var pendingContent strings.Builder
 	for {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return result, ctxErr
@@ -141,12 +144,27 @@ func (a *OpenAIAdapter) streamGenerateAttempt(
 			return result, ctxErr
 		}
 		if msg != nil && msg.Content != "" {
-			result.contentDelivered = true
-			if err := onChunk(msg.Content); err != nil {
-				return result, err
+			content := msg.Content
+			if !result.contentDelivered {
+				pendingContent.WriteString(content)
+				if strings.TrimSpace(pendingContent.String()) == "" {
+					content = ""
+				} else {
+					content = pendingContent.String()
+					pendingContent.Reset()
+					result.contentDelivered = true
+				}
+			}
+			if content != "" {
+				if err := onChunk(content); err != nil {
+					return result, err
+				}
 			}
 		}
 		if errors.Is(recvErr, io.EOF) {
+			if !result.contentDelivered {
+				return result, &ModelResponseError{}
+			}
 			return result, nil
 		}
 		if recvErr != nil {

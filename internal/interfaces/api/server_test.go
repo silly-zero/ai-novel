@@ -592,6 +592,49 @@ func TestGenerationDiagnosticLogContainsOnlySafeMetadata(t *testing.T) {
 	}
 }
 
+func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
+	for _, issueCode := range []string{
+		"empty_model_response",
+		"structured_response_invalid",
+		"reviewer_empty_draft",
+	} {
+		t.Run(issueCode, func(t *testing.T) {
+			oldWriter, oldFlags := log.Writer(), log.Flags()
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldWriter)
+				log.SetFlags(oldFlags)
+			})
+
+			logGenerationDiagnostic(
+				"generation-log-test",
+				"chapter_generation",
+				"error",
+				"review_protocol_error",
+				workflows.NewWorkflowStageError(
+					workflows.WorkflowStageReviewer,
+					&generationDiagnosticCodeTestError{code: issueCode, cause: errors.New("CANARY_CAUSE")},
+				),
+			)
+			got := output.String()
+			for _, want := range []string{
+				"error_code=review_protocol_error",
+				"workflow_stage=reviewer",
+				"issue_code=" + issueCode,
+			} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("log missing %q: %s", want, got)
+				}
+			}
+			if strings.Contains(got, "CANARY_CAUSE") {
+				t.Fatalf("log leaked cause: %s", got)
+			}
+		})
+	}
+}
+
 func TestGenerationDiagnosticLogOmitsUnknownWorkflowStage(t *testing.T) {
 	oldWriter, oldFlags := log.Writer(), log.Flags()
 	var output bytes.Buffer
@@ -767,7 +810,7 @@ func TestPublicGenerationErrorClassification(t *testing.T) {
 		{"director stage", workflows.NewWorkflowStageError(workflows.WorkflowStageDirector, errors.New("CANARY_DIRECTOR")), "context_preparation_failed"},
 		{"librarian stage", workflows.NewWorkflowStageError(workflows.WorkflowStageLibrarian, errors.New("CANARY_LIBRARIAN")), "context_preparation_failed"},
 		{"writer stage", workflows.NewWorkflowStageError(workflows.WorkflowStageWriter, errors.New("CANARY_WRITER")), "generation_failed"},
-		{"reviewer stage", workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, errors.New("CANARY_REVIEWER")), "review_failed"},
+		{"reviewer stage", workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, errors.New("CANARY_REVIEWER")), "review_protocol_error"},
 		{"review retry limit", workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, workflows.ErrReviewRetryLimit), "review_failed"},
 		{"old context text", errors.New("context preparation failed: CANARY_CONTEXT"), "generation_failed"},
 		{"old reviewer text", errors.New("reviewer agent failed: CANARY_REVIEWER"), "generation_failed"},
@@ -2424,6 +2467,62 @@ func TestHandleGenerateChapterEmitsSingleErrorTerminal(t *testing.T) {
 	}
 	if strings.Contains(body, "event: end") || strings.Contains(body, "event: error") {
 		t.Fatalf("SSE body contains legacy terminal: %s", body)
+	}
+}
+
+func TestHandleGenerateChapterReviewerProtocolFailureIsSanitized(t *testing.T) {
+	const canary = "CANARY_RESPONSE CANARY_EVIDENCE CANARY_PROMPT CANARY_DRAFT"
+	engine := &generationTestEngine{run: func(
+		context.Context,
+		*agents.GenerationState,
+	) (*agents.GenerationState, error) {
+		return nil, workflows.NewWorkflowStageError(
+			workflows.WorkflowStageReviewer,
+			&generationDiagnosticCodeTestError{
+				code:  "structured_response_invalid",
+				cause: errors.New(canary),
+			},
+		)
+	}}
+	server := newServer(engine, nil)
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+	recorder := httptest.NewRecorder()
+
+	server.HandleGenerateChapter(
+		recorder,
+		generateRequest(context.Background(), "7", 1),
+	)
+
+	body := recorder.Body.String()
+	if count := strings.Count(body, "event: terminal"); count != 1 {
+		t.Fatalf("terminal count = %d, want 1; body: %s", count, body)
+	}
+	if !strings.Contains(body, `"error_code":"review_protocol_error"`) ||
+		!strings.Contains(body, `"message":"审查响应异常，请稍后重试"`) ||
+		strings.Contains(body, "workflow_stage") || strings.Contains(body, "issue_code") {
+		t.Fatalf("terminal = %s", body)
+	}
+	gotLog := output.String()
+	for _, want := range []string{
+		"error_code=review_protocol_error",
+		"workflow_stage=reviewer",
+		"issue_code=structured_response_invalid",
+	} {
+		if !strings.Contains(gotLog, want) {
+			t.Fatalf("log missing %q: %s", want, gotLog)
+		}
+	}
+	for _, secret := range strings.Fields(canary) {
+		if strings.Contains(body, secret) || strings.Contains(gotLog, secret) {
+			t.Fatalf("review protocol failure leaked %q", secret)
+		}
 	}
 }
 
