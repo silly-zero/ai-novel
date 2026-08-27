@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -94,6 +95,98 @@ func TestNewOpenAIAdapterAppliesModelAndMaxTokens(t *testing.T) {
 	body := <-requests
 	if body["model"] != "chat-test-model" || body["max_tokens"] != float64(1234) {
 		t.Fatalf("request body = %#v", body)
+	}
+}
+
+func TestOpenAIAdapterJSONObjectModeIsPerCall(t *testing.T) {
+	requests := make(chan map[string]any, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		requests <- body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{\"ok\":true}"}}]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewOpenAIAdapter(context.Background(), ChatConfig{
+		APIKey:    "chat-test-key",
+		BaseURL:   server.URL,
+		Model:     "chat-test-model",
+		MaxTokens: 100,
+		Timeout:   time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.GenerateJSONObject(context.Background(), "system", "return JSON"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := adapter.Generate(context.Background(), "system", "return text"); err != nil {
+		t.Fatal(err)
+	}
+
+	jsonBody := <-requests
+	format, ok := jsonBody["response_format"].(map[string]any)
+	if !ok || format["type"] != "json_object" {
+		t.Fatalf("JSON request body = %#v", jsonBody)
+	}
+	plainBody := <-requests
+	if _, exists := plainBody["response_format"]; exists {
+		t.Fatalf("plain request inherited response_format: %#v", plainBody)
+	}
+}
+
+func TestOpenAIAdapterJSONObjectModeSurvivesRetry(t *testing.T) {
+	var mu sync.Mutex
+	var requests []map[string]any
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		mu.Lock()
+		requests = append(requests, body)
+		calls++
+		current := calls
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if current == 1 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""}}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"{\"ok\":true}"}}]}`))
+	}))
+	defer server.Close()
+
+	adapter, err := NewOpenAIAdapter(context.Background(), ChatConfig{
+		APIKey:    "chat-test-key",
+		BaseURL:   server.URL,
+		Model:     "chat-test-model",
+		MaxTokens: 100,
+		Timeout:   time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter.retryPolicy = noWaitRetryPolicy(2)
+	if _, err := adapter.GenerateJSONObject(context.Background(), "system", "return JSON"); err != nil {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(requests) != 2 {
+		t.Fatalf("requests=%d", len(requests))
+	}
+	for index, body := range requests {
+		format, ok := body["response_format"].(map[string]any)
+		if !ok || format["type"] != "json_object" {
+			t.Fatalf("request %d body=%#v", index, body)
+		}
 	}
 }
 

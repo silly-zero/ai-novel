@@ -780,7 +780,7 @@ func (l *LibrarianAgent) makeRetrievalPlan(ctx context.Context, state *Generatio
 	}
 	userPrompt += "\n请输出检索计划："
 
-	plan, err := generateStructuredResponse(
+	plan, err := generateStructuredObjectResponse(
 		ctx,
 		l.llm,
 		"librarian",

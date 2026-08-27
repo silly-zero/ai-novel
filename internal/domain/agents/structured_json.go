@@ -51,9 +51,59 @@ type structuredRepairDetailer interface {
 type structuredDecoder[T any] func([]byte) (T, error)
 type structuredValidator[T any] func(*T) error
 
+type structuredGenerateFunc func(
+	context.Context,
+	string,
+	string,
+) (string, error)
+
 func generateStructuredResponse[T any](
 	ctx context.Context,
 	llm LLMService,
+	agentName string,
+	systemPrompt string,
+	userPrompt string,
+	decode structuredDecoder[T],
+	validate structuredValidator[T],
+) (T, error) {
+	return generateStructuredResponseWith(
+		ctx,
+		llm.Generate,
+		agentName,
+		systemPrompt,
+		userPrompt,
+		decode,
+		validate,
+	)
+}
+
+func generateStructuredObjectResponse[T any](
+	ctx context.Context,
+	llm LLMService,
+	agentName string,
+	systemPrompt string,
+	userPrompt string,
+	decode structuredDecoder[T],
+	validate structuredValidator[T],
+) (T, error) {
+	generate := llm.Generate
+	if objectGenerator, ok := llm.(JSONObjectGenerator); ok {
+		generate = objectGenerator.GenerateJSONObject
+	}
+	return generateStructuredResponseWith(
+		ctx,
+		generate,
+		agentName,
+		systemPrompt,
+		userPrompt,
+		decode,
+		validate,
+	)
+}
+
+func generateStructuredResponseWith[T any](
+	ctx context.Context,
+	generate structuredGenerateFunc,
 	agentName string,
 	systemPrompt string,
 	userPrompt string,
@@ -65,7 +115,7 @@ func generateStructuredResponse[T any](
 		return zero, err
 	}
 
-	response, err := llm.Generate(ctx, systemPrompt, userPrompt)
+	response, err := generate(ctx, systemPrompt, userPrompt)
 	if err != nil {
 		return zero, fmt.Errorf("%s structured request: %w", agentName, err)
 	}
@@ -93,7 +143,7 @@ func generateStructuredResponse[T any](
 		boundedText(response, structuredResponsePreviewRunes),
 	)
 
-	repairedResponse, err := llm.Generate(ctx, repairSystemPrompt, repairUserPrompt)
+	repairedResponse, err := generate(ctx, repairSystemPrompt, repairUserPrompt)
 	if err != nil {
 		return zero, fmt.Errorf("%s structured repair request: %w", agentName, err)
 	}

@@ -51,6 +51,20 @@ func (*queuedStructuredLLM) StreamGenerate(
 	return nil
 }
 
+type objectAwareStructuredLLM struct {
+	queuedStructuredLLM
+	objectCalls int
+}
+
+func (f *objectAwareStructuredLLM) GenerateJSONObject(
+	ctx context.Context,
+	systemPrompt string,
+	userPrompt string,
+) (string, error) {
+	f.objectCalls++
+	return f.queuedStructuredLLM.Generate(ctx, systemPrompt, userPrompt)
+}
+
 type structuredTestPayload struct {
 	Message string   `json:"message"`
 	Items   []string `json:"items"`
@@ -267,6 +281,95 @@ func TestParseStructuredResponsePrefersTypedReviewerError(t *testing.T) {
 	)
 	if structuredRepairReason(validationErr) != "category=reviewer_required_field; rule=required; field=continuity_assessment" {
 		t.Fatalf("repair detail=%q", structuredRepairReason(validationErr))
+	}
+}
+
+func TestGenerateStructuredObjectResponseUsesOptionalCapabilityForRepair(t *testing.T) {
+	llm := &objectAwareStructuredLLM{queuedStructuredLLM: queuedStructuredLLM{
+		responses: []string{
+			`{"message":`,
+			`{"message":"fixed","items":[]}`,
+		},
+	}}
+
+	result, err := generateStructuredObjectResponse(
+		context.Background(),
+		llm,
+		"test-agent",
+		"schema",
+		"task",
+		decodeJSON[structuredTestPayload],
+		nil,
+	)
+
+	if err != nil || result.Message != "fixed" || llm.objectCalls != 2 || llm.calls != 2 {
+		t.Fatalf("result=%#v err=%v objectCalls=%d calls=%d", result, err, llm.objectCalls, llm.calls)
+	}
+}
+
+func TestGenerateStructuredObjectResponseFallsBackToLegacyGenerate(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{`{"message":"ok","items":[]}`}}
+	result, err := generateStructuredObjectResponse(
+		context.Background(),
+		llm,
+		"test-agent",
+		"schema",
+		"task",
+		decodeJSON[structuredTestPayload],
+		nil,
+	)
+	if err != nil || result.Message != "ok" || llm.calls != 1 {
+		t.Fatalf("result=%#v err=%v calls=%d", result, err, llm.calls)
+	}
+}
+
+func TestGenerateStructuredResponseDoesNotUseJSONObjectCapability(t *testing.T) {
+	llm := &objectAwareStructuredLLM{queuedStructuredLLM: queuedStructuredLLM{
+		responses: []string{`{"message":"ok","items":[]}`},
+	}}
+	result, err := generateStructuredResponse(
+		context.Background(),
+		llm,
+		"test-agent",
+		"schema",
+		"task",
+		decodeJSON[structuredTestPayload],
+		nil,
+	)
+	if err != nil || result.Message != "ok" || llm.objectCalls != 0 || llm.calls != 1 {
+		t.Fatalf("result=%#v err=%v objectCalls=%d calls=%d", result, err, llm.objectCalls, llm.calls)
+	}
+}
+
+func TestReviewerUsesJSONObjectCapabilityForInitialAndRepair(t *testing.T) {
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"CANARY_EVIDENCE"}},"contract_assessment":null,"critique":""}`
+	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":""}`
+	llm := &objectAwareStructuredLLM{queuedStructuredLLM: queuedStructuredLLM{
+		responses: []string{invalid, valid},
+	}}
+	result, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+	})
+	if err != nil || !result.IsApproved || llm.objectCalls != 2 || llm.calls != 2 {
+		t.Fatalf("state=%#v err=%v objectCalls=%d calls=%d", result, err, llm.objectCalls, llm.calls)
+	}
+}
+
+func TestArrayStructuredResponseKeepsGenericGenerate(t *testing.T) {
+	llm := &objectAwareStructuredLLM{queuedStructuredLLM: queuedStructuredLLM{
+		responses: []string{`[]`},
+	}}
+	result, err := generateStructuredResponse(
+		context.Background(),
+		llm,
+		"world",
+		"schema",
+		"task",
+		decodeJSON[[]WorldSettingUpdate],
+		nil,
+	)
+	if err != nil || len(result) != 0 || llm.objectCalls != 0 || llm.calls != 1 {
+		t.Fatalf("result=%#v err=%v objectCalls=%d calls=%d", result, err, llm.objectCalls, llm.calls)
 	}
 }
 

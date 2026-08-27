@@ -55,9 +55,43 @@ func messagesFor(systemPrompt, userPrompt string) []*schema.Message {
 }
 
 // Generate 实现领域层的 agents.LLMService 接口
-func (a *OpenAIAdapter) Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+func (a *OpenAIAdapter) Generate(
+	ctx context.Context,
+	systemPrompt string,
+	userPrompt string,
+) (string, error) {
+	return a.generate(ctx, systemPrompt, userPrompt)
+}
+
+func (a *OpenAIAdapter) GenerateJSONObject(
+	ctx context.Context,
+	systemPrompt string,
+	userPrompt string,
+) (string, error) {
+	return a.generate(
+		ctx,
+		systemPrompt,
+		userPrompt,
+		openai.WithExtraFields(map[string]any{
+			"response_format": map[string]any{
+				"type": "json_object",
+			},
+		}),
+	)
+}
+
+func (a *OpenAIAdapter) generate(
+	ctx context.Context,
+	systemPrompt string,
+	userPrompt string,
+	opts ...model.Option,
+) (string, error) {
 	resp, err := withRetry(ctx, a.retryPolicy, func() (*schema.Message, error) {
-		resp, err := a.chatModel.Generate(ctx, messagesFor(systemPrompt, userPrompt))
+		resp, err := a.chatModel.Generate(
+			ctx,
+			messagesFor(systemPrompt, userPrompt),
+			opts...,
+		)
 		if err := normalizeProviderError("chat generate", ctx, err); err != nil {
 			return nil, err
 		}

@@ -290,7 +290,7 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 
 	userPrompt := fmt.Sprintf("%s\n\n【本章正文】\n%s\n\n请分析并输出角色账本更新结果：", charContext.String(), state.Draft)
 
-	extracted, err := generateStructuredResponse(
+	extracted, err := generateStructuredObjectResponse(
 		ctx,
 		a.llm,
 		"character",

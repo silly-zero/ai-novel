@@ -35,7 +35,7 @@ func (e *ContinuityExtractor) Extract(ctx context.Context, state *GenerationStat
 {"last_beat":"...","open_loops":["..."],"next_action":"..."}`
 	userPrompt := fmt.Sprintf("%s\n\n【本章大纲】\n%s\n\n【场景卡】\n%s\n\n【最终正文】\n%s",
 		continuityPrompt(state.PreviousContinuity), state.Outline, state.SceneCard, state.Draft)
-	packet, err := generateStructuredResponse(
+	packet, err := generateStructuredObjectResponse(
 		ctx, e.llm, "continuity extractor", systemPrompt, userPrompt,
 		decodeContinuityPacket,
 		func(packet *ContinuityPacket) error {
