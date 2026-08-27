@@ -53,10 +53,12 @@ const (
 )
 
 type reviewerValidationError struct {
-	category  string
-	rule      string
-	fieldPath string
-	expected  *int
+	category          string
+	rule              string
+	fieldPath         string
+	expected          *int
+	repairInstruction string
+	repairReference   string
 }
 
 func newReviewerValidationError(category, rule, fieldPath string) *reviewerValidationError {
@@ -81,6 +83,22 @@ func newReviewerExpectedValidationError(
 	}
 }
 
+func newReviewerEvidenceWindowError(
+	category string,
+	fieldPath string,
+	window string,
+) *reviewerValidationError {
+	return &reviewerValidationError{
+		category:  category,
+		rule:      "exact_substring",
+		fieldPath: fieldPath,
+		repairInstruction: "若 satisfied=true，必须从 repair_reference 逐字复制一个 trim 后非空、连续、1–300 rune 的片段；" +
+			"若无法证明目标，返回 satisfied=false，填写非空且不超过 300 rune 的简短原因，并提供非空可执行 critique；" +
+			"不得概括、改写标点、拼接或使用 reference 外文字。",
+		repairReference: window,
+	}
+}
+
 func (e *reviewerValidationError) Error() string {
 	return "reviewer validation failed: " + e.category
 }
@@ -100,6 +118,14 @@ func (e *reviewerValidationError) structuredRepairDetail() string {
 		detail += fmt.Sprintf("; expected=%d", *e.expected)
 	}
 	return detail
+}
+
+func (e *reviewerValidationError) structuredRepairInstruction() string {
+	return e.repairInstruction
+}
+
+func (e *reviewerValidationError) structuredRepairReference() string {
+	return e.repairReference
 }
 
 type reviewerEmptyDraftError struct{}
@@ -477,7 +503,10 @@ func reviewerEvidenceWindow(draft string, head bool) string {
 func reviewerContinuityGuidance(state *GenerationState) string {
 	data := map[string]any{
 		"chapter_head_required":        !state.PreviousContinuity.IsEmpty(),
+		"chapter_tail_required":        true,
 		"chapter_tail_window":          reviewerEvidenceWindow(state.Draft, false),
+		"chapter_tail_true_rule":       "从 chapter_tail_window 逐字复制一个 trim 后非空、连续、1–300 rune 的片段",
+		"continuity_false_rule":        "填写非空且不超过 300 rune 的简短原因，并提供非空可执行 critique",
 		"mainline_next_event_required": strings.TrimSpace(state.MainlineBeat.NextEvent) != "",
 		"evidence_nonblank":            true,
 		"evidence_max_runes":           300,
@@ -485,6 +514,7 @@ func reviewerContinuityGuidance(state *GenerationState) string {
 	}
 	if !state.PreviousContinuity.IsEmpty() {
 		data["chapter_head_window"] = reviewerEvidenceWindow(state.Draft, true)
+		data["chapter_head_true_rule"] = "从 chapter_head_window 逐字复制一个 trim 后非空、连续、1–300 rune 的片段"
 	} else {
 		data["chapter_head_must_be"] = nil
 	}
@@ -523,10 +553,10 @@ func decodeContinuityEvidence(
 		if head {
 			category = "reviewer_evidence_head"
 		}
-		return ContractRequirementAssessment{}, newReviewerValidationError(
+		return ContractRequirementAssessment{}, newReviewerEvidenceWindowError(
 			category,
-			"exact_substring",
 			name+".evidence",
+			window,
 		)
 	}
 	return item, nil

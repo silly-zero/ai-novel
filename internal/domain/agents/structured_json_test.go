@@ -373,6 +373,70 @@ func TestArrayStructuredResponseKeepsGenericGenerate(t *testing.T) {
 	}
 }
 
+type syntheticRepairContextError struct {
+	instruction string
+	reference   string
+}
+
+func (e *syntheticRepairContextError) Error() string {
+	return "synthetic repair context"
+}
+
+func (e *syntheticRepairContextError) structuredRepairInstruction() string {
+	return e.instruction
+}
+
+func (e *syntheticRepairContextError) structuredRepairReference() string {
+	return e.reference
+}
+
+func TestStructuredRepairSupplementIncludesExactEvidenceWindow(t *testing.T) {
+	tailWindow := strings.Repeat("尾", 499) + "🙂"
+	err := newReviewerEvidenceWindowError(
+		"reviewer_evidence_tail",
+		"continuity_assessment.chapter_tail.evidence",
+		tailWindow,
+	)
+	supplement := structuredRepairSupplement(err)
+	if !strings.Contains(supplement, "修复要求：") ||
+		!strings.Contains(supplement, "<repair_reference>\n"+tailWindow+"\n</repair_reference>") {
+		t.Fatalf("supplement=%s", supplement)
+	}
+}
+
+func TestBoundedRepairReferenceUsesRuneLimitWithoutEllipsis(t *testing.T) {
+	value := strings.Repeat("界", 500) + "🙂TAIL_CANARY"
+	got := boundedRepairReference(value)
+	if len([]rune(got)) != 500 || got != strings.Repeat("界", 500) || strings.Contains(got, "...") {
+		t.Fatalf("reference length=%d suffix=%q", len([]rune(got)), got[max(0, len(got)-8):])
+	}
+}
+
+func TestStructuredRepairSupplementOmittedForGenericError(t *testing.T) {
+	if got := structuredRepairSupplement(errors.New("generic")); got != "" {
+		t.Fatalf("supplement=%q", got)
+	}
+}
+
+func TestReviewerCanRepairTailEvidenceAsHonestFailure(t *testing.T) {
+	draft := strings.Repeat("文", 2500)
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"NOT_IN_TAIL"}},"contract_assessment":null,"critique":""}`
+	repaired := `{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾没有留下具体可执行目标"}},"contract_assessment":null,"critique":"请在章尾补充下一步行动目标"}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, repaired}}
+	result, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{Draft: draft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsApproved || result.ContinuityAssessment.ChapterTail.Satisfied ||
+		result.Critique == "" || llm.calls != 2 {
+		t.Fatalf("state=%#v calls=%d", result, llm.calls)
+	}
+	if !strings.Contains(llm.users[1], "<repair_reference>") ||
+		!strings.Contains(llm.users[1], "若 satisfied=true") {
+		t.Fatalf("repair prompt=%s", llm.users[1])
+	}
+}
+
 func TestCharacterStructuredResponseRepairsMissingCurrentStatus(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
 		`{"characters":[{"name":"林云"}]}`,
@@ -1513,6 +1577,59 @@ func TestReviewerValidationErrorTaxonomy(t *testing.T) {
 	}
 }
 
+func TestReviewerEvidenceWindowErrorKeepsReferencePrivate(t *testing.T) {
+	headEvidence := "HEAD_CANARY章首。"
+	tailEvidence := "TAIL_CANARY章尾。"
+	draft := headEvidence +
+		strings.Repeat("文", reviewerContinuityWindowRunes*2) +
+		tailEvidence
+	tests := []struct {
+		name         string
+		head         bool
+		wantCategory string
+		wantWindow   string
+	}{
+		{
+			name:         "head",
+			head:         true,
+			wantCategory: "reviewer_evidence_head",
+			wantWindow:   reviewerEvidenceWindow(draft, true),
+		},
+		{
+			name:         "tail",
+			wantCategory: "reviewer_evidence_tail",
+			wantWindow:   reviewerEvidenceWindow(draft, false),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := []byte(`{"satisfied":true,"evidence":"NOT_IN_WINDOW"}`)
+			fieldName := "continuity_assessment.chapter_tail"
+			if test.head {
+				fieldName = "continuity_assessment.chapter_head"
+			}
+			_, err := decodeContinuityEvidence(fieldName, candidate, draft, test.head)
+			var validationErr *reviewerValidationError
+			if !errors.As(err, &validationErr) ||
+				validationErr.category != test.wantCategory ||
+				validationErr.structuredRepairReference() != test.wantWindow ||
+				validationErr.structuredRepairInstruction() == "" {
+				t.Fatalf("error=%#v", err)
+			}
+			for _, publicValue := range []string{
+				validationErr.Error(),
+				validationErr.SafeDiagnosticCode(),
+				validationErr.structuredRepairDetail(),
+			} {
+				if strings.Contains(publicValue, "HEAD_CANARY") ||
+					strings.Contains(publicValue, "TAIL_CANARY") {
+					t.Fatalf("public value leaked window: %s", publicValue)
+				}
+			}
+		})
+	}
+}
+
 func TestReviewerContinuityEvidenceGateApprovesValidHeadAndTail(t *testing.T) {
 	headEvidence := "主角跨进密门，身后石门轰然闭合。"
 	tailEvidence := "他握紧火把，决定沿着血迹继续追查。"
@@ -1728,8 +1845,11 @@ func TestReviewerStateGuidanceCoversConditionalNullsAndEvidenceLimits(t *testing
 			if err := json.Unmarshal([]byte(guidance), &decoded); err != nil {
 				t.Fatal(err)
 			}
-			var headRequired, nextRequired, nonblank bool
+			var headRequired, tailRequired, nextRequired, nonblank bool
 			if err := json.Unmarshal(decoded["chapter_head_required"], &headRequired); err != nil {
+				t.Fatal(err)
+			}
+			if err := json.Unmarshal(decoded["chapter_tail_required"], &tailRequired); err != nil {
 				t.Fatal(err)
 			}
 			if err := json.Unmarshal(decoded["mainline_next_event_required"], &nextRequired); err != nil {
@@ -1738,13 +1858,19 @@ func TestReviewerStateGuidanceCoversConditionalNullsAndEvidenceLimits(t *testing
 			if err := json.Unmarshal(decoded["evidence_nonblank"], &nonblank); err != nil {
 				t.Fatal(err)
 			}
-			if headRequired != test.headRequired || nextRequired != test.nextRequired || !nonblank ||
-				string(decoded["evidence_max_runes"]) != "300" {
+			if headRequired != test.headRequired || !tailRequired ||
+				nextRequired != test.nextRequired || !nonblank ||
+				string(decoded["evidence_max_runes"]) != "300" ||
+				len(decoded["chapter_tail_true_rule"]) == 0 ||
+				len(decoded["continuity_false_rule"]) == 0 {
 				t.Fatalf("guidance=%s", guidance)
 			}
 			_, hasHeadNull := decoded["chapter_head_must_be"]
+			_, hasHeadTrueRule := decoded["chapter_head_true_rule"]
 			_, hasNextNull := decoded["mainline_next_event_must_be"]
-			if hasHeadNull != test.wantHeadNull || hasNextNull != test.wantNextEventNull {
+			if hasHeadNull != test.wantHeadNull ||
+				hasHeadTrueRule != test.headRequired ||
+				hasNextNull != test.wantNextEventNull {
 				t.Fatalf("guidance=%s", guidance)
 			}
 		})
