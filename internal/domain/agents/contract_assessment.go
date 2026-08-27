@@ -25,20 +25,32 @@ func normalizeChapterContractAssessment(
 	contract ChapterContract,
 ) (ChapterContractAssessment, error) {
 	if wire.Goal == nil {
-		return ChapterContractAssessment{}, fmt.Errorf("contract_assessment.goal is required")
+		return ChapterContractAssessment{}, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"contract_assessment.goal",
+		)
 	}
 	if wire.EndState == nil {
-		return ChapterContractAssessment{}, fmt.Errorf("contract_assessment.end_state is required")
+		return ChapterContractAssessment{}, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"contract_assessment.end_state",
+		)
 	}
 	if len(wire.MustHappen) != len(contract.MustHappen) {
-		return ChapterContractAssessment{}, fmt.Errorf(
-			"contract_assessment.must_happen must contain exactly %d items",
+		return ChapterContractAssessment{}, newReviewerExpectedValidationError(
+			"reviewer_array_structure",
+			"exact_count",
+			"contract_assessment.must_happen",
 			len(contract.MustHappen),
 		)
 	}
 	if len(wire.MustNotHappen) != len(contract.MustNotHappen) {
-		return ChapterContractAssessment{}, fmt.Errorf(
-			"contract_assessment.must_not_happen must contain exactly %d items",
+		return ChapterContractAssessment{}, newReviewerExpectedValidationError(
+			"reviewer_array_structure",
+			"exact_count",
+			"contract_assessment.must_not_happen",
 			len(contract.MustNotHappen),
 		)
 	}
@@ -96,19 +108,32 @@ func normalizeContractRequirementAssessment(
 	item contractRequirementAssessmentWire,
 ) (ContractRequirementAssessment, error) {
 	if item.Satisfied == nil {
-		return ContractRequirementAssessment{}, fmt.Errorf("%s.satisfied is required", name)
+		return ContractRequirementAssessment{}, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			name+".satisfied",
+		)
 	}
 	if item.Evidence == nil {
-		return ContractRequirementAssessment{}, fmt.Errorf("%s.evidence is required", name)
+		return ContractRequirementAssessment{}, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			name+".evidence",
+		)
 	}
 	evidence := strings.TrimSpace(*item.Evidence)
 	if evidence == "" {
-		return ContractRequirementAssessment{}, fmt.Errorf("%s.evidence must not be empty", name)
+		return ContractRequirementAssessment{}, newReviewerValidationError(
+			"reviewer_validation_other",
+			"nonblank",
+			name+".evidence",
+		)
 	}
 	if len([]rune(evidence)) > maxContractAssessmentEvidenceRunes {
-		return ContractRequirementAssessment{}, fmt.Errorf(
-			"%s.evidence exceeds %d characters",
-			name,
+		return ContractRequirementAssessment{}, newReviewerExpectedValidationError(
+			"reviewer_validation_other",
+			"max_runes",
+			name+".evidence",
 			maxContractAssessmentEvidenceRunes,
 		)
 	}
@@ -165,7 +190,11 @@ func validateChapterContractAssessmentEvidence(
 
 func validateContractEvidenceInDraft(name, evidence, draft string) error {
 	if !strings.Contains(draft, evidence) {
-		return fmt.Errorf("%s.evidence must be an exact draft substring", name)
+		return newReviewerValidationError(
+			"reviewer_evidence_draft",
+			"exact_substring",
+			name+".evidence",
+		)
 	}
 	return nil
 }
@@ -183,33 +212,68 @@ func decodeCanonConsistencyAssessments(
 ) ([]CanonConsistencyAssessment, error) {
 	var wire []canonConsistencyAssessmentWire
 	if err := json.Unmarshal(candidate, &wire); err != nil {
-		return nil, fmt.Errorf("canon_assessment must be an array")
+		return nil, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"array",
+			"canon_assessment",
+		)
 	}
 	if len(wire) != len(constraints) {
-		return nil, fmt.Errorf("canon_assessment must contain exactly %d items", len(constraints))
+		return nil, newReviewerExpectedValidationError(
+			"reviewer_array_structure",
+			"exact_count",
+			"canon_assessment",
+			len(constraints),
+		)
 	}
 	assessments := make([]CanonConsistencyAssessment, 0, len(wire))
 	for index, item := range wire {
 		name := fmt.Sprintf("canon_assessment[%d]", index)
 		if item.ConstraintIndex == nil {
-			return nil, fmt.Errorf("%s.constraint_index is required", name)
+			return nil, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				name+".constraint_index",
+			)
 		}
 		expectedIndex := index + 1
 		if *item.ConstraintIndex != expectedIndex {
-			return nil, fmt.Errorf("%s.constraint_index must be %d", name, expectedIndex)
+			return nil, newReviewerExpectedValidationError(
+				"reviewer_array_structure",
+				"expected_index",
+				name+".constraint_index",
+				expectedIndex,
+			)
 		}
 		if item.Satisfied == nil {
-			return nil, fmt.Errorf("%s.satisfied is required", name)
+			return nil, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				name+".satisfied",
+			)
 		}
 		if item.Evidence == nil {
-			return nil, fmt.Errorf("%s.evidence is required", name)
+			return nil, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				name+".evidence",
+			)
 		}
 		evidence := strings.TrimSpace(*item.Evidence)
 		if evidence == "" {
-			return nil, fmt.Errorf("%s.evidence must not be empty", name)
+			return nil, newReviewerValidationError(
+				"reviewer_validation_other",
+				"nonblank",
+				name+".evidence",
+			)
 		}
 		if len([]rune(evidence)) > maxContractAssessmentEvidenceRunes {
-			return nil, fmt.Errorf("%s.evidence exceeds %d characters", name, maxContractAssessmentEvidenceRunes)
+			return nil, newReviewerExpectedValidationError(
+				"reviewer_validation_other",
+				"max_runes",
+				name+".evidence",
+				maxContractAssessmentEvidenceRunes,
+			)
 		}
 		if !*item.Satisfied {
 			if err := validateContractEvidenceInDraft(name, evidence, draft); err != nil {

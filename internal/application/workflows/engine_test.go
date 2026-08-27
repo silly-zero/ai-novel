@@ -344,7 +344,7 @@ func TestRunChapterGenerationDistinguishesReviewerProtocolFailure(t *testing.T) 
 	}
 	var diagnosticCoder interface{ SafeDiagnosticCode() string }
 	if !errors.As(err, &diagnosticCoder) ||
-		diagnosticCoder.SafeDiagnosticCode() != "structured_response_invalid" {
+		diagnosticCoder.SafeDiagnosticCode() != "reviewer_json_shape_type" {
 		t.Fatalf("error=%#v", err)
 	}
 	if !slices.Equal(retries, []int{1, 2}) ||

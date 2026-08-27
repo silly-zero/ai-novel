@@ -2672,6 +2672,14 @@ var generationDiagnosticIssueCodes = map[string]bool{
 	"empty_model_response":                   true,
 	"structured_response_invalid":            true,
 	"reviewer_empty_draft":                   true,
+	"reviewer_json_shape_type":               true,
+	"reviewer_required_field":                true,
+	"reviewer_array_structure":               true,
+	"reviewer_evidence_head":                 true,
+	"reviewer_evidence_tail":                 true,
+	"reviewer_evidence_draft":                true,
+	"reviewer_critique_missing":              true,
+	"reviewer_validation_other":              true,
 }
 
 type safeGenerationDiagnosticCoder interface {

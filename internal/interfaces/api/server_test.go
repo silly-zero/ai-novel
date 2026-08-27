@@ -597,6 +597,14 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 		"empty_model_response",
 		"structured_response_invalid",
 		"reviewer_empty_draft",
+		"reviewer_json_shape_type",
+		"reviewer_required_field",
+		"reviewer_array_structure",
+		"reviewer_evidence_head",
+		"reviewer_evidence_tail",
+		"reviewer_evidence_draft",
+		"reviewer_critique_missing",
+		"reviewer_validation_other",
 	} {
 		t.Run(issueCode, func(t *testing.T) {
 			oldWriter, oldFlags := log.Writer(), log.Flags()
@@ -2479,7 +2487,7 @@ func TestHandleGenerateChapterReviewerProtocolFailureIsSanitized(t *testing.T) {
 		return nil, workflows.NewWorkflowStageError(
 			workflows.WorkflowStageReviewer,
 			&generationDiagnosticCodeTestError{
-				code:  "structured_response_invalid",
+				code:  "reviewer_evidence_tail",
 				cause: errors.New(canary),
 			},
 		)
@@ -2513,7 +2521,7 @@ func TestHandleGenerateChapterReviewerProtocolFailureIsSanitized(t *testing.T) {
 	for _, want := range []string{
 		"error_code=review_protocol_error",
 		"workflow_stage=reviewer",
-		"issue_code=structured_response_invalid",
+		"issue_code=reviewer_evidence_tail",
 	} {
 		if !strings.Contains(gotLog, want) {
 			t.Fatalf("log missing %q: %s", want, gotLog)

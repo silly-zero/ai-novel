@@ -43,7 +43,10 @@ func TestCharacterEvidenceRepairWritesOnce(t *testing.T) {
 	if len(llm.systems) != 2 || !strings.Contains(llm.systems[1], "格式或校验错误") || !strings.Contains(llm.systems[1], "全部业务规则") {
 		t.Fatalf("repair system prompt = %#v", llm.systems)
 	}
-	if len(llm.users) != 2 || !strings.Contains(llm.users[1], "修复格式或校验错误") || !strings.Contains(llm.users[1], "符合全部规则") {
+	if len(llm.users) != 2 ||
+		!strings.Contains(llm.users[1], "完整替代 JSON") ||
+		!strings.Contains(llm.users[1], "category=structured_response_invalid") ||
+		!strings.Contains(llm.users[1], "<previous_response>") {
 		t.Fatalf("repair user prompt = %#v", llm.users)
 	}
 }

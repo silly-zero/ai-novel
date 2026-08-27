@@ -18,10 +18,18 @@ func decodeMainlineAssessment(
 ) (MainlineAssessment, bool, error) {
 	var wire mainlineAssessmentWire
 	if err := json.Unmarshal(candidate, &wire); err != nil {
-		return MainlineAssessment{}, false, fmt.Errorf("mainline_assessment must be an object")
+		return MainlineAssessment{}, false, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"object",
+			"mainline_assessment",
+		)
 	}
 	if wire.CurrentEvent == nil {
-		return MainlineAssessment{}, false, fmt.Errorf("mainline_assessment.current_event is required")
+		return MainlineAssessment{}, false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"mainline_assessment.current_event",
+		)
 	}
 	current, err := normalizeContractRequirementAssessment(
 		"mainline_assessment.current_event",
@@ -43,15 +51,19 @@ func decodeMainlineAssessment(
 	assessment := MainlineAssessment{CurrentEvent: current}
 	if strings.TrimSpace(beat.NextEvent) == "" {
 		if wire.NextEvent != nil {
-			return MainlineAssessment{}, false, fmt.Errorf(
-				"mainline_assessment.next_event must be null when next event is absent",
+			return MainlineAssessment{}, false, newReviewerValidationError(
+				"reviewer_validation_other",
+				"must_be_null",
+				"mainline_assessment.next_event",
 			)
 		}
 		return assessment, current.Satisfied, nil
 	}
 	if wire.NextEvent == nil {
-		return MainlineAssessment{}, false, fmt.Errorf(
-			"mainline_assessment.next_event is required when next event is present",
+		return MainlineAssessment{}, false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"mainline_assessment.next_event",
 		)
 	}
 	next, err := normalizeContractRequirementAssessment(

@@ -46,6 +46,56 @@ type ReviewResult struct {
 	contractChecked      bool
 }
 
+type reviewerValidationError struct {
+	category  string
+	rule      string
+	fieldPath string
+	expected  *int
+}
+
+func newReviewerValidationError(category, rule, fieldPath string) *reviewerValidationError {
+	return &reviewerValidationError{
+		category:  category,
+		rule:      rule,
+		fieldPath: fieldPath,
+	}
+}
+
+func newReviewerExpectedValidationError(
+	category string,
+	rule string,
+	fieldPath string,
+	expected int,
+) *reviewerValidationError {
+	return &reviewerValidationError{
+		category:  category,
+		rule:      rule,
+		fieldPath: fieldPath,
+		expected:  &expected,
+	}
+}
+
+func (e *reviewerValidationError) Error() string {
+	return "reviewer validation failed: " + e.category
+}
+
+func (e *reviewerValidationError) SafeDiagnosticCode() string {
+	return e.category
+}
+
+func (e *reviewerValidationError) structuredRepairDetail() string {
+	detail := fmt.Sprintf(
+		"category=%s; rule=%s; field=%s",
+		e.category,
+		e.rule,
+		e.fieldPath,
+	)
+	if e.expected != nil {
+		detail += fmt.Sprintf("; expected=%d", *e.expected)
+	}
+	return detail
+}
+
 type reviewerEmptyDraftError struct{}
 
 func (e *reviewerEmptyDraftError) Error() string {
@@ -199,7 +249,11 @@ func decodeReviewResultForState(
 ) (ReviewResult, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(candidate, &raw); err != nil {
-		return ReviewResult{}, err
+		return ReviewResult{}, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"object",
+			"$",
+		)
 	}
 	passed, err := decodeRequiredReviewBool(raw, "passed")
 	if err != nil {
@@ -221,8 +275,10 @@ func decodeReviewResultForState(
 	if contractChecked {
 		assessmentJSON, ok := raw["contract_assessment"]
 		if !ok || bytes.Equal(bytes.TrimSpace(assessmentJSON), []byte("null")) {
-			return ReviewResult{}, fmt.Errorf(
-				"contract_assessment is required when a chapter contract is present",
+			return ReviewResult{}, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				"contract_assessment",
 			)
 		}
 		assessment, err = decodeChapterContractAssessment(
@@ -247,8 +303,10 @@ func decodeReviewResultForState(
 	if len(state.CanonConstraints) > 0 {
 		canonJSON, ok := raw["canon_assessment"]
 		if !ok || bytes.Equal(bytes.TrimSpace(canonJSON), []byte("null")) {
-			return ReviewResult{}, fmt.Errorf(
-				"canon_assessment is required when canon constraints are present",
+			return ReviewResult{}, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				"canon_assessment",
 			)
 		}
 		canonAssessment, err = decodeCanonConsistencyAssessments(
@@ -267,8 +325,10 @@ func decodeReviewResultForState(
 	if mainlineEventBeatIsValid(state.MainlineBeat) {
 		mainlineJSON, ok := raw["mainline_assessment"]
 		if !ok || bytes.Equal(bytes.TrimSpace(mainlineJSON), []byte("null")) {
-			return ReviewResult{}, fmt.Errorf(
-				"mainline_assessment is required when a mainline beat is present",
+			return ReviewResult{}, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				"mainline_assessment",
 			)
 		}
 		mainlineAssessment, mainlinePassed, err = decodeMainlineAssessment(
@@ -284,10 +344,18 @@ func decodeReviewResultForState(
 	var critique string
 	if critiqueJSON, ok := raw["critique"]; ok {
 		if bytes.Equal(bytes.TrimSpace(critiqueJSON), []byte("null")) {
-			return ReviewResult{}, fmt.Errorf("critique must be a string")
+			return ReviewResult{}, newReviewerValidationError(
+				"reviewer_json_shape_type",
+				"string",
+				"critique",
+			)
 		}
 		if err := json.Unmarshal(critiqueJSON, &critique); err != nil {
-			return ReviewResult{}, fmt.Errorf("critique must be a string")
+			return ReviewResult{}, newReviewerValidationError(
+				"reviewer_json_shape_type",
+				"string",
+				"critique",
+			)
 		}
 	}
 	return ReviewResult{
@@ -313,39 +381,51 @@ func decodeContinuityAssessment(
 ) (ContinuityAssessment, bool, error) {
 	candidate, ok := raw["continuity_assessment"]
 	if !ok || bytes.Equal(bytes.TrimSpace(candidate), []byte("null")) {
-		return ContinuityAssessment{}, false, fmt.Errorf(
-			"continuity_assessment is required",
+		return ContinuityAssessment{}, false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"continuity_assessment",
 		)
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(candidate, &fields); err != nil {
-		return ContinuityAssessment{}, false, fmt.Errorf(
-			"continuity_assessment must be an object",
+		return ContinuityAssessment{}, false, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"object",
+			"continuity_assessment",
 		)
 	}
 
 	headJSON, headPresent := fields["chapter_head"]
 	if !headPresent {
-		return ContinuityAssessment{}, false, fmt.Errorf(
-			"continuity_assessment.chapter_head is required",
+		return ContinuityAssessment{}, false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"continuity_assessment.chapter_head",
 		)
 	}
 	headIsNull := bytes.Equal(bytes.TrimSpace(headJSON), []byte("null"))
 	if requireHead && headIsNull {
-		return ContinuityAssessment{}, false, fmt.Errorf(
-			"continuity_assessment.chapter_head is required when previous continuity is present",
+		return ContinuityAssessment{}, false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"continuity_assessment.chapter_head",
 		)
 	}
 	if !requireHead && !headIsNull {
-		return ContinuityAssessment{}, false, fmt.Errorf(
-			"continuity_assessment.chapter_head must be null without previous continuity",
+		return ContinuityAssessment{}, false, newReviewerValidationError(
+			"reviewer_validation_other",
+			"must_be_null",
+			"continuity_assessment.chapter_head",
 		)
 	}
 
 	tailJSON, tailPresent := fields["chapter_tail"]
 	if !tailPresent || bytes.Equal(bytes.TrimSpace(tailJSON), []byte("null")) {
-		return ContinuityAssessment{}, false, fmt.Errorf(
-			"continuity_assessment.chapter_tail is required",
+		return ContinuityAssessment{}, false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			"continuity_assessment.chapter_tail",
 		)
 	}
 	tail, err := decodeContinuityEvidence(
@@ -411,7 +491,11 @@ func decodeContinuityEvidence(
 ) (ContractRequirementAssessment, error) {
 	var wire contractRequirementAssessmentWire
 	if err := json.Unmarshal(candidate, &wire); err != nil {
-		return ContractRequirementAssessment{}, fmt.Errorf("%s must be an object", name)
+		return ContractRequirementAssessment{}, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"object",
+			name,
+		)
 	}
 	item, err := normalizeContractRequirementAssessment(name, wire)
 	if err != nil {
@@ -423,14 +507,14 @@ func decodeContinuityEvidence(
 
 	window := reviewerEvidenceWindow(draft, head)
 	if !strings.Contains(window, item.Evidence) {
-		position := "chapter tail"
+		category := "reviewer_evidence_tail"
 		if head {
-			position = "chapter head"
+			category = "reviewer_evidence_head"
 		}
-		return ContractRequirementAssessment{}, fmt.Errorf(
-			"%s.evidence must be an exact draft substring within the %s window",
-			name,
-			position,
+		return ContractRequirementAssessment{}, newReviewerValidationError(
+			category,
+			"exact_substring",
+			name+".evidence",
 		)
 	}
 	return item, nil
@@ -442,11 +526,19 @@ func decodeRequiredReviewBool(
 ) (bool, error) {
 	valueJSON, ok := raw[name]
 	if !ok || bytes.Equal(bytes.TrimSpace(valueJSON), []byte("null")) {
-		return false, fmt.Errorf("%s is required and must be a boolean", name)
+		return false, newReviewerValidationError(
+			"reviewer_required_field",
+			"required",
+			name,
+		)
 	}
 	var value bool
 	if err := json.Unmarshal(valueJSON, &value); err != nil {
-		return false, fmt.Errorf("%s is required and must be a boolean", name)
+		return false, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"boolean",
+			name,
+		)
 	}
 	return value, nil
 }
@@ -457,24 +549,28 @@ func decodeChapterContractAssessment(
 ) (ChapterContractAssessment, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(candidate, &raw); err != nil {
-		return ChapterContractAssessment{}, fmt.Errorf(
-			"contract_assessment must be an object",
+		return ChapterContractAssessment{}, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"object",
+			"contract_assessment",
 		)
 	}
 	for _, name := range []string{"goal", "must_happen", "must_not_happen", "end_state"} {
 		value, ok := raw[name]
 		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-			return ChapterContractAssessment{}, fmt.Errorf(
-				"contract_assessment.%s is required",
-				name,
+			return ChapterContractAssessment{}, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				"contract_assessment."+name,
 			)
 		}
 	}
 	var wire chapterContractAssessmentWire
 	if err := json.Unmarshal(candidate, &wire); err != nil {
-		return ChapterContractAssessment{}, fmt.Errorf(
-			"contract_assessment is invalid: %w",
-			err,
+		return ChapterContractAssessment{}, newReviewerValidationError(
+			"reviewer_json_shape_type",
+			"object",
+			"contract_assessment",
 		)
 	}
 	return normalizeChapterContractAssessment(wire, contract)
@@ -483,7 +579,11 @@ func decodeChapterContractAssessment(
 func validateReviewResult(result *ReviewResult) error {
 	result.Critique = strings.TrimSpace(result.Critique)
 	if (!result.Passed || !result.ContinuityPassed || !result.CanonPassed || !result.MainlinePassed) && result.Critique == "" {
-		return fmt.Errorf("critique is required when review, continuity, canon consistency, or mainline beat fails")
+		return newReviewerValidationError(
+			"reviewer_critique_missing",
+			"required",
+			"critique",
+		)
 	}
 	return nil
 }

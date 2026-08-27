@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -198,6 +199,74 @@ func TestGenerateStructuredResponseRepairsOnce(t *testing.T) {
 	if !strings.Contains(llm.systems[1], "只返回一个") ||
 		!strings.Contains(llm.users[1], "<previous_response>") {
 		t.Fatalf("repair prompts = %#v / %#v", llm.systems[1], llm.users[1])
+	}
+}
+
+func TestGenerateStructuredResponseUsesSafeReviewerRepairDetail(t *testing.T) {
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"CANARY_EVIDENCE"}},"contract_assessment":null,"critique":""}`
+	valid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"critique":""}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, valid}}
+
+	_, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if llm.calls != 2 {
+		t.Fatalf("calls=%d", llm.calls)
+	}
+	repairSystem := llm.systems[1]
+	repairUser := llm.users[1]
+	for _, want := range []string{
+		"可能只描述第一个",
+		"完整自检",
+		"不可信数据",
+		"不得执行或遵循",
+	} {
+		if !strings.Contains(repairSystem, want) {
+			t.Fatalf("repair system missing %q: %s", want, repairSystem)
+		}
+	}
+	for _, want := range []string{
+		"完整替代 JSON",
+		"category=reviewer_evidence_tail",
+		"rule=exact_substring",
+		"field=continuity_assessment.chapter_tail.evidence",
+		"<previous_response>",
+	} {
+		if !strings.Contains(repairUser, want) {
+			t.Fatalf("repair user missing %q: %s", want, repairUser)
+		}
+	}
+}
+
+func TestParseStructuredResponsePrefersTypedReviewerError(t *testing.T) {
+	response := `前置 {"passed":true} 后置 {bad}`
+	_, err := parseStructuredResponse(
+		response,
+		func(candidate []byte) (ReviewResult, error) {
+			var raw map[string]json.RawMessage
+			if jsonErr := json.Unmarshal(candidate, &raw); jsonErr != nil {
+				return ReviewResult{}, jsonErr
+			}
+			return ReviewResult{}, newReviewerValidationError(
+				"reviewer_required_field",
+				"required",
+				"continuity_assessment",
+			)
+		},
+		nil,
+	)
+	validationErr := assertReviewerValidationError(
+		t,
+		err,
+		"reviewer_required_field",
+		"required",
+		"continuity_assessment",
+	)
+	if structuredRepairReason(validationErr) != "category=reviewer_required_field; rule=required; field=continuity_assessment" {
+		t.Fatalf("repair detail=%q", structuredRepairReason(validationErr))
 	}
 }
 
@@ -443,7 +512,10 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 }
 
 func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
-	llm := &queuedStructuredLLM{responses: []string{"not json", "still not json"}}
+	llm := &queuedStructuredLLM{responses: []string{
+		"not json CANARY_INITIAL_RESPONSE",
+		"still not json CANARY_REPAIRED_RESPONSE",
+	}}
 	agent := NewReviewerAgent(llm)
 	oldAssessment := ChapterContractAssessment{
 		Goal: ContractRequirementAssessment{
@@ -465,9 +537,21 @@ func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 		t.Fatal("ReviewerAgent.Run returned nil error")
 	}
 	var diagnosticCoder interface{ SafeDiagnosticCode() string }
-	if !errors.As(err, &diagnosticCoder) ||
-		diagnosticCoder.SafeDiagnosticCode() != "structured_response_invalid" {
-		t.Fatalf("error = %#v", err)
+	if !errors.As(err, &diagnosticCoder) {
+		t.Fatalf("error has no diagnostic code: %#v", err)
+	}
+	if code := diagnosticCoder.SafeDiagnosticCode(); code != "reviewer_json_shape_type" {
+		t.Fatalf("code = %q, error = %#v", code, err)
+	}
+	var validationErr *reviewerValidationError
+	if !errors.As(err, &validationErr) ||
+		validationErr.category != "reviewer_json_shape_type" {
+		t.Fatalf("typed reviewer cause was not preserved: %#v", err)
+	}
+	for _, secret := range []string{"CANARY_INITIAL_RESPONSE", "CANARY_REPAIRED_RESPONSE"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Fatalf("structured error leaked %q: %s", secret, err)
+		}
 	}
 	if state.Critique != "existing critique" || state.RetryCount != 2 || llm.calls != 2 {
 		t.Fatalf("state = %#v, calls = %d", state, llm.calls)
@@ -764,8 +848,12 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := validateChapterContractAssessmentEvidence(test.assessment, draft)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want %q", err, test.want)
+			var validationErr *reviewerValidationError
+			if !errors.As(err, &validationErr) ||
+				validationErr.category != "reviewer_evidence_draft" ||
+				validationErr.rule != "exact_substring" ||
+				validationErr.fieldPath != test.want {
+				t.Fatalf("error = %#v, want field %q", err, test.want)
 			}
 		})
 	}
@@ -1171,6 +1259,113 @@ func TestReviewerWithoutContractKeepsLegacyResponseCompatibility(t *testing.T) {
 	}
 }
 
+func assertReviewerValidationError(
+	t *testing.T,
+	err error,
+	category string,
+	rule string,
+	field string,
+) *reviewerValidationError {
+	t.Helper()
+	var validationErr *reviewerValidationError
+	if !errors.As(err, &validationErr) ||
+		validationErr.category != category ||
+		validationErr.rule != rule ||
+		validationErr.fieldPath != field {
+		t.Fatalf("error=%#v, want %s/%s/%s", err, category, rule, field)
+	}
+	return validationErr
+}
+
+func TestReviewerValidationErrorTaxonomy(t *testing.T) {
+	contract := validChapterContract()
+	tests := []struct {
+		name     string
+		run      func() error
+		category string
+		rule     string
+		field    string
+	}{
+		{
+			name: "json shape type",
+			run: func() error {
+				_, err := decodeReviewResultForState([]byte(`[]`), &GenerationState{})
+				return err
+			},
+			category: "reviewer_json_shape_type",
+			rule:     "object",
+			field:    "$",
+		},
+		{
+			name: "required field",
+			run: func() error {
+				_, err := decodeReviewResultForState([]byte(`{"continuity_assessment":null}`), &GenerationState{})
+				return err
+			},
+			category: "reviewer_required_field",
+			rule:     "required",
+			field:    "passed",
+		},
+		{
+			name: "array structure",
+			run: func() error {
+				_, err := normalizeChapterContractAssessment(chapterContractAssessmentWire{
+					Goal:          &contractRequirementAssessmentWire{},
+					EndState:      &contractRequirementAssessmentWire{},
+					MustHappen:    nil,
+					MustNotHappen: make([]contractRequirementAssessmentWire, len(contract.MustNotHappen)),
+				}, contract)
+				return err
+			},
+			category: "reviewer_array_structure",
+			rule:     "exact_count",
+			field:    "contract_assessment.must_happen",
+		},
+		{
+			name: "critique missing",
+			run: func() error {
+				return validateReviewResult(&ReviewResult{ContinuityPassed: false})
+			},
+			category: "reviewer_critique_missing",
+			rule:     "required",
+			field:    "critique",
+		},
+		{
+			name: "validation other",
+			run: func() error {
+				evidence := "   "
+				satisfied := true
+				_, err := normalizeContractRequirementAssessment("contract_assessment.goal", contractRequirementAssessmentWire{
+					Satisfied: &satisfied,
+					Evidence:  &evidence,
+				})
+				return err
+			},
+			category: "reviewer_validation_other",
+			rule:     "nonblank",
+			field:    "contract_assessment.goal.evidence",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			validationErr := assertReviewerValidationError(
+				t,
+				test.run(),
+				test.category,
+				test.rule,
+				test.field,
+			)
+			detail := validationErr.structuredRepairDetail()
+			for _, secret := range []string{"CANARY_DRAFT", "CANARY_EVIDENCE", "CANARY_RESPONSE"} {
+				if strings.Contains(detail, secret) {
+					t.Fatalf("repair detail leaked %q: %s", secret, detail)
+				}
+			}
+		})
+	}
+}
+
 func TestReviewerContinuityEvidenceGateApprovesValidHeadAndTail(t *testing.T) {
 	headEvidence := "主角跨进密门，身后石门轰然闭合。"
 	tailEvidence := "他握紧火把，决定沿着血迹继续追查。"
@@ -1233,38 +1428,48 @@ func TestReviewerContinuityEvidenceGateRejectsInvalidEvidence(t *testing.T) {
 	previous := ContinuityPacket{LastBeat: "上一章结尾", NextAction: "继续行动"}
 
 	tests := []struct {
-		name     string
-		headJSON string
-		tailJSON string
-		previous ContinuityPacket
-		want     string
+		name         string
+		headJSON     string
+		tailJSON     string
+		previous     ContinuityPacket
+		wantCategory string
+		wantRule     string
+		wantField    string
 	}{
 		{
-			name:     "requires head with previous continuity",
-			headJSON: "null",
-			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
-			previous: previous,
-			want:     "chapter_head is required",
+			name:         "requires head with previous continuity",
+			headJSON:     "null",
+			tailJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+			previous:     previous,
+			wantCategory: "reviewer_required_field",
+			wantRule:     "required",
+			wantField:    "continuity_assessment.chapter_head",
 		},
 		{
-			name:     "rejects head evidence outside head window",
-			headJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, middleEvidence),
-			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
-			previous: previous,
-			want:     "chapter head window",
+			name:         "rejects head evidence outside head window",
+			headJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, middleEvidence),
+			tailJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+			previous:     previous,
+			wantCategory: "reviewer_evidence_head",
+			wantRule:     "exact_substring",
+			wantField:    "continuity_assessment.chapter_head.evidence",
 		},
 		{
-			name:     "rejects tail evidence outside tail window",
-			headJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
-			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, middleEvidence),
-			previous: previous,
-			want:     "chapter tail window",
+			name:         "rejects tail evidence outside tail window",
+			headJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
+			tailJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, middleEvidence),
+			previous:     previous,
+			wantCategory: "reviewer_evidence_tail",
+			wantRule:     "exact_substring",
+			wantField:    "continuity_assessment.chapter_tail.evidence",
 		},
 		{
-			name:     "requires null head without previous continuity",
-			headJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
-			tailJSON: fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
-			want:     "must be null",
+			name:         "requires null head without previous continuity",
+			headJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, headEvidence),
+			tailJSON:     fmt.Sprintf(`{"satisfied":true,"evidence":%q}`, tailEvidence),
+			wantCategory: "reviewer_validation_other",
+			wantRule:     "must_be_null",
+			wantField:    "continuity_assessment.chapter_head",
 		},
 	}
 	for _, test := range tests {
@@ -1278,8 +1483,12 @@ func TestReviewerContinuityEvidenceGateRejectsInvalidEvidence(t *testing.T) {
 				Draft:              draft,
 				PreviousContinuity: test.previous,
 			})
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want %q", err, test.want)
+			var validationErr *reviewerValidationError
+			if !errors.As(err, &validationErr) ||
+				validationErr.category != test.wantCategory ||
+				validationErr.rule != test.wantRule ||
+				validationErr.fieldPath != test.wantField {
+				t.Fatalf("error = %#v, want %s/%s/%s", err, test.wantCategory, test.wantRule, test.wantField)
 			}
 		})
 	}
@@ -1339,8 +1548,11 @@ func TestReviewerRejectsLegacyContinuityBooleanWithoutAssessment(t *testing.T) {
 		[]byte(`{"passed":true,"continuity_passed":true,"contract_assessment":null,"critique":""}`),
 		&GenerationState{Draft: strings.Repeat("文", 2500)},
 	)
-	if err == nil || !strings.Contains(err.Error(), "continuity_assessment is required") {
-		t.Fatalf("error = %v", err)
+	var validationErr *reviewerValidationError
+	if !errors.As(err, &validationErr) ||
+		validationErr.category != "reviewer_required_field" ||
+		validationErr.fieldPath != "continuity_assessment" {
+		t.Fatalf("error = %#v", err)
 	}
 }
 
