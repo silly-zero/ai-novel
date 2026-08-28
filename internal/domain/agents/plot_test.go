@@ -36,9 +36,27 @@ func TestPlotRunGeneratesStructuredChapterContract(t *testing.T) {
 		got.ChapterContract.EndState != "前往地下祭坛" {
 		t.Fatalf("contract = %#v", got.ChapterContract)
 	}
-	for _, value := range []string{"章节目标：查明密门来源", "必须发生", "禁止发生", "章尾状态：前往地下祭坛"} {
+	for _, value := range []string{
+		"章节目标：查明密门来源",
+		"必须发生",
+		"禁止发生",
+		"章尾状态：前往地下祭坛",
+	} {
 		if !strings.Contains(got.Outline, value) {
 			t.Fatalf("outline missing %q: %s", value, got.Outline)
+		}
+	}
+	for _, rule := range []string{
+		"chapter_goal",
+		"单一、结果性、可观察的命题",
+		"明确主体",
+		"动作/发现/决定/状态变化",
+		"直接判断完成与否",
+		"不能只写“推进剧情”“发展矛盾”“继续调查”等空泛意图",
+		"不能把计划以后完成当成本章目标",
+	} {
+		if !strings.Contains(llm.systems[0], rule) {
+			t.Fatalf("plot system prompt missing %q: %s", rule, llm.systems[0])
 		}
 	}
 	for _, value := range []string{"第4章", "主角找到旧王朝血书", "主角前往地下祭坛", "主角推开密门。", "血书来自何人", "立即进入密门。"} {

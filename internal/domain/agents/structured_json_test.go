@@ -1455,6 +1455,8 @@ func TestReviewerGoalRepairGuidanceDoesNotLeakPrivateValuesOrAffectOtherAreas(t 
 		"ChapterGoal 是本章唯一核心目标",
 		"只完成部分步骤均必须设为 false",
 		"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成",
+		"Goal 与 MustHappen 或 EndState 共享同一段合法正文证据是允许的",
+		"共享证据本身不是失败理由",
 	} {
 		if !strings.Contains(goalErr.structuredRepairInstruction(), want) {
 			t.Fatalf("goal instruction missing %q", want)

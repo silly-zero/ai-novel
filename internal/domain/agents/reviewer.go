@@ -118,7 +118,8 @@ func newReviewerDraftEvidenceError(
 			"不得概括、改写标点或拼接。若无逐字支持证据，将该项改为 satisfied=false，填写非空且不超过 300 rune 的未达成原因，并提供非空可执行 critique。"
 		if reviewArea == reviewerAreaContractGoal {
 			instruction += " ChapterGoal 是本章唯一核心目标；先判断它是否已在正文中实际完成。仅提及目标、表达意图、计划以后完成或只完成部分步骤均必须设为 false；" +
-				"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成。"
+				"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成。Goal 与 MustHappen 或 EndState 共享同一段合法正文证据是允许的，" +
+				"共享证据本身不是失败理由，但 Goal 仍必须独立实际完成。"
 		}
 	}
 	return &reviewerValidationError{
