@@ -53,7 +53,7 @@ func TestArchitectSelectsBeatAfterGeneratingOutline(t *testing.T) {
 	if llm.calls != 1 || got.MainlineBeat.CurrentEvent != "主角抵达边城" || got.MainlineBeat.NextEvent != "主角发现血书" {
 		t.Fatalf("state = %#v, calls = %d", got, llm.calls)
 	}
-	for _, rule := range []string{"可观察的主线变化", "后续牵引", "不得提前完成后续章节"} {
+	for _, rule := range []string{"可观察的主线变化", "后续牵引", "不得提前完成后续章节", "恰好逐号输出第 1 章到第 2 章", "不得遗漏、重复、跳号、交换顺序"} {
 		if !strings.Contains(llm.systems[0], rule) {
 			t.Fatalf("architect prompt missing %q: %s", rule, llm.systems[0])
 		}
@@ -291,6 +291,11 @@ func TestArchitectRepairsSemanticOutlineFailure(t *testing.T) {
 	if !strings.Contains(llm.systems[1], "全角冒号") ||
 		!strings.Contains(llm.users[1], outlineIssueMissingChapter) {
 		t.Fatalf("repair prompt missing constraints: system=%s user=%s", llm.systems[1], llm.users[1])
+	}
+	for _, rule := range []string{"恰好逐号输出完整区间", "第3章、第4章"} {
+		if !strings.Contains(llm.systems[1], rule) {
+			t.Fatalf("repair prompt missing %q: %s", rule, llm.systems[1])
+		}
 	}
 }
 

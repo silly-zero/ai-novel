@@ -1525,6 +1525,9 @@ func TestReviewerGoalRepairGuidanceDoesNotLeakPrivateValuesOrAffectOtherAreas(t 
 		"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成",
 		"Goal 与 MustHappen 或 EndState 共享同一段合法正文证据是允许的",
 		"共享证据本身不是失败理由",
+		"先在 source_id=reviewer.full_draft.v1 的【小说草稿】中查找",
+		"不得把契约、场景卡、背景资料或证据候选中的文字当作正文证据",
+		"若草稿中没有能够直接证明 Goal 结果已发生的连续原文，必须保持 satisfied=false",
 	} {
 		if !strings.Contains(goalErr.structuredRepairInstruction(), want) {
 			t.Fatalf("goal instruction missing %q", want)

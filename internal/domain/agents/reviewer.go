@@ -110,16 +110,15 @@ func newReviewerDraftEvidenceError(
 	repairLocator string,
 ) *reviewerValidationError {
 	category := reviewerIssueDraftViolation
-	instruction := "当前项 satisfied=false 表示违规实际发生。仅当能从 source_id=reviewer.full_draft.v1 的【小说草稿】逐字复制一个 trim 后非空、连续、1–300 rune 的违规证据时才保持 false；" +
+	instruction := "处理顺序固定：先在 source_id=reviewer.full_draft.v1 的【小说草稿】中查找可直接复制的连续原文，再决定 satisfied。当前项 satisfied=false 表示违规实际发生。仅当能从 source_id=reviewer.full_draft.v1 的【小说草稿】逐字复制一个 trim 后非空、连续、1–300 rune 的违规证据时才保持 false；" +
 		"不得概括、改写标点或拼接。若无逐字违规证据，将该项改为 satisfied=true，并填写非空且不超过 300 rune 的未发生/无冲突理由；若其他条件均通过，critique 可为空。"
 	if support {
 		category = reviewerIssueDraftSupport
-		instruction = "当前项 satisfied=true 表示要求已实际发生或达到。仅当能从 source_id=reviewer.full_draft.v1 的【小说草稿】逐字复制一个 trim 后非空、连续、1–300 rune 的支持证据时才保持 true；" +
-			"不得概括、改写标点或拼接。若无逐字支持证据，将该项改为 satisfied=false，填写非空且不超过 300 rune 的未达成原因，并提供非空可执行 critique。"
+		instruction = "处理顺序固定：先在 source_id=reviewer.full_draft.v1 的【小说草稿】中查找可直接复制的连续原文，再决定 satisfied。当前项 satisfied=true 表示要求已实际发生或达到。仅当能从该草稿逐字复制一个 trim 后非空、连续、1–300 rune 的支持证据时才保持 true；不得把契约、场景卡、背景资料或证据候选中的文字当作正文证据；不得概括、改写标点或拼接。若草稿中找不到满足条件的逐字支持证据，必须立即将该项改为 satisfied=false，填写非空且不超过 300 rune 的未达成原因，并提供非空可执行 critique。"
 		if reviewArea == reviewerAreaContractGoal {
 			instruction += " ChapterGoal 是本章唯一核心目标；先判断它是否已在正文中实际完成。仅提及目标、表达意图、计划以后完成或只完成部分步骤均必须设为 false；" +
 				"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成。Goal 与 MustHappen 或 EndState 共享同一段合法正文证据是允许的，" +
-				"共享证据本身不是失败理由，但 Goal 仍必须独立实际完成。"
+				"共享证据本身不是失败理由，但 Goal 仍必须独立实际完成。若草稿中没有能够直接证明 Goal 结果已发生的连续原文，必须保持 satisfied=false，不得仅凭契约文字或其他 assessment 的判断设为 true。"
 		}
 	}
 	return &reviewerValidationError{

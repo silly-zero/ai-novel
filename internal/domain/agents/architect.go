@@ -75,6 +75,7 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	systemPrompt := fmt.Sprintf(`你是一位资深小说架构师。你的任务是根据用户提供的小说【想法(Idea)】和可能存在的【已有大纲】，构思或续写小说的【大纲】。
 要求：
 - 专门规划第 %d 章到第 %d 章的简要剧情。
+- 必须恰好逐号输出第 %d 章到第 %d 章，每章一行；不得遗漏、重复、跳号、交换顺序或输出范围外章节。
 - 每章用一句话写清本章实际发生的、可观察的主线变化，以及该变化造成的后续牵引；不要只写主题、氛围或笼统目标。
 - 相邻章节必须形成因果推进，当前章不得提前完成后续章节的主线事件。
 - 确保故事节奏合理，有伏笔和高潮预设。
@@ -83,7 +84,7 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 ...
 第%d章：[简要描述]
 
-请直接输出新增的这部分大纲，不要有开场白，也不要重复已有大纲的内容。`, start, end, start, end)
+请直接输出新增的这部分大纲，不要有开场白，也不要重复已有大纲的内容。`, start, end, start, end, start, end)
 
 	idea := state.Idea
 	if idea == "" {
@@ -142,8 +143,8 @@ func (a *ArchitectAgent) repairOutline(ctx context.Context, start, end int, prev
 		return "", err
 	}
 	systemPrompt := fmt.Sprintf(`你是小说大纲格式修复器。只修复格式，不改变剧情含义。
-必须严格输出第 %d 章到第 %d 章，每章一行，格式为：第N章：事件。
-只能使用 ASCII 数字、中文“第”和“章”、全角冒号“：”；禁止 Markdown、标题、解释、开场白、空行和结尾说明。`, start, end)
+必须严格输出第 %d 章到第 %d 章，且恰好逐号输出完整区间；本次必须输出的章节编号为：%s。
+只能使用 ASCII 数字、中文“第”和“章”、全角冒号“：”；禁止 Markdown、标题、解释、开场白、空行和结尾说明。`, start, end, outlineChapterNumberList(start, end))
 	userPrompt := fmt.Sprintf(
 		"校验错误：%s\n原始大纲：\n%s",
 		issue,
@@ -157,6 +158,14 @@ func (a *ArchitectAgent) repairOutline(ctx context.Context, start, end int, prev
 		return "", err
 	}
 	return fixed, nil
+}
+
+func outlineChapterNumberList(start, end int) string {
+	chapters := make([]string, 0, end-start+1)
+	for index := start; index <= end; index++ {
+		chapters = append(chapters, fmt.Sprintf("第%d章", index))
+	}
+	return strings.Join(chapters, "、")
 }
 
 func truncateArchitectText(value string, max int) string {
