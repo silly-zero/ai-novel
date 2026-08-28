@@ -1345,6 +1345,72 @@ func TestFullDraftEvidenceRepairKindsForCanonAndMainline(t *testing.T) {
 	})
 }
 
+func TestReviewFailureAreaUsesFixedPriority(t *testing.T) {
+	result := ReviewResult{
+		contractChecked: true,
+		ContractAssessment: ChapterContractAssessment{
+			Goal:          ContractRequirementAssessment{Satisfied: false},
+			MustHappen:    []ContractRequirementAssessment{{Satisfied: false}},
+			MustNotHappen: []ContractRequirementAssessment{{Satisfied: false}},
+			EndState:      ContractRequirementAssessment{Satisfied: false},
+		},
+		ContractPassed: false,
+		CanonPassed:    false,
+		CanonAssessment: []CanonConsistencyAssessment{{
+			Satisfied: false,
+		}},
+		MainlinePassed: false,
+		MainlineAssessment: MainlineAssessment{
+			CurrentEvent: ContractRequirementAssessment{Satisfied: false},
+			NextEvent:    &ContractRequirementAssessment{Satisfied: false},
+		},
+	}
+	if got := reviewFailureArea(result); got != string(reviewerAreaContractGoal) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaContractGoal)
+	}
+
+	result.ContractAssessment.Goal.Satisfied = true
+	if got := reviewFailureArea(result); got != string(reviewerAreaContractMustHappen) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaContractMustHappen)
+	}
+	result.ContractAssessment.MustHappen[0].Satisfied = true
+	if got := reviewFailureArea(result); got != string(reviewerAreaContractEndState) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaContractEndState)
+	}
+	result.ContractAssessment.EndState.Satisfied = true
+	if got := reviewFailureArea(result); got != string(reviewerAreaMainlineCurrentEvent) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaMainlineCurrentEvent)
+	}
+	result.MainlineAssessment.CurrentEvent.Satisfied = true
+	if got := reviewFailureArea(result); got != string(reviewerAreaContractMustNotHappen) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaContractMustNotHappen)
+	}
+	result.ContractAssessment.MustNotHappen[0].Satisfied = true
+	if got := reviewFailureArea(result); got != string(reviewerAreaCanonConflict) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaCanonConflict)
+	}
+	result.CanonPassed = true
+	if got := reviewFailureArea(result); got != string(reviewerAreaMainlineNextEarlyCompletion) {
+		t.Fatalf("area=%q, want %q", got, reviewerAreaMainlineNextEarlyCompletion)
+	}
+	result.MainlineAssessment.NextEvent.Satisfied = true
+	result.MainlinePassed = true
+	if got := reviewFailureArea(result); got != "" {
+		t.Fatalf("area=%q, want empty for general failure", got)
+	}
+}
+
+func TestReviewerRunClearsStaleReviewFailureAreaOnProtocolError(t *testing.T) {
+	state := &GenerationState{
+		Draft:             " ",
+		ReviewFailureArea: string(reviewerAreaContractGoal),
+	}
+	_, err := NewReviewerAgent(&queuedStructuredLLM{}).Run(context.Background(), state)
+	if err == nil || state.ReviewFailureArea != "" {
+		t.Fatalf("err=%v area=%q", err, state.ReviewFailureArea)
+	}
+}
+
 func TestReviewerFullDraftAreaSurvivesStructuredError(t *testing.T) {
 	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"NOT_IN_DRAFT"},"must_happen":[],"must_not_happen":[],"end_state":{"satisfied":false,"evidence":"未达到结束状态"}},"critique":""}`
 	_, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{invalid, invalid}}).Run(

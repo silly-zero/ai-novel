@@ -216,6 +216,7 @@ func (e *reviewerEmptyDraftError) SafeDiagnosticCode() string {
 }
 
 func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
+	state.ReviewFailureArea = ""
 	if strings.TrimSpace(state.Draft) == "" {
 		return state, &reviewerEmptyDraftError{}
 	}
@@ -306,9 +307,47 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 	state.ContinuityAssessment = result.ContinuityAssessment
 	state.CanonAssessment = result.CanonAssessment
 	state.MainlineAssessment = result.MainlineAssessment
+	state.ReviewFailureArea = reviewFailureArea(result)
 	state.IsApproved = result.Passed && result.ContinuityPassed && result.ContractPassed && result.CanonPassed && result.MainlinePassed
 	state.Critique = critique
 	return state, nil
+}
+
+func reviewFailureArea(result ReviewResult) string {
+	if result.contractChecked {
+		if !result.ContractAssessment.Goal.Satisfied {
+			return string(reviewerAreaContractGoal)
+		}
+		for _, item := range result.ContractAssessment.MustHappen {
+			if !item.Satisfied {
+				return string(reviewerAreaContractMustHappen)
+			}
+		}
+		if !result.ContractAssessment.EndState.Satisfied {
+			return string(reviewerAreaContractEndState)
+		}
+	}
+	if !result.MainlinePassed && !result.MainlineAssessment.CurrentEvent.Satisfied {
+		return string(reviewerAreaMainlineCurrentEvent)
+	}
+	if result.contractChecked {
+		for _, item := range result.ContractAssessment.MustNotHappen {
+			if !item.Satisfied {
+				return string(reviewerAreaContractMustNotHappen)
+			}
+		}
+	}
+	if !result.CanonPassed {
+		for _, item := range result.CanonAssessment {
+			if !item.Satisfied {
+				return string(reviewerAreaCanonConflict)
+			}
+		}
+	}
+	if !result.MainlinePassed && result.MainlineAssessment.NextEvent != nil && !result.MainlineAssessment.NextEvent.Satisfied {
+		return string(reviewerAreaMainlineNextEarlyCompletion)
+	}
+	return ""
 }
 
 func canonConstraintsPrompt(constraints []CanonConstraint) string {

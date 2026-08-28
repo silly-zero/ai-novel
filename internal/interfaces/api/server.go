@@ -2747,7 +2747,8 @@ func logGenerationDiagnostic(
 	reviewArea := ""
 	if workflowStage == string(workflows.WorkflowStageReviewer) &&
 		(issueCode == "reviewer_evidence_draft_support" ||
-			issueCode == "reviewer_evidence_draft_violation") {
+			issueCode == "reviewer_evidence_draft_violation" ||
+			errorCode == "review_failed") {
 		var areaCoder safeGenerationReviewAreaCoder
 		if errors.As(diagnosticErr, &areaCoder) {
 			area := areaCoder.SafeReviewArea()

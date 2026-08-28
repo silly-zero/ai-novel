@@ -131,6 +131,7 @@ type GenerationState struct {
 	Draft                string                       // 主笔生成的草稿
 	Critique             string                       // 审查员的修改意见
 	Continuity           ContinuityPacket             // 当前草稿对应的结构化接力状态
+	ReviewFailureArea    string                       `json:"-"` // Reviewer 最终质量失败的固定安全区域
 	RetryCount           int                          // 重试次数
 	IsApproved           bool                         // 是否通过审查
 }

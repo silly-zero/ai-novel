@@ -43,6 +43,20 @@ func (e *generationDiagnosticCodeTestError) SafeReviewArea() string {
 	return e.reviewArea
 }
 
+type reviewRetryLimitTestError struct{}
+
+func (e *reviewRetryLimitTestError) Error() string {
+	return "review retry limit reached"
+}
+
+func (e *reviewRetryLimitTestError) Is(target error) bool {
+	return target == workflows.ErrReviewRetryLimit
+}
+
+func (e *reviewRetryLimitTestError) SafeReviewArea() string {
+	return "contract_goal"
+}
+
 type generationTestEngine struct {
 	prepare func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	run     func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
@@ -804,6 +818,86 @@ func TestGenerationDiagnosticLogReadsAllowlistedValuesOnce(t *testing.T) {
 	}
 }
 
+func TestGenerationDiagnosticLogAllowsReviewFailureAreas(t *testing.T) {
+	for _, area := range []string{
+		"contract_goal",
+		"contract_must_happen",
+		"contract_end_state",
+		"mainline_current_event",
+		"contract_must_not_happen",
+		"canon_conflict",
+		"mainline_next_early_completion",
+	} {
+		t.Run(area, func(t *testing.T) {
+			oldWriter, oldFlags := log.Writer(), log.Flags()
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldWriter)
+				log.SetFlags(oldFlags)
+			})
+
+			logGenerationDiagnostic(
+				"generation-log-test",
+				"chapter_generation",
+				"error",
+				"review_failed",
+				workflows.NewWorkflowStageError(
+					workflows.WorkflowStageReviewer,
+					&generationDiagnosticCodeTestError{reviewArea: area},
+				),
+			)
+			got := output.String()
+			if !strings.Contains(got, "error_code=review_failed") ||
+				!strings.Contains(got, "workflow_stage=reviewer") ||
+				!strings.Contains(got, "review_area="+area) {
+				t.Fatalf("log missing review failure area: %s", got)
+			}
+		})
+	}
+}
+
+func TestGenerationDiagnosticLogRejectsReviewFailureAreasOutsideGate(t *testing.T) {
+	tests := []struct {
+		name      string
+		errorCode string
+		stage     workflows.WorkflowStage
+		area      string
+	}{
+		{name: "unknown area", errorCode: "review_failed", stage: workflows.WorkflowStageReviewer, area: "CANARY_AREA\nforged=true"},
+		{name: "wrong error", errorCode: "review_protocol_error", stage: workflows.WorkflowStageReviewer, area: "contract_goal"},
+		{name: "wrong stage", errorCode: "review_failed", stage: workflows.WorkflowStageWriter, area: "contract_goal"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			oldWriter, oldFlags := log.Writer(), log.Flags()
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldWriter)
+				log.SetFlags(oldFlags)
+			})
+
+			logGenerationDiagnostic(
+				"generation-log-test",
+				"chapter_generation",
+				"error",
+				test.errorCode,
+				workflows.NewWorkflowStageError(
+					test.stage,
+					&generationDiagnosticCodeTestError{reviewArea: test.area},
+				),
+			)
+			if got := output.String(); strings.Contains(got, "review_area=") ||
+				strings.Contains(got, "CANARY_AREA") || strings.Contains(got, "forged=true") {
+				t.Fatalf("review failure area leaked: %s", got)
+			}
+		})
+	}
+}
+
 func TestGenerationDiagnosticLogOmitsDeprecatedReviewerAggregates(t *testing.T) {
 	for _, code := range []string{
 		"reviewer_validation_other",
@@ -994,6 +1088,41 @@ func TestHandleGenerateChapterSuccessDoesNotLogGeneratedContent(t *testing.T) {
 		if strings.Contains(got, secret) {
 			t.Fatalf("success log leaked %q: %s", secret, got)
 		}
+	}
+}
+
+func TestHandleGenerateChapterReviewFailureLogsSafeArea(t *testing.T) {
+	const (
+		area           = "contract_goal"
+		critiqueCanary = "CANARY_CRITIQUE"
+	)
+	engine := &generationTestEngine{run: func(_ context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+		state.ReviewFailureArea = area
+		state.Critique = critiqueCanary
+		return state, workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, &reviewRetryLimitTestError{})
+	}}
+	server := newServer(engine, nil)
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+	recorder := httptest.NewRecorder()
+	server.HandleGenerateChapter(recorder, generateRequest(context.Background(), "7", 1))
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"error_code":"review_failed"`) ||
+		strings.Contains(body, "review_area") || strings.Contains(body, critiqueCanary) {
+		t.Fatalf("terminal leaked diagnostics: %s", body)
+	}
+	gotLog := output.String()
+	if !strings.Contains(gotLog, "error_code=review_failed") ||
+		!strings.Contains(gotLog, "workflow_stage=reviewer") ||
+		!strings.Contains(gotLog, "review_area="+area) ||
+		strings.Contains(gotLog, critiqueCanary) {
+		t.Fatalf("log = %s", gotLog)
 	}
 }
 

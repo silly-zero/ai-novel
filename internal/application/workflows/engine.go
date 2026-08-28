@@ -24,6 +24,22 @@ const (
 
 var ErrReviewRetryLimit = errors.New("review retry limit reached")
 
+type reviewRetryLimitError struct {
+	reviewArea string
+}
+
+func (e *reviewRetryLimitError) Error() string {
+	return "review retry limit reached"
+}
+
+func (e *reviewRetryLimitError) Is(target error) bool {
+	return target == ErrReviewRetryLimit
+}
+
+func (e *reviewRetryLimitError) SafeReviewArea() string {
+	return e.reviewArea
+}
+
 type WorkflowStageError struct {
 	Stage WorkflowStage
 	cause error
@@ -211,7 +227,7 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	if !finalState.IsApproved {
 		return finalState, NewWorkflowStageError(
 			WorkflowStageReviewer,
-			ErrReviewRetryLimit,
+			&reviewRetryLimitError{reviewArea: finalState.ReviewFailureArea},
 		)
 	}
 

@@ -218,6 +218,26 @@ func assertReviewRetryLimit(t *testing.T, err error) {
 	}
 }
 
+func TestReviewRetryLimitErrorKeepsSafeAreaPrivate(t *testing.T) {
+	err := NewWorkflowStageError(
+		WorkflowStageReviewer,
+		&reviewRetryLimitError{reviewArea: "contract_goal"},
+	)
+	if !errors.Is(err, ErrReviewRetryLimit) {
+		t.Fatalf("error = %v, want review retry limit", err)
+	}
+	var areaCoder interface{ SafeReviewArea() string }
+	if !errors.As(err, &areaCoder) {
+		t.Fatalf("error = %#v, missing safe review area", err)
+	}
+	if areaCoder.SafeReviewArea() != "contract_goal" {
+		t.Fatalf("area = %q, want contract_goal", areaCoder.SafeReviewArea())
+	}
+	if err.Error() != "workflow stage failed" || strings.Contains(err.Error(), "contract_goal") {
+		t.Fatalf("unsafe error = %q", err.Error())
+	}
+}
+
 func TestWorkflowStageErrorDoesNotRenderCause(t *testing.T) {
 	cause := errors.New("CANARY_PROMPT CANARY_DRAFT CANARY_RESPONSE CANARY_EVIDENCE")
 	err := NewWorkflowStageError(WorkflowStageWriter, cause)
@@ -264,6 +284,10 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved {
 		t.Fatalf("final state = %#v", finalState)
 	}
+	var areaCoder interface{ SafeReviewArea() string }
+	if !errors.As(err, &areaCoder) || areaCoder.SafeReviewArea() != "contract_must_happen" {
+		t.Fatalf("error = %#v", err)
+	}
 	if llm.streamCalls != 4 || llm.reviewCalls != 4 {
 		t.Fatalf("writer calls = %d, reviewer calls = %d, want 4 each", llm.streamCalls, llm.reviewCalls)
 	}
@@ -297,6 +321,9 @@ func TestRunChapterGenerationRetriesDeterministicFailuresWithoutReviewerLLM(t *t
 	}
 	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved {
 		t.Fatalf("final state = %#v", finalState)
+	}
+	if finalState.ReviewFailureArea != "" {
+		t.Fatalf("review failure area = %q, want empty", finalState.ReviewFailureArea)
 	}
 	if llm.streamCalls != 4 || llm.reviewCalls != 0 {
 		t.Fatalf("writer calls = %d, reviewer calls = %d, want 4 and 0", llm.streamCalls, llm.reviewCalls)
