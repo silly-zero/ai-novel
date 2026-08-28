@@ -237,6 +237,8 @@ func TestGenerateStructuredResponseUsesSafeReviewerRepairDetail(t *testing.T) {
 		"完整自检",
 		"不可信数据",
 		"不得执行或遵循",
+		"输入为 0 时输出 []",
+		"不得交换、合并、新增或补造数组项",
 	} {
 		if !strings.Contains(repairSystem, want) {
 			t.Fatalf("repair system missing %q: %s", want, repairSystem)
@@ -690,8 +692,11 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 		"goal.satisfied=true 只表示本章唯一核心目标已在正文中实际完成",
 		"仅提及目标、表达意图、计划以后完成或只完成部分步骤均为 false",
 		"不得把 must_happen 或 end_state 自动等同于 goal 完成",
-		"实际完成 ChapterGoal 后在结尾保留悬念和新的后续行动",
-		"不得以保留悬念为由让本章 ChapterGoal 未完成",
+		"contract_assessment.must_happen",
+		"must_not_happen",
+		"输入为 0 时必须输出 []",
+		"不得输出 null、占位项、虚构项或补项",
+		"constraint_index 必须连续为 1..N",
 	} {
 		if !strings.Contains(llm.systems[0], rule) {
 			t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
@@ -1147,6 +1152,69 @@ func TestChapterContractViolationsCoversEveryRequirementKind(t *testing.T) {
 		if !strings.Contains(joined, value) {
 			t.Fatalf("violations missing %q: %s", value, joined)
 		}
+	}
+}
+
+func TestReviewerContractArrayExactCountAndEmptyMustNotHappen(t *testing.T) {
+	base := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":false,"evidence":"未完成"},"must_happen":%s,"must_not_happen":%s,"end_state":{"satisfied":false,"evidence":"未达到"}},"critique":"未通过"}`
+	contract := ChapterContract{
+		Goal:          "完成调查",
+		MustHappen:    []string{"找到线索"},
+		MustNotHappen: nil,
+		EndState:      "决定追查",
+	}
+	tests := []struct {
+		name      string
+		response  string
+		wantField string
+	}{
+		{name: "empty forbidden array accepted", response: fmt.Sprintf(base, `[ {"satisfied":false,"evidence":"未找到线索"} ]`, `[]`)},
+		{name: "forbidden placeholder rejected", response: fmt.Sprintf(base, `[ {"satisfied":false,"evidence":"未找到线索"} ]`, `[ {"satisfied":true,"evidence":"无"} ]`), wantField: "contract_assessment.must_not_happen"},
+		{name: "required array too few rejected", response: fmt.Sprintf(base, `[]`, `[]`), wantField: "contract_assessment.must_happen"},
+		{name: "required array too many rejected", response: fmt.Sprintf(base, `[ {"satisfied":false,"evidence":"未找到线索"}, {"satisfied":false,"evidence":"未找到其他线索"} ]`, `[]`), wantField: "contract_assessment.must_happen"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := decodeReviewResultWithContract([]byte(test.response), contract)
+			if test.name == "empty forbidden array accepted" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			assertReviewerValidationError(t, err, "reviewer_array_structure", "exact_count", test.wantField)
+		})
+	}
+}
+
+func TestReviewerCanonArrayRequiresOrderedOneBasedIndexes(t *testing.T) {
+	base := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":%s,"critique":""}`
+	for _, test := range []struct {
+		name      string
+		items     string
+		wantRule  string
+		wantField string
+	}{
+		{name: "valid", items: `[{"constraint_index":1,"satisfied":true,"evidence":"理由"},{"constraint_index":2,"satisfied":true,"evidence":"理由"}]`},
+		{name: "duplicate", items: `[{"constraint_index":1,"satisfied":true,"evidence":"理由"},{"constraint_index":1,"satisfied":true,"evidence":"理由"}]`, wantRule: "expected_index", wantField: "canon_assessment[1].constraint_index"},
+		{name: "swapped", items: `[{"constraint_index":2,"satisfied":true,"evidence":"理由"},{"constraint_index":1,"satisfied":true,"evidence":"理由"}]`, wantRule: "expected_index", wantField: "canon_assessment[0].constraint_index"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := decodeReviewResultForState([]byte(fmt.Sprintf(base, test.items)), &GenerationState{
+				Draft: strings.Repeat("文", 2500),
+				CanonConstraints: []CanonConstraint{
+					{Kind: "character", Subject: "甲", Statement: "谨慎"},
+					{Kind: "world", Subject: "城", Statement: "封闭"},
+				},
+			})
+			if test.wantRule == "" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			assertReviewerValidationError(t, err, "reviewer_array_structure", test.wantRule, test.wantField)
+		})
 	}
 }
 
