@@ -2299,6 +2299,19 @@ func TestReviewerStateGuidanceCoversConditionalNullsAndEvidenceLimits(t *testing
 				len(decoded["continuity_false_rule"]) == 0 {
 				t.Fatalf("guidance=%s", guidance)
 			}
+			if len(decoded["continuity_evidence_rule"]) == 0 {
+				t.Fatalf("guidance missing continuity evidence rule: %s", guidance)
+			}
+			if _, ok := decoded["chapter_head_window"]; ok {
+				t.Fatalf("guidance contains deprecated head window: %s", guidance)
+			}
+			if _, ok := decoded["chapter_tail_window"]; ok {
+				t.Fatalf("guidance contains deprecated tail window: %s", guidance)
+			}
+			if !strings.Contains(string(decoded["continuity_evidence_rule"]), "唯一来源") ||
+				!strings.Contains(string(decoded["continuity_evidence_rule"]), "跨窗口") {
+				t.Fatalf("guidance rule is incomplete: %s", guidance)
+			}
 			_, hasHeadNull := decoded["chapter_head_must_be"]
 			_, hasHeadTrueRule := decoded["chapter_head_true_rule"]
 			_, hasHeadCandidate := decoded["chapter_head_candidate"]

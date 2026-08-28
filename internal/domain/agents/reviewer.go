@@ -649,18 +649,17 @@ func reviewerContinuityGuidance(state *GenerationState) string {
 		"chapter_head_required":        !state.PreviousContinuity.IsEmpty(),
 		"chapter_tail_required":        true,
 		"chapter_tail_candidate":       tailCandidate,
-		"chapter_tail_window":          tailCandidate.Text,
+		"continuity_evidence_rule":     "candidate.text 是 continuity satisfied=true evidence 的唯一来源；必须从对应 candidate.text 逐字复制 trim 后非空、连续、1–300 rune 的片段，不得从完整草稿取证、改写、拼接或跨窗口取证",
 		"chapter_tail_true_rule":       "evidence_span_id 必须等于 chapter_tail_candidate.id；从 chapter_tail_candidate.text 逐字复制一个 trim 后非空、连续、1–300 rune 的片段",
 		"continuity_false_rule":        "evidence_span_id 必须为 null；填写非空且不超过 300 rune 的简短原因，并提供非空可执行 critique",
 		"mainline_next_event_required": strings.TrimSpace(state.MainlineBeat.NextEvent) != "",
 		"evidence_nonblank":            true,
 		"evidence_max_runes":           300,
-		"rules":                        "satisfied=true时必须逐字复制窗口中的非空连续片段，不得概括、改写、改变标点或拼接；没有可证明目标时设为false并写简短原因",
+		"rules":                        "satisfied=true时必须逐字复制对应 candidate.text 中的非空连续片段，不得概括、改写、改变标点或拼接；没有可证明目标时设为false并写简短原因",
 	}
 	if !state.PreviousContinuity.IsEmpty() {
 		headCandidate := reviewerEvidenceCandidate(state.Draft, true)
 		data["chapter_head_candidate"] = headCandidate
-		data["chapter_head_window"] = headCandidate.Text
 		data["chapter_head_true_rule"] = "evidence_span_id 必须等于 chapter_head_candidate.id；从 chapter_head_candidate.text 逐字复制一个 trim 后非空、连续、1–300 rune 的片段"
 	} else {
 		data["chapter_head_must_be"] = nil
