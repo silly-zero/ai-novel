@@ -683,7 +683,16 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 			t.Fatalf("reviewer prompt missing %q: %s", value, llm.users[0])
 		}
 	}
-	for _, rule := range []string{"实际发生本章事件", "提前完成", "satisfied=false"} {
+	for _, rule := range []string{
+		"实际发生本章事件",
+		"提前完成",
+		"satisfied=false",
+		"goal.satisfied=true 只表示本章唯一核心目标已在正文中实际完成",
+		"仅提及目标、表达意图、计划以后完成或只完成部分步骤均为 false",
+		"不得把 must_happen 或 end_state 自动等同于 goal 完成",
+		"实际完成 ChapterGoal 后在结尾保留悬念和新的后续行动",
+		"不得以保留悬念为由让本章 ChapterGoal 未完成",
+	} {
 		if !strings.Contains(llm.systems[0], rule) {
 			t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
 		}
@@ -1358,6 +1367,46 @@ func TestReviewerFullDraftAreaSurvivesStructuredError(t *testing.T) {
 	}
 }
 
+func TestReviewerGoalRepairGuidanceDoesNotLeakPrivateValuesOrAffectOtherAreas(t *testing.T) {
+	const (
+		requirementCanary = "CANARY_REQUIREMENT"
+		draftCanary       = "CANARY_DRAFT"
+		evidenceCanary    = "CANARY_EVIDENCE"
+		responseCanary    = "CANARY_RESPONSE"
+	)
+	goalErr := newReviewerDraftEvidenceError(
+		true,
+		requirementCanary+"."+draftCanary,
+		reviewerAreaContractGoal,
+		evidenceCanary+"; "+responseCanary,
+	)
+	for _, secret := range []string{requirementCanary, draftCanary, evidenceCanary, responseCanary} {
+		if strings.Contains(goalErr.structuredRepairInstruction(), secret) {
+			t.Fatalf("goal instruction leaked %q", secret)
+		}
+	}
+	for _, want := range []string{
+		"ChapterGoal 是本章唯一核心目标",
+		"只完成部分步骤均必须设为 false",
+		"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成",
+	} {
+		if !strings.Contains(goalErr.structuredRepairInstruction(), want) {
+			t.Fatalf("goal instruction missing %q", want)
+		}
+	}
+
+	mustHappenErr := newReviewerDraftEvidenceError(
+		true,
+		"contract_assessment.must_happen[0].evidence",
+		reviewerAreaContractMustHappen,
+		"section=chapter_contract; collection=must_happen; index=0",
+	)
+	if strings.Contains(mustHappenErr.structuredRepairInstruction(), "ChapterGoal 是本章唯一核心目标") ||
+		strings.Contains(mustHappenErr.structuredRepairInstruction(), "不得把 MustHappen 或 EndState") {
+		t.Fatalf("must-happen instruction received goal-specific guidance: %s", mustHappenErr.structuredRepairInstruction())
+	}
+}
+
 func TestReviewerFullDraftSupportRepairGuidance(t *testing.T) {
 	canary := "MIDDLE_DRAFT_CANARY"
 	draft := strings.Repeat("文", 1200) + canary + strings.Repeat("文", 1300)
@@ -1369,7 +1418,11 @@ func TestReviewerFullDraftSupportRepairGuidance(t *testing.T) {
 		Draft:           draft,
 		ChapterContract: contract,
 	})
-	if err != nil || result.IsApproved || llm.calls != 2 {
+	if err != nil || result.IsApproved || llm.calls != 2 ||
+		result.ContractAssessment.Goal.Satisfied ||
+		strings.TrimSpace(result.ContractAssessment.Goal.Evidence) == "" ||
+		len([]rune(result.ContractAssessment.Goal.Evidence)) > maxContractAssessmentEvidenceRunes ||
+		strings.TrimSpace(result.Critique) == "" {
 		t.Fatalf("state=%#v err=%v calls=%d", result, err, llm.calls)
 	}
 	repairPrompt := llm.users[1]
@@ -1379,6 +1432,9 @@ func TestReviewerFullDraftSupportRepairGuidance(t *testing.T) {
 		"section=chapter_contract; field=goal",
 		"source_id=reviewer.full_draft.v1",
 		"satisfied=false",
+		"ChapterGoal 是本章唯一核心目标",
+		"仅提及目标、表达意图、计划以后完成或只完成部分步骤均必须设为 false",
+		"不得把 MustHappen 或 EndState 自动等同于 ChapterGoal 完成",
 	} {
 		if !strings.Contains(repairPrompt, want) {
 			t.Fatalf("repair prompt missing %q", want)

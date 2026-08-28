@@ -194,7 +194,17 @@ func TestWriterRunInjectsChapterContractOnRewrite(t *testing.T) {
 			t.Fatalf("writer prompt missing %q: %s", value, llm.userPrompt)
 		}
 	}
-	for _, rule := range []string{"完成全部 MustHappen", "不得执行 MustNotHappen", "章尾达到 EndState"} {
+	for _, rule := range []string{
+		"实际完成 ChapterGoal（章节目标）",
+		"不能只被提及、计划或部分推进",
+		"可直接证明其完成的具体动作、发现、决定或状态变化",
+		"完成全部 MustHappen",
+		"不得执行 MustNotHappen",
+		"章尾达到 EndState",
+		"完成 ChapterGoal 后",
+		"新后续目标",
+		"不得以保留悬念为由让本章 ChapterGoal 未完成",
+	} {
 		if !strings.Contains(llm.systemPrompt, rule) {
 			t.Fatalf("writer system prompt missing %q: %s", rule, llm.systemPrompt)
 		}
