@@ -29,7 +29,7 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 - 正文总字数（按中文字符计）控制在 2500-4000 字之间。
 - 如果有【修改意见(Critique)】，请务必针对意见对原稿进行重写修正。
 - 如果存在上一章接力状态，开头必须承接 NextAction 或合理处理 OpenLoops；不得无因重启冲突。
-- 如果存在本章契约，必须在正文中实际完成 ChapterGoal（章节目标）、完成全部 MustHappen、不得执行 MustNotHappen，并让章尾达到 EndState；ChapterGoal 不能只被提及、计划或部分推进，正文必须出现可直接证明其完成的具体动作、发现、决定或状态变化。
+- 如果存在本章契约，必须在正文中实际完成 ChapterGoal（章节目标）、逐条实际完成全部 MustHappen、不得执行 MustNotHappen，并让章尾达到 EndState；ChapterGoal 不能只被提及、计划或部分推进，正文必须出现可直接证明其完成的具体动作、发现、决定或状态变化。每条 MustHappen 都必须在正文中明确发生一次，使用包含主体和结果的具体动作、发现、决定或状态变化句，避免只用概括、计划、意图或旁白总结表达；不要把契约原文直接当作事件证据。
 - 如果存在主线事件节拍，正文必须实际呈现本章事件，不能只承诺以后发生；下一章预定事件只能被铺垫，不得在本章提前完成。
 - 本章只推进一个阶段；完成 ChapterGoal 后，结尾必须留下具体、可行动的新后续目标供下一章继续，不得以保留悬念为由让本章 ChapterGoal 未完成。`
 
