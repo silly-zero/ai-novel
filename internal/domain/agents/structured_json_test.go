@@ -701,6 +701,15 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 		if !strings.Contains(llm.systems[0], rule) {
 			t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
 		}
+		for _, rule := range []string{
+			"先在 source_id=reviewer.full_draft.v1 的【小说草稿】中查找并逐字复制",
+			"不得把契约、场景卡、背景资料或证据候选中的文字当作正文证据",
+			"草稿中找不到满足条件的证据时必须设为 false",
+		} {
+			if !strings.Contains(llm.systems[0], rule) {
+				t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
+			}
+		}
 	}
 }
 
