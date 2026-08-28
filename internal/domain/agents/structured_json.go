@@ -49,6 +49,10 @@ type structuredRepairDetailer interface {
 	structuredRepairDetail() string
 }
 
+type structuredRepairLocator interface {
+	structuredRepairLocator() string
+}
+
 type structuredRepairInstructor interface {
 	structuredRepairInstruction() string
 }
@@ -195,6 +199,13 @@ func structuredRepairReason(err error) string {
 
 func structuredRepairSupplement(err error) string {
 	var builder strings.Builder
+	var locator structuredRepairLocator
+	if errors.As(err, &locator) {
+		if value := strings.TrimSpace(locator.structuredRepairLocator()); value != "" {
+			builder.WriteString("\n修复定位：")
+			builder.WriteString(value)
+		}
+	}
 	var instructor structuredRepairInstructor
 	if errors.As(err, &instructor) {
 		if instruction := strings.TrimSpace(instructor.structuredRepairInstruction()); instruction != "" {

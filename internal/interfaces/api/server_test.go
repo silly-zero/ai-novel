@@ -602,7 +602,8 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 		"reviewer_array_structure",
 		"reviewer_evidence_head",
 		"reviewer_evidence_tail",
-		"reviewer_evidence_draft",
+		"reviewer_evidence_draft_support",
+		"reviewer_evidence_draft_violation",
 		"reviewer_evidence_span",
 		"reviewer_critique_missing",
 		"reviewer_nullability",
@@ -646,28 +647,35 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 	}
 }
 
-func TestGenerationDiagnosticLogOmitsDeprecatedReviewerAggregate(t *testing.T) {
-	oldWriter, oldFlags := log.Writer(), log.Flags()
-	var output bytes.Buffer
-	log.SetOutput(&output)
-	log.SetFlags(0)
-	t.Cleanup(func() {
-		log.SetOutput(oldWriter)
-		log.SetFlags(oldFlags)
-	})
+func TestGenerationDiagnosticLogOmitsDeprecatedReviewerAggregates(t *testing.T) {
+	for _, code := range []string{
+		"reviewer_validation_other",
+		"reviewer_evidence_draft",
+	} {
+		t.Run(code, func(t *testing.T) {
+			oldWriter, oldFlags := log.Writer(), log.Flags()
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldWriter)
+				log.SetFlags(oldFlags)
+			})
 
-	logGenerationDiagnostic(
-		"generation-log-test",
-		"chapter_generation",
-		"error",
-		"review_protocol_error",
-		workflows.NewWorkflowStageError(
-			workflows.WorkflowStageReviewer,
-			&generationDiagnosticCodeTestError{code: "reviewer_validation_other"},
-		),
-	)
-	if got := output.String(); strings.Contains(got, "issue_code=") {
-		t.Fatalf("deprecated aggregate leaked into log: %s", got)
+			logGenerationDiagnostic(
+				"generation-log-test",
+				"chapter_generation",
+				"error",
+				"review_protocol_error",
+				workflows.NewWorkflowStageError(
+					workflows.WorkflowStageReviewer,
+					&generationDiagnosticCodeTestError{code: code},
+				),
+			)
+			if got := output.String(); strings.Contains(got, "issue_code=") {
+				t.Fatalf("deprecated aggregate leaked into log: %s", got)
+			}
+		})
 	}
 }
 

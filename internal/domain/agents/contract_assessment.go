@@ -152,6 +152,9 @@ func validateChapterContractAssessmentEvidence(
 			"contract_assessment.goal",
 			assessment.Goal.Evidence,
 			draft,
+			true,
+			"contract_goal",
+			"section=chapter_contract; field=goal",
 		); err != nil {
 			return err
 		}
@@ -162,6 +165,9 @@ func validateChapterContractAssessmentEvidence(
 				fmt.Sprintf("contract_assessment.must_happen[%d]", index),
 				item.Evidence,
 				draft,
+				true,
+				"contract_must_happen",
+				fmt.Sprintf("section=chapter_contract; collection=must_happen; index=%d", index),
 			); err != nil {
 				return err
 			}
@@ -173,6 +179,9 @@ func validateChapterContractAssessmentEvidence(
 				fmt.Sprintf("contract_assessment.must_not_happen[%d]", index),
 				item.Evidence,
 				draft,
+				false,
+				"contract_must_not_happen",
+				fmt.Sprintf("section=chapter_contract; collection=must_not_happen; index=%d", index),
 			); err != nil {
 				return err
 			}
@@ -183,17 +192,28 @@ func validateChapterContractAssessmentEvidence(
 			"contract_assessment.end_state",
 			assessment.EndState.Evidence,
 			draft,
+			true,
+			"contract_end_state",
+			"section=chapter_contract; field=end_state",
 		)
 	}
 	return nil
 }
 
-func validateContractEvidenceInDraft(name, evidence, draft string) error {
+func validateContractEvidenceInDraft(
+	name string,
+	evidence string,
+	draft string,
+	support bool,
+	repairKind string,
+	repairLocator string,
+) error {
 	if !strings.Contains(draft, evidence) {
-		return newReviewerValidationError(
-			"reviewer_evidence_draft",
-			"exact_substring",
+		return newReviewerDraftEvidenceError(
+			support,
 			name+".evidence",
+			repairKind,
+			repairLocator,
 		)
 	}
 	return nil
@@ -276,7 +296,14 @@ func decodeCanonConsistencyAssessments(
 			)
 		}
 		if !*item.Satisfied {
-			if err := validateContractEvidenceInDraft(name, evidence, draft); err != nil {
+			if err := validateContractEvidenceInDraft(
+				name,
+				evidence,
+				draft,
+				false,
+				"canon_conflict",
+				fmt.Sprintf("section=canon_constraints; constraint_index=%d", expectedIndex),
+			); err != nil {
 				return nil, err
 			}
 		}

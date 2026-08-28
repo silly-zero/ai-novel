@@ -980,9 +980,12 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		assessment ChapterContractAssessment
-		want       string
+		name         string
+		assessment   ChapterContractAssessment
+		want         string
+		wantCategory string
+		wantKind     string
+		wantLocator  string
 	}{
 		{
 			name: "goal true requires exact quote",
@@ -991,7 +994,10 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 				assessment.Goal.Evidence = "主角查明了密门来源。"
 				return assessment
 			}(),
-			want: "contract_assessment.goal.evidence",
+			want:         "contract_assessment.goal.evidence",
+			wantCategory: reviewerIssueDraftSupport,
+			wantKind:     "contract_goal",
+			wantLocator:  "section=chapter_contract; field=goal",
 		},
 		{
 			name: "must happen true rejects spliced quote",
@@ -1001,7 +1007,10 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 				assessment.MustHappen[0].Evidence = "随后他发现血书。"
 				return assessment
 			}(),
-			want: "contract_assessment.must_happen[0].evidence",
+			want:         "contract_assessment.must_happen[0].evidence",
+			wantCategory: reviewerIssueDraftSupport,
+			wantKind:     "contract_must_happen",
+			wantLocator:  "section=chapter_contract; collection=must_happen; index=0",
 		},
 		{
 			name: "end state true requires exact quote",
@@ -1010,7 +1019,10 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 				assessment.EndState.Evidence = "他准备前往地下祭坛。"
 				return assessment
 			}(),
-			want: "contract_assessment.end_state.evidence",
+			want:         "contract_assessment.end_state.evidence",
+			wantCategory: reviewerIssueDraftSupport,
+			wantKind:     "contract_end_state",
+			wantLocator:  "section=chapter_contract; field=end_state",
 		},
 		{
 			name: "forbidden event false requires violation quote",
@@ -1021,7 +1033,10 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 				}}
 				return assessment
 			}(),
-			want: "contract_assessment.must_not_happen[0].evidence",
+			want:         "contract_assessment.must_not_happen[0].evidence",
+			wantCategory: reviewerIssueDraftViolation,
+			wantKind:     "contract_must_not_happen",
+			wantLocator:  "section=chapter_contract; collection=must_not_happen; index=0",
 		},
 	}
 	for _, test := range tests {
@@ -1029,9 +1044,13 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 			err := validateChapterContractAssessmentEvidence(test.assessment, draft)
 			var validationErr *reviewerValidationError
 			if !errors.As(err, &validationErr) ||
-				validationErr.category != "reviewer_evidence_draft" ||
+				validationErr.category != test.wantCategory ||
 				validationErr.rule != "exact_substring" ||
-				validationErr.fieldPath != test.want {
+				validationErr.fieldPath != test.want ||
+				validationErr.repairKind != test.wantKind ||
+				validationErr.repairLocator != test.wantLocator ||
+				validationErr.repairInstruction == "" ||
+				validationErr.repairReference != "" {
 				t.Fatalf("error = %#v, want field %q", err, test.want)
 			}
 		})
@@ -1252,6 +1271,119 @@ func TestCanonEvidenceEmptyAndTooLongCategories(t *testing.T) {
 				"canon_assessment[0].evidence",
 			)
 		})
+	}
+}
+
+func TestFullDraftEvidenceRepairKindsForCanonAndMainline(t *testing.T) {
+	draft := strings.Repeat("文", 2500)
+	t.Run("canon conflict", func(t *testing.T) {
+		candidate := []byte(`[{"constraint_index":1,"satisfied":false,"evidence":"NOT_IN_DRAFT"}]`)
+		_, err := decodeCanonConsistencyAssessments(
+			candidate,
+			[]CanonConstraint{{Kind: "character_static", Subject: "林云", Statement: "谨慎"}},
+			draft,
+		)
+		var validationErr *reviewerValidationError
+		if !errors.As(err, &validationErr) ||
+			validationErr.category != reviewerIssueDraftViolation ||
+			validationErr.repairKind != "canon_conflict" ||
+			validationErr.repairLocator != "section=canon_constraints; constraint_index=1" {
+			t.Fatalf("error=%#v", err)
+		}
+	})
+
+	t.Run("mainline current support", func(t *testing.T) {
+		candidate := []byte(`{"current_event":{"satisfied":true,"evidence":"NOT_IN_DRAFT"},"next_event":null}`)
+		_, _, err := decodeMainlineAssessment(
+			candidate,
+			MainlineEventBeat{ChapterIndex: 1, CurrentEvent: "当前主线"},
+			draft,
+		)
+		var validationErr *reviewerValidationError
+		if !errors.As(err, &validationErr) ||
+			validationErr.category != reviewerIssueDraftSupport ||
+			validationErr.repairKind != "mainline_current_event" ||
+			validationErr.repairLocator != "section=mainline_beat; field=current_event" {
+			t.Fatalf("error=%#v", err)
+		}
+	})
+
+	t.Run("mainline next violation", func(t *testing.T) {
+		candidate := []byte(`{"current_event":{"satisfied":false,"evidence":"当前事件未完成"},"next_event":{"satisfied":false,"evidence":"NOT_IN_DRAFT"}}`)
+		_, _, err := decodeMainlineAssessment(
+			candidate,
+			MainlineEventBeat{ChapterIndex: 1, CurrentEvent: "当前主线", NextEvent: "下一章主线"},
+			draft,
+		)
+		var validationErr *reviewerValidationError
+		if !errors.As(err, &validationErr) ||
+			validationErr.category != reviewerIssueDraftViolation ||
+			validationErr.repairKind != "mainline_next_early_completion" ||
+			validationErr.repairLocator != "section=mainline_beat; field=next_event" {
+			t.Fatalf("error=%#v", err)
+		}
+	})
+}
+
+func TestReviewerFullDraftSupportRepairGuidance(t *testing.T) {
+	canary := "MIDDLE_DRAFT_CANARY"
+	draft := strings.Repeat("文", 1200) + canary + strings.Repeat("文", 1300)
+	contract := ChapterContract{Goal: "确认线索", MustHappen: []string{"找到怀表"}, EndState: "继续调查"}
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾目标不足"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"概括目标完成"},"must_happen":[{"satisfied":false,"evidence":"没有找到怀表"}],"must_not_happen":[],"end_state":{"satisfied":false,"evidence":"没有继续调查"}},"critique":"需修改"}`
+	repaired := `{"passed":false,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾目标不足"}},"contract_assessment":{"goal":{"satisfied":false,"evidence":"正文没有明确确认线索"},"must_happen":[{"satisfied":false,"evidence":"没有找到怀表"}],"must_not_happen":[],"end_state":{"satisfied":false,"evidence":"没有继续调查"}},"critique":"补写确认线索与后续调查"}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, repaired}}
+	result, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
+		Draft:           draft,
+		ChapterContract: contract,
+	})
+	if err != nil || result.IsApproved || llm.calls != 2 {
+		t.Fatalf("state=%#v err=%v calls=%d", result, err, llm.calls)
+	}
+	repairPrompt := llm.users[1]
+	for _, want := range []string{
+		"category=reviewer_evidence_draft_support",
+		"kind=contract_goal",
+		"section=chapter_contract; field=goal",
+		"source_id=reviewer.full_draft.v1",
+		"satisfied=false",
+	} {
+		if !strings.Contains(repairPrompt, want) {
+			t.Fatalf("repair prompt missing %q", want)
+		}
+	}
+	if strings.Count(repairPrompt, canary) != 1 || strings.Contains(repairPrompt, "<repair_reference>") {
+		t.Fatalf("draft duplicated or referenced: count=%d", strings.Count(repairPrompt, canary))
+	}
+	candidateAt := strings.Index(repairPrompt, "【审查证据候选")
+	draftAt := strings.Index(repairPrompt, canary)
+	detailAt := strings.Index(repairPrompt, "category=reviewer_evidence_draft_support")
+	if !(candidateAt >= 0 && candidateAt < draftAt && draftAt < detailAt) {
+		t.Fatalf("prompt order candidate=%d draft=%d detail=%d", candidateAt, draftAt, detailAt)
+	}
+}
+
+func TestReviewerFullDraftViolationRepairGuidance(t *testing.T) {
+	draft := strings.Repeat("文", 2500)
+	constraints := []CanonConstraint{{Kind: "character_static", Subject: "林云", Statement: "谨慎"}}
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":false,"evidence":"章尾目标不足"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":false,"evidence":"概括性冲突"}],"critique":"冲突"}`
+	repaired := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":null,"canon_assessment":[{"constraint_index":1,"satisfied":true,"evidence":"正文未出现与谨慎性格冲突的行为"}],"critique":""}`
+	llm := &queuedStructuredLLM{responses: []string{invalid, repaired}}
+	result, err := NewReviewerAgent(llm).Run(context.Background(), &GenerationState{
+		Draft:            draft,
+		CanonConstraints: constraints,
+	})
+	if err != nil || !result.IsApproved || llm.calls != 2 {
+		t.Fatalf("state=%#v err=%v calls=%d", result, err, llm.calls)
+	}
+	for _, want := range []string{
+		"category=reviewer_evidence_draft_violation",
+		"kind=canon_conflict",
+		"section=canon_constraints; constraint_index=1",
+		"satisfied=true",
+	} {
+		if !strings.Contains(llm.users[1], want) {
+			t.Fatalf("repair prompt missing %q", want)
+		}
 	}
 }
 
