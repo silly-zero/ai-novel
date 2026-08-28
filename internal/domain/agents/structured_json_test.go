@@ -724,7 +724,8 @@ func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
 	}
 	var validationErr *reviewerValidationError
 	if !errors.As(err, &validationErr) ||
-		validationErr.category != "reviewer_json_shape_type" {
+		validationErr.category != "reviewer_json_shape_type" ||
+		validationErr.SafeReviewArea() != "" {
 		t.Fatalf("typed reviewer cause was not preserved: %#v", err)
 	}
 	for _, secret := range []string{"CANARY_INITIAL_RESPONSE", "CANARY_REPAIRED_RESPONSE"} {
@@ -985,6 +986,7 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 		want         string
 		wantCategory string
 		wantKind     string
+		wantArea     reviewerArea
 		wantLocator  string
 	}{
 		{
@@ -996,7 +998,8 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 			}(),
 			want:         "contract_assessment.goal.evidence",
 			wantCategory: reviewerIssueDraftSupport,
-			wantKind:     "contract_goal",
+			wantKind:     string(reviewerAreaContractGoal),
+			wantArea:     reviewerAreaContractGoal,
 			wantLocator:  "section=chapter_contract; field=goal",
 		},
 		{
@@ -1009,7 +1012,8 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 			}(),
 			want:         "contract_assessment.must_happen[0].evidence",
 			wantCategory: reviewerIssueDraftSupport,
-			wantKind:     "contract_must_happen",
+			wantKind:     string(reviewerAreaContractMustHappen),
+			wantArea:     reviewerAreaContractMustHappen,
 			wantLocator:  "section=chapter_contract; collection=must_happen; index=0",
 		},
 		{
@@ -1021,7 +1025,8 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 			}(),
 			want:         "contract_assessment.end_state.evidence",
 			wantCategory: reviewerIssueDraftSupport,
-			wantKind:     "contract_end_state",
+			wantKind:     string(reviewerAreaContractEndState),
+			wantArea:     reviewerAreaContractEndState,
 			wantLocator:  "section=chapter_contract; field=end_state",
 		},
 		{
@@ -1035,7 +1040,8 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 			}(),
 			want:         "contract_assessment.must_not_happen[0].evidence",
 			wantCategory: reviewerIssueDraftViolation,
-			wantKind:     "contract_must_not_happen",
+			wantKind:     string(reviewerAreaContractMustNotHappen),
+			wantArea:     reviewerAreaContractMustNotHappen,
 			wantLocator:  "section=chapter_contract; collection=must_not_happen; index=0",
 		},
 	}
@@ -1048,6 +1054,8 @@ func TestValidateChapterContractAssessmentEvidenceMatrix(t *testing.T) {
 				validationErr.rule != "exact_substring" ||
 				validationErr.fieldPath != test.want ||
 				validationErr.repairKind != test.wantKind ||
+				validationErr.reviewArea != test.wantArea ||
+				validationErr.SafeReviewArea() != string(test.wantArea) ||
 				validationErr.repairLocator != test.wantLocator ||
 				validationErr.repairInstruction == "" ||
 				validationErr.repairReference != "" {
@@ -1286,7 +1294,8 @@ func TestFullDraftEvidenceRepairKindsForCanonAndMainline(t *testing.T) {
 		var validationErr *reviewerValidationError
 		if !errors.As(err, &validationErr) ||
 			validationErr.category != reviewerIssueDraftViolation ||
-			validationErr.repairKind != "canon_conflict" ||
+			validationErr.repairKind != string(reviewerAreaCanonConflict) ||
+			validationErr.SafeReviewArea() != string(reviewerAreaCanonConflict) ||
 			validationErr.repairLocator != "section=canon_constraints; constraint_index=1" {
 			t.Fatalf("error=%#v", err)
 		}
@@ -1302,7 +1311,8 @@ func TestFullDraftEvidenceRepairKindsForCanonAndMainline(t *testing.T) {
 		var validationErr *reviewerValidationError
 		if !errors.As(err, &validationErr) ||
 			validationErr.category != reviewerIssueDraftSupport ||
-			validationErr.repairKind != "mainline_current_event" ||
+			validationErr.repairKind != string(reviewerAreaMainlineCurrentEvent) ||
+			validationErr.SafeReviewArea() != string(reviewerAreaMainlineCurrentEvent) ||
 			validationErr.repairLocator != "section=mainline_beat; field=current_event" {
 			t.Fatalf("error=%#v", err)
 		}
@@ -1318,11 +1328,34 @@ func TestFullDraftEvidenceRepairKindsForCanonAndMainline(t *testing.T) {
 		var validationErr *reviewerValidationError
 		if !errors.As(err, &validationErr) ||
 			validationErr.category != reviewerIssueDraftViolation ||
-			validationErr.repairKind != "mainline_next_early_completion" ||
+			validationErr.repairKind != string(reviewerAreaMainlineNextEarlyCompletion) ||
+			validationErr.SafeReviewArea() != string(reviewerAreaMainlineNextEarlyCompletion) ||
 			validationErr.repairLocator != "section=mainline_beat; field=next_event" {
 			t.Fatalf("error=%#v", err)
 		}
 	})
+}
+
+func TestReviewerFullDraftAreaSurvivesStructuredError(t *testing.T) {
+	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"NOT_IN_DRAFT"},"must_happen":[],"must_not_happen":[],"end_state":{"satisfied":false,"evidence":"未达到结束状态"}},"critique":""}`
+	_, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{invalid, invalid}}).Run(
+		context.Background(),
+		&GenerationState{
+			Draft: strings.Repeat("文", 2500),
+			ChapterContract: ChapterContract{
+				Goal:     "完成目标",
+				EndState: "达到结束状态",
+			},
+		},
+	)
+	var diagnosticCoder interface{ SafeDiagnosticCode() string }
+	var areaCoder interface{ SafeReviewArea() string }
+	if !errors.As(err, &diagnosticCoder) ||
+		diagnosticCoder.SafeDiagnosticCode() != reviewerIssueDraftSupport ||
+		!errors.As(err, &areaCoder) ||
+		areaCoder.SafeReviewArea() != string(reviewerAreaContractGoal) {
+		t.Fatalf("error=%#v", err)
+	}
 }
 
 func TestReviewerFullDraftSupportRepairGuidance(t *testing.T) {

@@ -44,7 +44,7 @@ func decodeMainlineAssessment(
 			current.Evidence,
 			draft,
 			true,
-			"mainline_current_event",
+			reviewerAreaMainlineCurrentEvent,
 			"section=mainline_beat; field=current_event",
 		); err != nil {
 			return MainlineAssessment{}, false, err
@@ -82,7 +82,7 @@ func decodeMainlineAssessment(
 			next.Evidence,
 			draft,
 			false,
-			"mainline_next_early_completion",
+			reviewerAreaMainlineNextEarlyCompletion,
 			"section=mainline_beat; field=next_event",
 		); err != nil {
 			return MainlineAssessment{}, false, err

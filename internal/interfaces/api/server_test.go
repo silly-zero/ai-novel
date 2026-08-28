@@ -22,8 +22,9 @@ import (
 )
 
 type generationDiagnosticCodeTestError struct {
-	code  string
-	cause error
+	code       string
+	reviewArea string
+	cause      error
 }
 
 func (e *generationDiagnosticCodeTestError) Error() string {
@@ -36,6 +37,10 @@ func (e *generationDiagnosticCodeTestError) Unwrap() error {
 
 func (e *generationDiagnosticCodeTestError) SafeDiagnosticCode() string {
 	return e.code
+}
+
+func (e *generationDiagnosticCodeTestError) SafeReviewArea() string {
+	return e.reviewArea
 }
 
 type generationTestEngine struct {
@@ -644,6 +649,158 @@ func TestGenerationDiagnosticLogAllowsReviewerProtocolIssues(t *testing.T) {
 				t.Fatalf("log leaked cause: %s", got)
 			}
 		})
+	}
+}
+
+func TestGenerationDiagnosticLogAllowsReviewerDraftAreas(t *testing.T) {
+	tests := []struct {
+		issueCode string
+		area      string
+	}{
+		{issueCode: "reviewer_evidence_draft_support", area: "contract_goal"},
+		{issueCode: "reviewer_evidence_draft_support", area: "contract_must_happen"},
+		{issueCode: "reviewer_evidence_draft_support", area: "contract_end_state"},
+		{issueCode: "reviewer_evidence_draft_support", area: "mainline_current_event"},
+		{issueCode: "reviewer_evidence_draft_violation", area: "contract_must_not_happen"},
+		{issueCode: "reviewer_evidence_draft_violation", area: "canon_conflict"},
+		{issueCode: "reviewer_evidence_draft_violation", area: "mainline_next_early_completion"},
+	}
+	for _, test := range tests {
+		t.Run(test.area, func(t *testing.T) {
+			oldWriter, oldFlags := log.Writer(), log.Flags()
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldWriter)
+				log.SetFlags(oldFlags)
+			})
+
+			logGenerationDiagnostic(
+				"generation-log-test",
+				"chapter_generation",
+				"error",
+				"review_protocol_error",
+				workflows.NewWorkflowStageError(
+					workflows.WorkflowStageReviewer,
+					&generationDiagnosticCodeTestError{
+						code:       test.issueCode,
+						reviewArea: test.area,
+						cause:      errors.New("CANARY_CAUSE"),
+					},
+				),
+			)
+			got := output.String()
+			for _, want := range []string{
+				"workflow_stage=reviewer",
+				"issue_code=" + test.issueCode,
+				"review_area=" + test.area,
+			} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("log missing %q: %s", want, got)
+				}
+			}
+			if strings.Contains(got, "CANARY_CAUSE") {
+				t.Fatalf("log leaked cause: %s", got)
+			}
+		})
+	}
+}
+
+func TestGenerationDiagnosticLogRejectsUnsafeReviewerAreas(t *testing.T) {
+	tests := []struct {
+		name       string
+		stage      workflows.WorkflowStage
+		issueCode  string
+		reviewArea string
+	}{
+		{name: "unknown area", stage: workflows.WorkflowStageReviewer, issueCode: "reviewer_evidence_draft_support", reviewArea: "CANARY_AREA\nforged=true"},
+		{name: "wrong issue", stage: workflows.WorkflowStageReviewer, issueCode: "reviewer_evidence_tail", reviewArea: "contract_goal"},
+		{name: "wrong stage", stage: workflows.WorkflowStageArchitect, issueCode: "reviewer_evidence_draft_support", reviewArea: "contract_goal"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			oldWriter, oldFlags := log.Writer(), log.Flags()
+			var output bytes.Buffer
+			log.SetOutput(&output)
+			log.SetFlags(0)
+			t.Cleanup(func() {
+				log.SetOutput(oldWriter)
+				log.SetFlags(oldFlags)
+			})
+
+			logGenerationDiagnostic(
+				"generation-log-test",
+				"chapter_generation",
+				"error",
+				"review_protocol_error",
+				workflows.NewWorkflowStageError(
+					test.stage,
+					&generationDiagnosticCodeTestError{
+						code:       test.issueCode,
+						reviewArea: test.reviewArea,
+					},
+				),
+			)
+			got := output.String()
+			if strings.Contains(got, "review_area=") ||
+				strings.Contains(got, "CANARY_AREA") ||
+				strings.Contains(got, "forged=true") {
+				t.Fatalf("unsafe review area leaked: %s", got)
+			}
+		})
+	}
+}
+
+type changingGenerationDiagnosticTestError struct {
+	codeCalls int
+	areaCalls int
+}
+
+func (e *changingGenerationDiagnosticTestError) Error() string {
+	return "changing diagnostic test error"
+}
+
+func (e *changingGenerationDiagnosticTestError) SafeDiagnosticCode() string {
+	e.codeCalls++
+	if e.codeCalls == 1 {
+		return "reviewer_evidence_draft_support"
+	}
+	return "CANARY_ISSUE\nforged=true"
+}
+
+func (e *changingGenerationDiagnosticTestError) SafeReviewArea() string {
+	e.areaCalls++
+	if e.areaCalls == 1 {
+		return "contract_goal"
+	}
+	return "CANARY_AREA\nforged=true"
+}
+
+func TestGenerationDiagnosticLogReadsAllowlistedValuesOnce(t *testing.T) {
+	oldWriter, oldFlags := log.Writer(), log.Flags()
+	var output bytes.Buffer
+	log.SetOutput(&output)
+	log.SetFlags(0)
+	t.Cleanup(func() {
+		log.SetOutput(oldWriter)
+		log.SetFlags(oldFlags)
+	})
+
+	diagnosticErr := &changingGenerationDiagnosticTestError{}
+	logGenerationDiagnostic(
+		"generation-log-test",
+		"chapter_generation",
+		"error",
+		"review_protocol_error",
+		workflows.NewWorkflowStageError(workflows.WorkflowStageReviewer, diagnosticErr),
+	)
+	got := output.String()
+	if diagnosticErr.codeCalls != 1 || diagnosticErr.areaCalls != 1 ||
+		!strings.Contains(got, "issue_code=reviewer_evidence_draft_support") ||
+		!strings.Contains(got, "review_area=contract_goal") ||
+		strings.Contains(got, "CANARY") || strings.Contains(got, "forged=true") {
+		t.Fatalf("calls=(%d,%d) log=%s", diagnosticErr.codeCalls, diagnosticErr.areaCalls, got)
 	}
 }
 
@@ -2550,7 +2707,8 @@ func TestHandleGenerateChapterReviewerProtocolFailureIsSanitized(t *testing.T) {
 	}
 	if !strings.Contains(body, `"error_code":"review_protocol_error"`) ||
 		!strings.Contains(body, `"message":"审查响应异常，请稍后重试"`) ||
-		strings.Contains(body, "workflow_stage") || strings.Contains(body, "issue_code") {
+		strings.Contains(body, "workflow_stage") || strings.Contains(body, "issue_code") ||
+		strings.Contains(body, "review_area") {
 		t.Fatalf("terminal = %s", body)
 	}
 	gotLog := output.String()

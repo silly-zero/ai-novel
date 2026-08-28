@@ -153,7 +153,7 @@ func validateChapterContractAssessmentEvidence(
 			assessment.Goal.Evidence,
 			draft,
 			true,
-			"contract_goal",
+			reviewerAreaContractGoal,
 			"section=chapter_contract; field=goal",
 		); err != nil {
 			return err
@@ -166,7 +166,7 @@ func validateChapterContractAssessmentEvidence(
 				item.Evidence,
 				draft,
 				true,
-				"contract_must_happen",
+				reviewerAreaContractMustHappen,
 				fmt.Sprintf("section=chapter_contract; collection=must_happen; index=%d", index),
 			); err != nil {
 				return err
@@ -180,7 +180,7 @@ func validateChapterContractAssessmentEvidence(
 				item.Evidence,
 				draft,
 				false,
-				"contract_must_not_happen",
+				reviewerAreaContractMustNotHappen,
 				fmt.Sprintf("section=chapter_contract; collection=must_not_happen; index=%d", index),
 			); err != nil {
 				return err
@@ -193,7 +193,7 @@ func validateChapterContractAssessmentEvidence(
 			assessment.EndState.Evidence,
 			draft,
 			true,
-			"contract_end_state",
+			reviewerAreaContractEndState,
 			"section=chapter_contract; field=end_state",
 		)
 	}
@@ -205,14 +205,14 @@ func validateContractEvidenceInDraft(
 	evidence string,
 	draft string,
 	support bool,
-	repairKind string,
+	reviewArea reviewerArea,
 	repairLocator string,
 ) error {
 	if !strings.Contains(draft, evidence) {
 		return newReviewerDraftEvidenceError(
 			support,
 			name+".evidence",
-			repairKind,
+			reviewArea,
 			repairLocator,
 		)
 	}
@@ -301,7 +301,7 @@ func decodeCanonConsistencyAssessments(
 				evidence,
 				draft,
 				false,
-				"canon_conflict",
+				reviewerAreaCanonConflict,
 				fmt.Sprintf("section=canon_constraints; constraint_index=%d", expectedIndex),
 			); err != nil {
 				return nil, err

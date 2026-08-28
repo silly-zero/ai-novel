@@ -52,11 +52,24 @@ const (
 	reviewerIssueEvidenceTooLong = "reviewer_evidence_too_long"
 )
 
+type reviewerArea string
+
+const (
+	reviewerAreaContractGoal                reviewerArea = "contract_goal"
+	reviewerAreaContractMustHappen          reviewerArea = "contract_must_happen"
+	reviewerAreaContractEndState            reviewerArea = "contract_end_state"
+	reviewerAreaMainlineCurrentEvent        reviewerArea = "mainline_current_event"
+	reviewerAreaContractMustNotHappen       reviewerArea = "contract_must_not_happen"
+	reviewerAreaCanonConflict               reviewerArea = "canon_conflict"
+	reviewerAreaMainlineNextEarlyCompletion reviewerArea = "mainline_next_early_completion"
+)
+
 type reviewerValidationError struct {
 	category          string
 	rule              string
 	fieldPath         string
 	expected          *int
+	reviewArea        reviewerArea
 	repairKind        string
 	repairLocator     string
 	repairInstruction string
@@ -93,7 +106,7 @@ const (
 func newReviewerDraftEvidenceError(
 	support bool,
 	fieldPath string,
-	repairKind string,
+	reviewArea reviewerArea,
 	repairLocator string,
 ) *reviewerValidationError {
 	category := reviewerIssueDraftViolation
@@ -108,7 +121,8 @@ func newReviewerDraftEvidenceError(
 		category:          category,
 		rule:              "exact_substring",
 		fieldPath:         fieldPath,
-		repairKind:        repairKind,
+		reviewArea:        reviewArea,
+		repairKind:        string(reviewArea),
 		repairLocator:     repairLocator,
 		repairInstruction: instruction,
 	}
@@ -153,6 +167,10 @@ func (e *reviewerValidationError) Error() string {
 
 func (e *reviewerValidationError) SafeDiagnosticCode() string {
 	return e.category
+}
+
+func (e *reviewerValidationError) SafeReviewArea() string {
+	return string(e.reviewArea)
 }
 
 func (e *reviewerValidationError) structuredRepairDetail() string {

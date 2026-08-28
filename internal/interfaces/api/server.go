@@ -2686,8 +2686,22 @@ var generationDiagnosticIssueCodes = map[string]bool{
 	"reviewer_evidence_too_long":             true,
 }
 
+var generationDiagnosticReviewAreas = map[string]bool{
+	"contract_goal":                  true,
+	"contract_must_happen":           true,
+	"contract_end_state":             true,
+	"mainline_current_event":         true,
+	"contract_must_not_happen":       true,
+	"canon_conflict":                 true,
+	"mainline_next_early_completion": true,
+}
+
 type safeGenerationDiagnosticCoder interface {
 	SafeDiagnosticCode() string
+}
+
+type safeGenerationReviewAreaCoder interface {
+	SafeReviewArea() string
 }
 
 func logGenerationDiagnostic(
@@ -2723,9 +2737,24 @@ func logGenerationDiagnostic(
 
 	issueCode := ""
 	var diagnosticCoder safeGenerationDiagnosticCoder
-	if errors.As(diagnosticErr, &diagnosticCoder) &&
-		generationDiagnosticIssueCodes[diagnosticCoder.SafeDiagnosticCode()] {
-		issueCode = diagnosticCoder.SafeDiagnosticCode()
+	if errors.As(diagnosticErr, &diagnosticCoder) {
+		diagnosticCode := diagnosticCoder.SafeDiagnosticCode()
+		if generationDiagnosticIssueCodes[diagnosticCode] {
+			issueCode = diagnosticCode
+		}
+	}
+
+	reviewArea := ""
+	if workflowStage == string(workflows.WorkflowStageReviewer) &&
+		(issueCode == "reviewer_evidence_draft_support" ||
+			issueCode == "reviewer_evidence_draft_violation") {
+		var areaCoder safeGenerationReviewAreaCoder
+		if errors.As(diagnosticErr, &areaCoder) {
+			area := areaCoder.SafeReviewArea()
+			if generationDiagnosticReviewAreas[area] {
+				reviewArea = area
+			}
+		}
 	}
 
 	fields := fmt.Sprintf(
@@ -2745,6 +2774,9 @@ func logGenerationDiagnostic(
 	}
 	if issueCode != "" {
 		fields += " issue_code=" + issueCode
+	}
+	if reviewArea != "" {
+		fields += " review_area=" + reviewArea
 	}
 	log.Print(fields)
 }
