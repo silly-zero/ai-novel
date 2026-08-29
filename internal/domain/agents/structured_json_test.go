@@ -697,27 +697,30 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 		"输入为 0 时必须输出 []",
 		"不得输出 null、占位项、虚构项或补项",
 		"constraint_index 必须连续为 1..N",
+		"先在 source_id=reviewer.full_draft.v1 的【小说草稿】中查找并逐字复制",
+		"不得把契约、场景卡、背景资料或证据候选中的文字当作正文证据",
+		"草稿中找不到满足条件的证据时必须设为 false",
+		"按 goal、must_happen、must_not_happen、end_state 的顺序逐项处理",
+		"先从 source_id=reviewer.full_draft.v1 的小说草稿中选定一段",
+		"不要先根据契约文字填写 true，再事后编造或概括 evidence",
 	} {
 		if !strings.Contains(llm.systems[0], rule) {
 			t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
 		}
-		for _, rule := range []string{
-			"先在 source_id=reviewer.full_draft.v1 的【小说草稿】中查找并逐字复制",
-			"不得把契约、场景卡、背景资料或证据候选中的文字当作正文证据",
-			"草稿中找不到满足条件的证据时必须设为 false",
-		} {
-			if !strings.Contains(llm.systems[0], rule) {
-				t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
-			}
-		}
-		for _, rule := range []string{
-			"按 goal、must_happen、must_not_happen、end_state 的顺序逐项处理",
-			"先从 source_id=reviewer.full_draft.v1 的小说草稿中选定一段",
-			"不要先根据契约文字填写 true，再事后编造或概括 evidence",
-		} {
-			if !strings.Contains(llm.systems[0], rule) {
-				t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
-			}
+	}
+	prompt := llm.users[0]
+	candidateAt := strings.Index(prompt, "【连续性证据候选")
+	draftAt := strings.Index(prompt, "【小说草稿｜source_id=reviewer.full_draft.v1")
+	if candidateAt < 0 || draftAt < 0 || draftAt > candidateAt {
+		t.Fatalf("reviewer prompt source order candidate=%d draft=%d", candidateAt, draftAt)
+	}
+	for _, rule := range []string{
+		"仅适用于 continuity_assessment.chapter_head/chapter_tail",
+		"不得用于 contract_assessment、mainline_assessment 或 canon_assessment",
+		"contract/mainline/canon 的正向或违规正文证据只能从这里逐字复制",
+	} {
+		if !strings.Contains(prompt, rule) {
+			t.Fatalf("reviewer user prompt missing %q: %s", rule, prompt)
 		}
 	}
 }
@@ -1600,11 +1603,11 @@ func TestReviewerFullDraftSupportRepairGuidance(t *testing.T) {
 	if strings.Count(repairPrompt, canary) != 1 || strings.Contains(repairPrompt, "<repair_reference>") {
 		t.Fatalf("draft duplicated or referenced: count=%d", strings.Count(repairPrompt, canary))
 	}
-	candidateAt := strings.Index(repairPrompt, "【审查证据候选")
+	candidateAt := strings.Index(repairPrompt, "【连续性证据候选")
 	draftAt := strings.Index(repairPrompt, canary)
 	detailAt := strings.Index(repairPrompt, "category=reviewer_evidence_draft_support")
-	if !(candidateAt >= 0 && candidateAt < draftAt && draftAt < detailAt) {
-		t.Fatalf("prompt order candidate=%d draft=%d detail=%d", candidateAt, draftAt, detailAt)
+	if !(draftAt >= 0 && draftAt < candidateAt && candidateAt < detailAt) {
+		t.Fatalf("prompt order draft=%d candidate=%d detail=%d", draftAt, candidateAt, detailAt)
 	}
 }
 
