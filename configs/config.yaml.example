@@ -27,6 +27,9 @@ llm:
     model: "glm-4.5-air"
     max_tokens: 2048
     timeout: "5m"
+  reviewer:
+    # 留空时复用 llm.chat.model；仅模型不同才创建 Reviewer 专用客户端。
+    model: ""
   embedding:
     api_key: "your-api-key"
     base_url: "https://open.bigmodel.cn/api/paas/v4/"

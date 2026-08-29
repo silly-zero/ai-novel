@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -31,6 +32,26 @@ func main() {
 		log.Printf("服务运行失败: %v", err)
 		os.Exit(1)
 	}
+}
+
+func openAIChatConfig(config config.ChatConfig) llm.ChatConfig {
+	return llm.ChatConfig{
+		APIKey:    config.APIKey,
+		BaseURL:   config.BaseURL,
+		Model:     config.Model,
+		MaxTokens: config.MaxTokens,
+		Timeout:   config.Timeout,
+	}
+}
+
+func reviewerChatConfig(chat config.ChatConfig, reviewerModel string) (llm.ChatConfig, bool) {
+	reviewerModel = strings.TrimSpace(reviewerModel)
+	if reviewerModel == "" || reviewerModel == strings.TrimSpace(chat.Model) {
+		return llm.ChatConfig{}, false
+	}
+	result := openAIChatConfig(chat)
+	result.Model = reviewerModel
+	return result, true
 }
 
 func run() error {
@@ -66,13 +87,7 @@ func run() error {
 	eventBus := eventbus.NewInternalEventBus()
 
 	chatConfig := cfg.LLM.Chat
-	llmAdapter, err := llm.NewOpenAIAdapter(startupCtx, llm.ChatConfig{
-		APIKey:    chatConfig.APIKey,
-		BaseURL:   chatConfig.BaseURL,
-		Model:     chatConfig.Model,
-		MaxTokens: chatConfig.MaxTokens,
-		Timeout:   chatConfig.Timeout,
-	})
+	llmAdapter, err := llm.NewOpenAIAdapter(startupCtx, openAIChatConfig(chatConfig))
 	if err != nil {
 		return fmt.Errorf("初始化 LLM 失败: %w", err)
 	}
@@ -120,11 +135,19 @@ func run() error {
 		}
 	}
 
+	reviewerLLM := agents.LLMService(llmAdapter)
+	if reviewerConfig, ok := reviewerChatConfig(chatConfig, cfg.LLM.Reviewer.Model); ok {
+		reviewerLLM, err = llm.NewOpenAIAdapter(startupCtx, reviewerConfig)
+		if err != nil {
+			return fmt.Errorf("初始化 Reviewer LLM 失败: %w", err)
+		}
+	}
+
 	architect := agents.NewArchitectAgent(llmAdapter)
 	plot := agents.NewPlotAgent(llmAdapter)
 	director := agents.NewDirectorAgent(llmAdapter)
 	writer := agents.NewWriterAgent(llmAdapter)
-	reviewer := agents.NewReviewerAgent(llmAdapter)
+	reviewer := agents.NewReviewerAgent(reviewerLLM)
 	librarian := agents.NewLibrarianAgent(llmAdapter, embedder, vStore, charRepo, worldRepo, agents.LibrarianConfig{
 		SearchOptions: memory.SearchOptions{
 			CandidateLimit: cfg.RAG.CandidateLimit,

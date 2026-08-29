@@ -47,6 +47,7 @@ var environmentKeys = []string{
 	"LLM_CHAT_MODEL",
 	"LLM_CHAT_MAX_TOKENS",
 	"LLM_CHAT_TIMEOUT",
+	"LLM_REVIEWER_MODEL",
 	"LLM_EMBEDDING_API_KEY",
 	"LLM_EMBEDDING_BASE_URL",
 	"LLM_EMBEDDING_MODEL",
@@ -109,6 +110,9 @@ func TestLoadConfigReadsSplitModelConfiguration(t *testing.T) {
 		cfg.LLM.Chat.Timeout != 5*time.Minute {
 		t.Fatalf("chat config = %#v", cfg.LLM.Chat)
 	}
+	if cfg.LLM.Reviewer.Model != "" {
+		t.Fatalf("reviewer config = %#v, want inherited default", cfg.LLM.Reviewer)
+	}
 	if cfg.LLM.Embedding.APIKey != "embedding-test-key" ||
 		cfg.LLM.Embedding.BaseURL != "https://embedding.example/v1" ||
 		cfg.LLM.Embedding.Model != "embedding-model" ||
@@ -119,6 +123,53 @@ func TestLoadConfigReadsSplitModelConfiguration(t *testing.T) {
 		cfg.RAG.ResultLimit != 4 || cfg.RAG.MaxQueries != 4 ||
 		cfg.RAG.MaxContextMemories != 8 {
 		t.Fatalf("rag defaults = %#v", cfg.RAG)
+	}
+}
+
+func TestLoadConfigReadsOptionalReviewerModel(t *testing.T) {
+	cfg, err := loadTestConfig(t, strings.Replace(
+		validConfig,
+		"  embedding:\n",
+		"  reviewer:\n    model: reviewer-model\n  embedding:\n",
+		1,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.Reviewer.Model != "reviewer-model" {
+		t.Fatalf("reviewer config = %#v", cfg.LLM.Reviewer)
+	}
+}
+
+func TestLoadConfigReviewerModelEnvironmentOverridesYAML(t *testing.T) {
+	unsetTestEnvironment(t)
+	t.Setenv("LLM_REVIEWER_MODEL", " env-reviewer-model ")
+	dir := t.TempDir()
+	content := strings.Replace(validConfig, "  embedding:\n", "  reviewer:\n    model: yaml-reviewer-model\n  embedding:\n", 1)
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.Reviewer.Model != "env-reviewer-model" {
+		t.Fatalf("reviewer config = %#v", cfg.LLM.Reviewer)
+	}
+}
+
+func TestLoadConfigBlankReviewerModelInheritsChat(t *testing.T) {
+	cfg, err := loadTestConfig(t, strings.Replace(
+		validConfig,
+		"  embedding:\n",
+		"  reviewer:\n    model: '   '\n  embedding:\n",
+		1,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLM.Reviewer.Model != "" {
+		t.Fatalf("reviewer config = %#v", cfg.LLM.Reviewer)
 	}
 }
 

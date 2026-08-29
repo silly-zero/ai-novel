@@ -50,7 +50,12 @@ type PostgresConfig struct {
 
 type LLMConfig struct {
 	Chat      ChatConfig      `mapstructure:"chat"`
+	Reviewer  ReviewerConfig  `mapstructure:"reviewer"`
 	Embedding EmbeddingConfig `mapstructure:"embedding"`
+}
+
+type ReviewerConfig struct {
+	Model string `mapstructure:"model"`
 }
 
 type ChatConfig struct {
@@ -153,6 +158,7 @@ func LoadConfig(configPath string) (*Config, error) {
 		"llm.chat.model":         "LLM_CHAT_MODEL",
 		"llm.chat.max_tokens":    "LLM_CHAT_MAX_TOKENS",
 		"llm.chat.timeout":       "LLM_CHAT_TIMEOUT",
+		"llm.reviewer.model":     "LLM_REVIEWER_MODEL",
 		"llm.embedding.api_key":  "LLM_EMBEDDING_API_KEY",
 		"llm.embedding.base_url": "LLM_EMBEDDING_BASE_URL",
 		"llm.embedding.model":    "LLM_EMBEDDING_MODEL",
@@ -475,6 +481,7 @@ func validate(cfg *Config) error {
 	cfg.LLM.Chat.APIKey = strings.TrimSpace(cfg.LLM.Chat.APIKey)
 	cfg.LLM.Chat.BaseURL = strings.TrimSpace(cfg.LLM.Chat.BaseURL)
 	cfg.LLM.Chat.Model = strings.TrimSpace(cfg.LLM.Chat.Model)
+	cfg.LLM.Reviewer.Model = strings.TrimSpace(cfg.LLM.Reviewer.Model)
 	cfg.LLM.Embedding.APIKey = strings.TrimSpace(cfg.LLM.Embedding.APIKey)
 	cfg.LLM.Embedding.BaseURL = strings.TrimSpace(cfg.LLM.Embedding.BaseURL)
 	cfg.LLM.Embedding.Model = strings.TrimSpace(cfg.LLM.Embedding.Model)
