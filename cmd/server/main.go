@@ -44,13 +44,17 @@ func openAIChatConfig(config config.ChatConfig) llm.ChatConfig {
 	}
 }
 
-func reviewerChatConfig(chat config.ChatConfig, reviewerModel string) (llm.ChatConfig, bool) {
-	reviewerModel = strings.TrimSpace(reviewerModel)
-	if reviewerModel == "" || reviewerModel == strings.TrimSpace(chat.Model) {
+func reviewerChatConfig(chat config.ChatConfig, reviewer config.ReviewerConfig) (llm.ChatConfig, bool) {
+	reviewerModel := strings.TrimSpace(reviewer.Model)
+	if reviewerModel == "" {
+		reviewerModel = strings.TrimSpace(chat.Model)
+	}
+	if reviewerModel == strings.TrimSpace(chat.Model) && reviewer.Temperature == nil {
 		return llm.ChatConfig{}, false
 	}
 	result := openAIChatConfig(chat)
 	result.Model = reviewerModel
+	result.Temperature = reviewer.Temperature
 	return result, true
 }
 
@@ -136,7 +140,7 @@ func run() error {
 	}
 
 	reviewerLLM := agents.LLMService(llmAdapter)
-	if reviewerConfig, ok := reviewerChatConfig(chatConfig, cfg.LLM.Reviewer.Model); ok {
+	if reviewerConfig, ok := reviewerChatConfig(chatConfig, cfg.LLM.Reviewer); ok {
 		reviewerLLM, err = llm.NewOpenAIAdapter(startupCtx, reviewerConfig)
 		if err != nil {
 			return fmt.Errorf("初始化 Reviewer LLM 失败: %w", err)

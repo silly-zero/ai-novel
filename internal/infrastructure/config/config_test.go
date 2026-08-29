@@ -48,6 +48,7 @@ var environmentKeys = []string{
 	"LLM_CHAT_MAX_TOKENS",
 	"LLM_CHAT_TIMEOUT",
 	"LLM_REVIEWER_MODEL",
+	"LLM_REVIEWER_TEMPERATURE",
 	"LLM_EMBEDDING_API_KEY",
 	"LLM_EMBEDDING_BASE_URL",
 	"LLM_EMBEDDING_MODEL",
@@ -110,7 +111,7 @@ func TestLoadConfigReadsSplitModelConfiguration(t *testing.T) {
 		cfg.LLM.Chat.Timeout != 5*time.Minute {
 		t.Fatalf("chat config = %#v", cfg.LLM.Chat)
 	}
-	if cfg.LLM.Reviewer.Model != "" {
+	if cfg.LLM.Reviewer.Model != "" || cfg.LLM.Reviewer.Temperature != nil {
 		t.Fatalf("reviewer config = %#v, want inherited default", cfg.LLM.Reviewer)
 	}
 	if cfg.LLM.Embedding.APIKey != "embedding-test-key" ||
@@ -170,6 +171,62 @@ func TestLoadConfigBlankReviewerModelInheritsChat(t *testing.T) {
 	}
 	if cfg.LLM.Reviewer.Model != "" {
 		t.Fatalf("reviewer config = %#v", cfg.LLM.Reviewer)
+	}
+}
+
+func TestLoadConfigReadsReviewerTemperature(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		content string
+		env     string
+		want    float32
+	}{
+		{name: "yaml zero", content: "  reviewer:\n    temperature: 0\n", want: 0},
+		{name: "yaml decimal", content: "  reviewer:\n    temperature: 0.2\n", want: 0.2},
+		{name: "environment zero", env: "0", want: 0},
+		{name: "environment overrides yaml", content: "  reviewer:\n    temperature: 0.8\n", env: "0.1", want: 0.1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			unsetTestEnvironment(t)
+			if test.env != "" {
+				t.Setenv("LLM_REVIEWER_TEMPERATURE", test.env)
+			}
+			dir := t.TempDir()
+			content := validConfig
+			if test.content != "" {
+				content = strings.Replace(content, "  embedding:\n", test.content+"  embedding:\n", 1)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := LoadConfig(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.LLM.Reviewer.Temperature == nil || *cfg.LLM.Reviewer.Temperature != test.want {
+				t.Fatalf("reviewer config = %#v", cfg.LLM.Reviewer)
+			}
+		})
+	}
+}
+
+func TestLoadConfigRejectsInvalidReviewerTemperature(t *testing.T) {
+	for _, value := range []string{"", "invalid", "NaN", "Inf", "-0.1", "2.1"} {
+		t.Run(value, func(t *testing.T) {
+			unsetTestEnvironment(t)
+			t.Setenv("LLM_REVIEWER_TEMPERATURE", value)
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(validConfig), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(dir)
+			if err == nil || !strings.Contains(err.Error(), "llm.reviewer.temperature") {
+				t.Fatalf("error = %v", err)
+			}
+			if strings.Contains(err.Error(), "chat-test-key") || strings.Contains(err.Error(), "embedding-test-key") {
+				t.Fatalf("error exposed API key: %v", err)
+			}
+		})
 	}
 }
 

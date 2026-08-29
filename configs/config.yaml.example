@@ -28,8 +28,10 @@ llm:
     max_tokens: 2048
     timeout: "5m"
   reviewer:
-    # 留空时复用 llm.chat.model；仅模型不同才创建 Reviewer 专用客户端。
+    # 留空时复用 llm.chat.model；仅模型或 temperature 不同时创建 Reviewer 专用客户端。
     model: ""
+    # 未设置时使用 provider 默认；严格结构化 Reviewer 可显式设置为 0。
+    temperature: null
   embedding:
     api_key: "your-api-key"
     base_url: "https://open.bigmodel.cn/api/paas/v4/"

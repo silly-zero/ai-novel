@@ -106,8 +106,10 @@ ai-novel/
        max_tokens: 2048
        timeout: "5m"
      reviewer:
-       # 可选；留空时复用 chat.model，只覆盖模型名并继承同一 endpoint、凭据、token 上限与 timeout。
+       # 可选；留空时复用 chat.model，并继承同一 endpoint、凭据、token 上限与 timeout。
        model: ""
+       # 可选；未设置时使用 provider 默认，严格结构化审查可显式设置为 0。
+       temperature: null
      embedding:
        api_key: "your-api-key"
        base_url: "https://open.bigmodel.cn/api/paas/v4/"
@@ -121,7 +123,7 @@ ai-novel/
    - `DATABASE_POSTGRES_HOST`、`DATABASE_POSTGRES_PORT`、`DATABASE_POSTGRES_USER`、`DATABASE_POSTGRES_PASSWORD`、`DATABASE_POSTGRES_DBNAME`、`DATABASE_POSTGRES_SSLMODE`、`DATABASE_POSTGRES_ENABLE_FOREIGN_KEYS`
    - `APP_LISTEN_ADDR`、`APP_CORS_ORIGINS`、`APP_MAX_CONCURRENT_GENERATIONS`、`APP_READ_HEADER_TIMEOUT`、`APP_READ_TIMEOUT`、`APP_WRITE_TIMEOUT`、`APP_IDLE_TIMEOUT`、`APP_GENERATION_TIMEOUT`、`APP_STARTUP_TIMEOUT`、`APP_SHUTDOWN_TIMEOUT`
    - `LLM_CHAT_API_KEY`、`LLM_CHAT_BASE_URL`、`LLM_CHAT_MODEL`、`LLM_CHAT_MAX_TOKENS`、`LLM_CHAT_TIMEOUT`
-   - `LLM_REVIEWER_MODEL`（可选；留空或与 `LLM_CHAT_MODEL` 相同时复用默认 Chat 客户端）
+   - `LLM_REVIEWER_MODEL`、`LLM_REVIEWER_TEMPERATURE`（均可选；模型留空时继承 `LLM_CHAT_MODEL`，temperature 未设置时使用 provider 默认）
    - `LLM_EMBEDDING_API_KEY`、`LLM_EMBEDDING_BASE_URL`、`LLM_EMBEDDING_MODEL`、`LLM_EMBEDDING_TIMEOUT`
    - `RAG_MIN_SIMILARITY`、`RAG_CANDIDATE_LIMIT`、`RAG_RESULT_LIMIT`、`RAG_MAX_QUERIES`、`RAG_MAX_CONTEXT_MEMORIES`
 

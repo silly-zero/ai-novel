@@ -21,21 +21,23 @@ type OpenAIAdapter struct {
 }
 
 type ChatConfig struct {
-	APIKey    string
-	BaseURL   string
-	Model     string
-	MaxTokens int
-	Timeout   time.Duration
+	APIKey      string
+	BaseURL     string
+	Model       string
+	MaxTokens   int
+	Temperature *float32
+	Timeout     time.Duration
 }
 
 func NewOpenAIAdapter(ctx context.Context, config ChatConfig) (*OpenAIAdapter, error) {
 	maxTokens := config.MaxTokens
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:    config.APIKey,
-		BaseURL:   config.BaseURL,
-		Model:     config.Model,
-		MaxTokens: &maxTokens,
-		Timeout:   config.Timeout,
+		APIKey:      config.APIKey,
+		BaseURL:     config.BaseURL,
+		Model:       config.Model,
+		MaxTokens:   &maxTokens,
+		Temperature: config.Temperature,
+		Timeout:     config.Timeout,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to init eino openai component: %w", err)

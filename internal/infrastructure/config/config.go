@@ -55,7 +55,8 @@ type LLMConfig struct {
 }
 
 type ReviewerConfig struct {
-	Model string `mapstructure:"model"`
+	Model       string   `mapstructure:"model"`
+	Temperature *float32 `mapstructure:"-"`
 }
 
 type ChatConfig struct {
@@ -153,16 +154,17 @@ func LoadConfig(configPath string) (*Config, error) {
 	}
 
 	for key, env := range map[string]string{
-		"llm.chat.api_key":       "LLM_CHAT_API_KEY",
-		"llm.chat.base_url":      "LLM_CHAT_BASE_URL",
-		"llm.chat.model":         "LLM_CHAT_MODEL",
-		"llm.chat.max_tokens":    "LLM_CHAT_MAX_TOKENS",
-		"llm.chat.timeout":       "LLM_CHAT_TIMEOUT",
-		"llm.reviewer.model":     "LLM_REVIEWER_MODEL",
-		"llm.embedding.api_key":  "LLM_EMBEDDING_API_KEY",
-		"llm.embedding.base_url": "LLM_EMBEDDING_BASE_URL",
-		"llm.embedding.model":    "LLM_EMBEDDING_MODEL",
-		"llm.embedding.timeout":  "LLM_EMBEDDING_TIMEOUT",
+		"llm.chat.api_key":         "LLM_CHAT_API_KEY",
+		"llm.chat.base_url":        "LLM_CHAT_BASE_URL",
+		"llm.chat.model":           "LLM_CHAT_MODEL",
+		"llm.chat.max_tokens":      "LLM_CHAT_MAX_TOKENS",
+		"llm.chat.timeout":         "LLM_CHAT_TIMEOUT",
+		"llm.reviewer.model":       "LLM_REVIEWER_MODEL",
+		"llm.reviewer.temperature": "LLM_REVIEWER_TEMPERATURE",
+		"llm.embedding.api_key":    "LLM_EMBEDDING_API_KEY",
+		"llm.embedding.base_url":   "LLM_EMBEDDING_BASE_URL",
+		"llm.embedding.model":      "LLM_EMBEDDING_MODEL",
+		"llm.embedding.timeout":    "LLM_EMBEDDING_TIMEOUT",
 	} {
 		if err := v.BindEnv(key, env); err != nil {
 			return nil, fmt.Errorf("bind %s: %w", key, err)
@@ -201,6 +203,10 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 	embeddingTimeout, err := parseDuration(v, "llm.embedding.timeout")
+	if err != nil {
+		return nil, err
+	}
+	reviewerTemperature, err := parseOptionalFloat(v, "llm.reviewer.temperature", 0, 2)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +265,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	cfg.App.ShutdownTimeout = appDurations["app.shutdown_timeout"]
 	cfg.LLM.Chat.MaxTokens = maxTokens
 	cfg.LLM.Chat.Timeout = chatTimeout
+	cfg.LLM.Reviewer.Temperature = reviewerTemperature
 	cfg.LLM.Embedding.Timeout = embeddingTimeout
 	cfg.RAG.MinSimilarity = ragMinSimilarity
 	cfg.RAG.CandidateLimit = ragLimits["rag.candidate_limit"]
@@ -270,6 +277,25 @@ func LoadConfig(configPath string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+func parseOptionalFloat(v *viper.Viper, key string, min, max float32) (*float32, error) {
+	if !v.IsSet(key) {
+		return nil, nil
+	}
+	raw := strings.TrimSpace(v.GetString(key))
+	if raw == "" {
+		return nil, fmt.Errorf("%s must be a number", key)
+	}
+	parsed, err := strconv.ParseFloat(raw, 32)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return nil, fmt.Errorf("%s must be a finite number", key)
+	}
+	value := float32(parsed)
+	if value < min || value > max {
+		return nil, fmt.Errorf("%s must be between %g and %g", key, min, max)
+	}
+	return &value, nil
 }
 
 func parseUnitFloat(v *viper.Viper, key string) (float32, error) {

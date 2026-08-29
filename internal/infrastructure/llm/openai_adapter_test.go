@@ -98,6 +98,55 @@ func TestNewOpenAIAdapterAppliesModelAndMaxTokens(t *testing.T) {
 	}
 }
 
+func TestNewOpenAIAdapterAppliesOptionalTemperature(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		temperature *float32
+		wantField   bool
+	}{
+		{name: "unset"},
+		{name: "explicit zero", temperature: float32Pointer(0), wantField: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			requests := make(chan map[string]any, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				var body map[string]any
+				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+					t.Fatal(err)
+				}
+				requests <- body
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+			}))
+			defer server.Close()
+
+			adapter, err := NewOpenAIAdapter(context.Background(), ChatConfig{
+				APIKey:      "chat-test-key",
+				BaseURL:     server.URL,
+				Model:       "chat-test-model",
+				MaxTokens:   100,
+				Temperature: test.temperature,
+				Timeout:     time.Second,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := adapter.GenerateJSONObject(context.Background(), "system", "user"); err != nil {
+				t.Fatal(err)
+			}
+			body := <-requests
+			value, exists := body["temperature"]
+			if exists != test.wantField || exists && value != float64(0) {
+				t.Fatalf("request body = %#v", body)
+			}
+		})
+	}
+}
+
+func float32Pointer(value float32) *float32 {
+	return &value
+}
+
 func TestOpenAIAdapterJSONObjectModeIsPerCall(t *testing.T) {
 	requests := make(chan map[string]any, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

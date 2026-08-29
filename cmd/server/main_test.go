@@ -16,19 +16,30 @@ func TestReviewerChatConfig(t *testing.T) {
 		Timeout:   2 * time.Minute,
 	}
 
-	for _, reviewerModel := range []string{"", "   ", "default-model", " default-model "} {
-		if got, ok := reviewerChatConfig(chat, reviewerModel); ok || got.Model != "" {
-			t.Fatalf("reviewerChatConfig(%q) = %#v, %v; want reuse", reviewerModel, got, ok)
+	for _, reviewer := range []config.ReviewerConfig{
+		{},
+		{Model: "   "},
+		{Model: "default-model"},
+		{Model: " default-model "},
+	} {
+		if got, ok := reviewerChatConfig(chat, reviewer); ok || got.Model != "" {
+			t.Fatalf("reviewerChatConfig(%#v) = %#v, %v; want reuse", reviewer, got, ok)
 		}
 	}
 
-	got, ok := reviewerChatConfig(chat, " reviewer-model ")
+	got, ok := reviewerChatConfig(chat, config.ReviewerConfig{Model: " reviewer-model "})
 	if !ok {
 		t.Fatal("different reviewer model reused default adapter")
 	}
 	if got.APIKey != chat.APIKey || got.BaseURL != chat.BaseURL ||
 		got.Model != "reviewer-model" || got.MaxTokens != chat.MaxTokens ||
-		got.Timeout != chat.Timeout {
+		got.Timeout != chat.Timeout || got.Temperature != nil {
 		t.Fatalf("reviewer config = %#v", got)
+	}
+
+	temperature := float32(0)
+	got, ok = reviewerChatConfig(chat, config.ReviewerConfig{Temperature: &temperature})
+	if !ok || got.Model != chat.Model || got.Temperature == nil || *got.Temperature != 0 {
+		t.Fatalf("zero-temperature reviewer config = %#v, %v", got, ok)
 	}
 }
