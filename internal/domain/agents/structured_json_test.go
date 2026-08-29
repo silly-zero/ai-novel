@@ -710,6 +710,15 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 				t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
 			}
 		}
+		for _, rule := range []string{
+			"按 goal、must_happen、must_not_happen、end_state 的顺序逐项处理",
+			"先从 source_id=reviewer.full_draft.v1 的小说草稿中选定一段",
+			"不要先根据契约文字填写 true，再事后编造或概括 evidence",
+		} {
+			if !strings.Contains(llm.systems[0], rule) {
+				t.Fatalf("reviewer system prompt missing %q: %s", rule, llm.systems[0])
+			}
+		}
 	}
 }
 
