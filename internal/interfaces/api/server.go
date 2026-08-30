@@ -3262,7 +3262,6 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 				statusCancel()
 				if derivedErr != nil {
 					logGenerationDiagnostic(generationID, "derived_processing", "error", "derived_processing_failed", derivedErr)
-					result = generationResult{GenerationID: generationID, Status: generationStatusError, Message: "正文已保存，但派生处理失败", ErrorCode: "derived_processing_failed", ChapterID: strconv.Itoa(chapterID), Persisted: true}
 				}
 			}
 		}

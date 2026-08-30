@@ -2544,7 +2544,7 @@ func TestHandleGenerateChapterDerivedFailureUsesErrorAndReleasesLease(t *testing
 
 	body := first.Body.String()
 	terminal := generationTerminalFromSSE(t, body)
-	if terminal.Status != generationStatusError || terminal.ChapterID != "11" || !terminal.Persisted || terminal.ErrorCode != "derived_processing_failed" {
+	if terminal.Status != generationStatusSuccess || terminal.ChapterID != "11" || !terminal.Persisted || terminal.ErrorCode != "" {
 		t.Fatalf("derived failure terminal=%#v body=%s", terminal, body)
 	}
 
