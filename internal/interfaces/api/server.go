@@ -1308,7 +1308,7 @@ func validateGenerationChapterSave(
 	if state == nil {
 		return errors.New("generation state is nil")
 	}
-	if !state.IsApproved {
+	if !state.IsApproved && !state.SaveEligible {
 		return errors.New("generation state is not approved")
 	}
 	issues := agents.ValidateGeneratedContent(state.Draft)
@@ -3214,7 +3214,8 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		finalState, runErr := s.engine.RunChapterGeneration(ctx, prepared)
 		failedStage := "chapter_generation"
-		if runErr == nil && persist && finalState != nil {
+		canSaveQualityExhausted := finalState != nil && finalState.SaveEligible && errors.Is(runErr, workflows.ErrReviewRetryLimit)
+		if (runErr == nil || canSaveQualityExhausted) && persist && finalState != nil {
 			if chapterTarget.ID > 0 {
 				finalState.ChapterID = strconv.Itoa(chapterTarget.ID)
 			}
@@ -3224,6 +3225,9 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			finalState, runErr = s.engine.ExtractContinuity(ctx, finalState)
 			if finalState != nil {
 				finalState.GenerationID = generationID
+			}
+			if runErr == nil && canSaveQualityExhausted {
+				runErr = nil
 			}
 		}
 		cause := s.generationGuard.finish(novelIDInt, generationID)

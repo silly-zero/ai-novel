@@ -1928,6 +1928,33 @@ func TestEntGenerationChapterStoreRejectsInvalidSaveBeforeMutation(t *testing.T)
 	}
 }
 
+func TestValidateGenerationChapterSaveAllowsQualityExhaustedDraft(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:                      strings.Repeat("文", 2500),
+			SaveEligible:               true,
+			ContinuityExtractionFailed: true,
+		},
+	)
+	if err != nil {
+		t.Fatalf("validateGenerationChapterSave() error = %v", err)
+	}
+}
+
+func TestValidateGenerationChapterSaveRejectsQualityExhaustedInvalidContent(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:        strings.Repeat("文", 2500) + "【场景卡】",
+			SaveEligible: true,
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "prompt_label_leak") {
+		t.Fatalf("validateGenerationChapterSave() error = %v", err)
+	}
+}
+
 func TestValidateGenerationChapterSaveAllowsApprovedValidContent(t *testing.T) {
 	err := validateGenerationChapterSave(
 		&generationChapterTarget{ID: 11},

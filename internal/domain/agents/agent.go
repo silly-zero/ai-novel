@@ -133,6 +133,7 @@ type GenerationState struct {
 	Continuity                 ContinuityPacket             // 当前草稿对应的结构化接力状态
 	ContinuityExtractionFailed bool                         `json:"-"` // 本次接力提取失败，允许保存正文但不提供接力包
 	ReviewFailureArea          string                       `json:"-"` // Reviewer 最终质量失败的固定安全区域
+	SaveEligible               bool                         `json:"-"` // 质量重试耗尽后允许基础校验通过的正文保存
 	RetryCount                 int                          // 重试次数
 	IsApproved                 bool                         // 是否通过审查
 }

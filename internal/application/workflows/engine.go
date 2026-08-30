@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ai-novel/studio/internal/domain/agents"
@@ -225,6 +226,10 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	}
 
 	if !finalState.IsApproved {
+		if finalState.RetryCount >= 3 && strings.TrimSpace(finalState.Draft) != "" &&
+			len(agents.ValidateGeneratedContent(finalState.Draft)) == 0 {
+			finalState.SaveEligible = true
+		}
 		return finalState, NewWorkflowStageError(
 			WorkflowStageReviewer,
 			&reviewRetryLimitError{reviewArea: finalState.ReviewFailureArea},

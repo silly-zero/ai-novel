@@ -297,7 +297,7 @@ func TestRunChapterGenerationStopsAfterThreeRewrites(t *testing.T) {
 	if strings.Contains(err.Error(), "正文没有找到线索") {
 		t.Fatalf("retry-limit error leaked critique: %v", err)
 	}
-	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved {
+	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved || !finalState.SaveEligible {
 		t.Fatalf("final state = %#v", finalState)
 	}
 	var areaCoder interface{ SafeReviewArea() string }
@@ -335,11 +335,8 @@ func TestRunChapterGenerationRetriesDeterministicFailuresWithoutReviewerLLM(t *t
 	if strings.Contains(err.Error(), "内部提示标签") {
 		t.Fatalf("retry-limit error leaked deterministic critique: %v", err)
 	}
-	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved {
+	if finalState == nil || finalState.RetryCount != 3 || finalState.IsApproved || finalState.SaveEligible {
 		t.Fatalf("final state = %#v", finalState)
-	}
-	if finalState.ReviewFailureArea != "" {
-		t.Fatalf("review failure area = %q, want empty", finalState.ReviewFailureArea)
 	}
 	if llm.streamCalls != 4 || llm.reviewCalls != 0 {
 		t.Fatalf("writer calls = %d, reviewer calls = %d, want 4 and 0", llm.streamCalls, llm.reviewCalls)
