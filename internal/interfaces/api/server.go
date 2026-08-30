@@ -19,11 +19,15 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"github.com/ai-novel/studio/ent"
 	"github.com/ai-novel/studio/ent/chapter"
+	"github.com/ai-novel/studio/ent/chapterderivedtask"
+	"github.com/ai-novel/studio/ent/character"
 	"github.com/ai-novel/studio/ent/characterstateversion"
 	"github.com/ai-novel/studio/ent/memoryentry"
 	"github.com/ai-novel/studio/ent/novel"
 	"github.com/ai-novel/studio/ent/predicate"
+	"github.com/ai-novel/studio/ent/relationship"
 	"github.com/ai-novel/studio/ent/relationshipstateversion"
+	"github.com/ai-novel/studio/ent/worldsetting"
 	"github.com/ai-novel/studio/ent/worldstateversion"
 	"github.com/ai-novel/studio/internal/application/workflows"
 	"github.com/ai-novel/studio/internal/domain/agents"
@@ -1620,6 +1624,7 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	s.router.Post("/api/v1/novels", s.HandleCreateNovel)
 	s.router.Get("/api/v1/novels/{id}", s.HandleGetNovel)
 	s.router.Put("/api/v1/novels/{id}", s.HandleUpdateNovel)
+	s.router.Delete("/api/v1/novels/{id}", s.HandleDeleteNovel)
 	s.router.Get("/api/v1/novels/{id}/chapters", s.HandleListChapters)
 	s.router.Post("/api/v1/novels/{id}/chapters", s.HandleCreateChapter)
 	s.router.Get("/api/v1/chapters/{id}", s.HandleGetChapter)
@@ -1966,6 +1971,111 @@ func (s *Server) HandleGetNovel(w http.ResponseWriter, r *http.Request) {
 		"item":     item,
 		"chapters": chapters,
 	})
+}
+
+type DeleteNovelRequest struct {
+	Confirm bool `json:"confirm"`
+}
+
+func (s *Server) HandleDeleteNovel(w http.ResponseWriter, r *http.Request) {
+	if s.db == nil {
+		http.Error(w, "database not configured", http.StatusInternalServerError)
+		return
+	}
+	id, err := parseIntParam(chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req DeleteNovelRequest
+	if err := decodeStrictJSONObjectWithLimit(w, r, &req, []string{"confirm"}, 1<<20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !req.Confirm {
+		http.Error(w, "confirm must be true", http.StatusBadRequest)
+		return
+	}
+	if !s.generationGuard.acquireMutation(id) {
+		http.Error(w, "该小说正在生成或修改，不能删除", http.StatusConflict)
+		return
+	}
+	defer s.generationGuard.releaseMutation(id)
+	if err := deleteNovelWithIntegrity(r.Context(), s.db, id); err != nil {
+		if ent.IsNotFound(err) {
+			http.Error(w, "novel not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "novel deletion failed", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func deleteNovelWithIntegrity(ctx context.Context, client *ent.Client, novelID int) error {
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	txClient := tx.Client()
+	if err := lockGenerationNovel(ctx, txClient, novelID); err != nil {
+		return err
+	}
+	if _, err := txClient.Novel.Query().Where(novel.ID(novelID)).Only(ctx); err != nil {
+		return err
+	}
+	chapterRows, err := txClient.Chapter.Query().Where(chapter.HasNovelWith(novel.ID(novelID))).All(ctx)
+	if err != nil {
+		return err
+	}
+	chapterIDs := make([]int, 0, len(chapterRows))
+	for _, row := range chapterRows {
+		chapterIDs = append(chapterIDs, row.ID)
+	}
+	if len(chapterIDs) > 0 {
+		if _, err := txClient.CharacterStateVersion.Delete().Where(characterstateversion.ChapterIDIn(chapterIDs...)).Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := txClient.WorldStateVersion.Delete().Where(worldstateversion.ChapterIDIn(chapterIDs...)).Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := txClient.RelationshipStateVersion.Delete().Where(relationshipstateversion.ChapterIDIn(chapterIDs...)).Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := txClient.ChapterDerivedTask.Delete().Where(chapterderivedtask.ChapterIDIn(chapterIDs...)).Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := txClient.Chapter.Delete().Where(chapter.IDIn(chapterIDs...)).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	novelKey := strconv.Itoa(novelID)
+	if _, err := txClient.Relationship.Delete().Where(relationship.NovelID(novelKey)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := txClient.Character.Delete().Where(character.NovelID(novelKey)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := txClient.WorldSetting.Delete().Where(worldsetting.NovelID(novelKey)).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := txClient.MemoryEntry.Delete().Where(memoryentry.NovelID(novelKey)).Exec(ctx); err != nil {
+		return err
+	}
+	if err := txClient.Novel.DeleteOneID(novelID).Exec(ctx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func (s *Server) HandleUpdateNovel(w http.ResponseWriter, r *http.Request) {
