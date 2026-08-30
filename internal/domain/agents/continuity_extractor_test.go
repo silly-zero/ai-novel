@@ -183,8 +183,8 @@ func TestContinuityExtractorExtractsFinalDraftPacket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Continuity.LastBeat != "主角推开密门。" || got.Continuity.NextAction != "主角跨入密门。" || len(got.Continuity.OpenLoops) != 1 {
-		t.Fatalf("continuity = %#v", got.Continuity)
+	if got.Continuity.LastBeat != "主角推开密门。" || got.Continuity.NextAction != "主角跨入密门。" || len(got.Continuity.OpenLoops) != 1 || got.ContinuityExtractionFailed {
+		t.Fatalf("continuity = %#v, extraction_failed = %v", got.Continuity, got.ContinuityExtractionFailed)
 	}
 	if !strings.Contains(llm.user, "最终正文") || !strings.Contains(llm.user, "检查密门") {
 		t.Fatalf("extractor prompt = %s", llm.user)
@@ -255,7 +255,7 @@ func TestContinuityExtractorRepairsUnsupportedEvidenceOnce(t *testing.T) {
 	}
 }
 
-func TestContinuityExtractorInvalidEvidencePreservesPacket(t *testing.T) {
+func TestContinuityExtractorInvalidEvidencePreservesPacketAndDowngrades(t *testing.T) {
 	llm := &continuityExtractorLLM{responses: []string{
 		`{"last_beat":"不存在的结尾","open_loops":[],"next_action":"不存在的动作"}`,
 		`{"last_beat":"仍不存在","open_loops":[],"next_action":"仍不存在"}`,
@@ -265,13 +265,14 @@ func TestContinuityExtractorInvalidEvidencePreservesPacket(t *testing.T) {
 		Continuity: ContinuityPacket{LastBeat: "旧结尾", NextAction: "旧动作"},
 	}
 	got, err := NewContinuityExtractor(llm).Extract(context.Background(), state)
-	if err == nil || llm.calls != 2 {
+	if err != nil || llm.calls != 2 {
 		t.Fatalf("state = %#v, err = %v, calls = %d", got, err, llm.calls)
 	}
-	if got.Continuity.LastBeat != "旧结尾" || got.Continuity.NextAction != "旧动作" {
-		t.Fatalf("continuity changed: %#v", got.Continuity)
+	if got.Continuity.LastBeat != "旧结尾" || got.Continuity.NextAction != "旧动作" || !got.ContinuityExtractionFailed {
+		t.Fatalf("continuity = %#v, extraction_failed = %v", got.Continuity, got.ContinuityExtractionFailed)
 	}
 }
+
 func TestContinuityExtractorDoesNotReplacePacketOnFailure(t *testing.T) {
 	providerErr := errors.New("provider failed")
 	state := &GenerationState{
@@ -281,6 +282,9 @@ func TestContinuityExtractorDoesNotReplacePacketOnFailure(t *testing.T) {
 	got, err := NewContinuityExtractor(&continuityExtractorLLM{err: providerErr}).Extract(context.Background(), state)
 	if !errors.Is(err, providerErr) {
 		t.Fatalf("error = %v", err)
+	}
+	if got.ContinuityExtractionFailed {
+		t.Fatal("provider failure was marked as extraction failure")
 	}
 	if got.Continuity.LastBeat != "旧结尾" || got.Continuity.NextAction != "旧动作" {
 		t.Fatalf("continuity changed: %#v", got.Continuity)

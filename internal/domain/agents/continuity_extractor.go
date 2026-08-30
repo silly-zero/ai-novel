@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -45,10 +46,20 @@ func (e *ContinuityExtractor) Extract(ctx context.Context, state *GenerationStat
 		},
 	)
 	if err != nil {
+		if isContinuityStructuredFailure(err) {
+			state.ContinuityExtractionFailed = true
+			return state, nil
+		}
 		return state, fmt.Errorf("extract chapter continuity: %w", err)
 	}
 	state.Continuity = packet
+	state.ContinuityExtractionFailed = false
 	return state, nil
+}
+
+func isContinuityStructuredFailure(err error) bool {
+	var structuredErr *structuredResponseError
+	return errors.As(err, &structuredErr)
 }
 
 func decodeContinuityPacket(candidate []byte) (ContinuityPacket, error) {

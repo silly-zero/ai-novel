@@ -104,36 +104,37 @@ type MainlineEventBeat struct {
 
 // GenerationState 承载一次小说生成任务中的上下文状态
 type GenerationState struct {
-	GenerationID         string
-	StreamSink           GenerationStreamSink
-	NovelID              string
-	ChapterID            string
-	ChapterIndex         int                          // 当前章节序号
-	Idea                 string                       // 初始想法 (一句话 Idea)
-	FullOutline          string                       // 全书大纲 (由 Architect Agent 生成)
-	ExistingOutline      string                       // 已有全书大纲（续写时参考）
-	OutlineStart         int                          // 生成大纲的起始章
-	OutlineEnd           int                          // 生成大纲的结束章
-	Outline              string                       // 当前章节剧情大纲 (由 Plot Agent 生成)
-	ChapterContract      ChapterContract              // 当前章节必须遵守的结构化剧情契约
-	MainlineBeat         MainlineEventBeat            // 从全书逐章大纲确定性选出的当前/下一主线节拍
-	MainlineAssessment   MainlineAssessment           // 最终草稿的主线事件节拍评估
-	ContractAssessment   ChapterContractAssessment    // 最终草稿对章节契约的瞬时评估
-	ContinuityAssessment ContinuityAssessment         // 最终草稿的章首承接与章尾接力评估
-	CanonConstraints     []CanonConstraint            // 本次上下文准备冻结的角色/世界账本约束
-	CanonAssessment      []CanonConsistencyAssessment // 最终草稿对账本约束的瞬时评估
-	SceneCard            string                       // 导演拆解出的场景卡
-	EditorNotes          string                       // 人工干预：作者/编辑给出的指令或限制
-	ManualContext        string                       // 人工补充的资料片段（优先注入到 Context）
-	ContextPrepared      bool                         // 本次生成是否已完成上下文准备
-	Context              string                       // 图书管理员检索出的背景资料 (角色设定、前情提要)
-	PreviousContinuity   ContinuityPacket             // 上一章的结构化接力状态
-	Draft                string                       // 主笔生成的草稿
-	Critique             string                       // 审查员的修改意见
-	Continuity           ContinuityPacket             // 当前草稿对应的结构化接力状态
-	ReviewFailureArea    string                       `json:"-"` // Reviewer 最终质量失败的固定安全区域
-	RetryCount           int                          // 重试次数
-	IsApproved           bool                         // 是否通过审查
+	GenerationID               string
+	StreamSink                 GenerationStreamSink
+	NovelID                    string
+	ChapterID                  string
+	ChapterIndex               int                          // 当前章节序号
+	Idea                       string                       // 初始想法 (一句话 Idea)
+	FullOutline                string                       // 全书大纲 (由 Architect Agent 生成)
+	ExistingOutline            string                       // 已有全书大纲（续写时参考）
+	OutlineStart               int                          // 生成大纲的起始章
+	OutlineEnd                 int                          // 生成大纲的结束章
+	Outline                    string                       // 当前章节剧情大纲 (由 Plot Agent 生成)
+	ChapterContract            ChapterContract              // 当前章节必须遵守的结构化剧情契约
+	MainlineBeat               MainlineEventBeat            // 从全书逐章大纲确定性选出的当前/下一主线节拍
+	MainlineAssessment         MainlineAssessment           // 最终草稿的主线事件节拍评估
+	ContractAssessment         ChapterContractAssessment    // 最终草稿对章节契约的瞬时评估
+	ContinuityAssessment       ContinuityAssessment         // 最终草稿的章首承接与章尾接力评估
+	CanonConstraints           []CanonConstraint            // 本次上下文准备冻结的角色/世界账本约束
+	CanonAssessment            []CanonConsistencyAssessment // 最终草稿对账本约束的瞬时评估
+	SceneCard                  string                       // 导演拆解出的场景卡
+	EditorNotes                string                       // 人工干预：作者/编辑给出的指令或限制
+	ManualContext              string                       // 人工补充的资料片段（优先注入到 Context）
+	ContextPrepared            bool                         // 本次生成是否已完成上下文准备
+	Context                    string                       // 图书管理员检索出的背景资料 (角色设定、前情提要)
+	PreviousContinuity         ContinuityPacket             // 上一章的结构化接力状态
+	Draft                      string                       // 主笔生成的草稿
+	Critique                   string                       // 审查员的修改意见
+	Continuity                 ContinuityPacket             // 当前草稿对应的结构化接力状态
+	ContinuityExtractionFailed bool                         `json:"-"` // 本次接力提取失败，允许保存正文但不提供接力包
+	ReviewFailureArea          string                       `json:"-"` // Reviewer 最终质量失败的固定安全区域
+	RetryCount                 int                          // 重试次数
+	IsApproved                 bool                         // 是否通过审查
 }
 
 // Agent 是所有智能体的顶级抽象接口

@@ -1945,6 +1945,24 @@ func TestValidateGenerationChapterSaveAllowsApprovedValidContent(t *testing.T) {
 	}
 }
 
+func TestValidateGenerationChapterSaveAllowsContinuityExtractionFailure(t *testing.T) {
+	err := validateGenerationChapterSave(
+		&generationChapterTarget{ID: 11},
+		&agents.GenerationState{
+			Draft:                      strings.Repeat("文", 2500),
+			IsApproved:                 true,
+			ContinuityExtractionFailed: true,
+			Continuity: agents.ContinuityPacket{
+				LastBeat:   "正文不存在的结尾",
+				NextAction: "正文不存在的动作",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("validateGenerationChapterSave() error = %v", err)
+	}
+}
+
 func TestValidateGenerationChapterSaveRejectsUnsupportedContinuityEvidence(t *testing.T) {
 	err := validateGenerationChapterSave(
 		&generationChapterTarget{ID: 11},

@@ -1322,8 +1322,10 @@ func validateGenerationChapterSave(
 			strings.Join(codes, ", "),
 		)
 	}
-	if err := agents.ValidateContinuityPacketAgainstDraft(&state.Continuity, state.Draft); err != nil {
-		return fmt.Errorf("generated chapter continuity failed validation: %w", err)
+	if !state.ContinuityExtractionFailed {
+		if err := agents.ValidateContinuityPacketAgainstDraft(&state.Continuity, state.Draft); err != nil {
+			return fmt.Errorf("generated chapter continuity failed validation: %w", err)
+		}
 	}
 	return nil
 }
