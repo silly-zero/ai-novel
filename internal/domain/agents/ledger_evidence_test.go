@@ -120,11 +120,12 @@ func TestWorldEvidenceRepairAndFailurePersistence(t *testing.T) {
 
 	failedRepo := &worldRepositoryFake{}
 	failedLLM := &queuedStructuredLLM{responses: []string{invalid, invalid}}
-	if _, err := NewWorldAgent(failedLLM, failedRepo).Run(context.Background(), state); err == nil {
-		t.Fatal("invalid world evidence was accepted")
+	failedState, err := NewWorldAgent(failedLLM, failedRepo).Run(context.Background(), state)
+	if err != nil || failedState != state {
+		t.Fatalf("world failure was not downgraded: state=%#v err=%v", failedState, err)
 	}
-	if failedRepo.saveCalls != 0 {
-		t.Fatalf("world saves=%d", failedRepo.saveCalls)
+	if failedRepo.saveCalls != 1 || failedRepo.savedSetting != nil {
+		t.Fatalf("world saves=%d setting=%#v", failedRepo.saveCalls, failedRepo.savedSetting)
 	}
 }
 

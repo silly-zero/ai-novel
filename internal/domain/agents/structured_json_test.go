@@ -2443,12 +2443,12 @@ func TestCharacterAndWorldValidatorsRejectBeforePersistence(t *testing.T) {
 
 	worldRepo := &worldRepositoryFake{}
 	worldLLM := &queuedStructuredLLM{responses: []string{"null", "null"}}
-	_, err = NewWorldAgent(worldLLM, worldRepo).Run(
+	worldState, err := NewWorldAgent(worldLLM, worldRepo).Run(
 		context.Background(),
-		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
+		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "正文"},
 	)
-	if err == nil || worldRepo.saveCalls != 0 {
-		t.Fatalf("world error = %v, saves = %d", err, worldRepo.saveCalls)
+	if err != nil || worldState == nil || worldRepo.saveCalls != 1 {
+		t.Fatalf("world fallback = %#v, error = %v, saves = %d", worldState, err, worldRepo.saveCalls)
 	}
 }
 

@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,6 +13,11 @@ const (
 	maxWorldDescriptionRunes = 2000
 	maxWorldStateRunes       = 1000
 )
+
+func isWorldStructuredFailure(err error) bool {
+	var structuredErr *structuredResponseError
+	return errors.As(err, &structuredErr)
+}
 
 func validateWorldSettingUpdates(updates *[]WorldSettingUpdate) error {
 	if *updates == nil {
@@ -146,15 +152,17 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 
 	systemPrompt := `你是一位专业的小说世界状态分析师。你的任务是从【本章正文】提取世界观账本更新。
 要求：
-1. 只输出正文中有明确依据的地理、武学、势力、宝物或规则。
-2. description 是设定的静态基线；已有设定不要改写，若正文没有新静态信息可留空。
-3. current_state 是本章结束时的动态快照，必须描述该设定当前的位置归属、开放封闭、控制者、损毁变化或生效状态。
-4. 新设定必须填写 description 和 current_state；已有设定必须根据正文填写 current_state。
-5. 所有 evidence 必须逐字复制自【本章正文】中的一段连续原文，长度不超过1000字；不得改写、概括或引用现有账本。
-6. 每个设定必须提供 identity_evidence 和 state_evidence；仅当新增或补齐 category/description 时提供 static_evidence，否则留空。
-7. 正文没有明确证据时不要输出该更新。
-8. 不要用空字符串清除已有信息。
-9. 只输出合法 JSON 数组，不要输出 Markdown 或解释：
+1. 只记录【本章正文】中明确发生、且能从正文直接定位的地理、武学、势力、宝物或规则变化；不得根据剧情推测、补写或创造正文未出现的设定。
+2. 如果正文没有可确认的世界观新增或状态变化，必须严格输出空数组 []，不要输出解释、占位对象或猜测。
+3. 已有账本中的设定如果本章没有明确变化，不要输出该设定；不要为了填数组复制账本文字。
+4. 每个更新先从正文选定连续原文，再填写字段和 evidence；如果不能为该更新提供全部必要正文证据，直接省略该更新。
+5. description 是设定的静态基线；已有设定不要改写，若正文没有新静态信息可留空。
+6. current_state 是本章结束时的动态快照，必须描述该设定当前的位置归属、开放封闭、控制者、损毁变化或生效状态。
+7. 新设定必须填写 description 和 current_state；已有设定必须根据正文填写 current_state。
+8. 所有 evidence 必须逐字复制自【本章正文】中的一段连续原文，长度不超过1000字；不得改写、概括或引用现有账本。
+9. 每个设定必须提供 identity_evidence 和 state_evidence；仅当新增或补齐 category/description 时提供 static_evidence，否则留空。
+10. 不要用空字符串清除已有信息。
+11. 只输出合法 JSON 数组，不要输出 Markdown 或解释：
 [
   {
     "category": "分类(地理/武学/势力/宝物/规则)",
@@ -179,7 +187,11 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 		validateWorldSettingUpdatesForDraft(existingSettings, state.Draft),
 	)
 	if err != nil {
-		return state, err
+		if isWorldStructuredFailure(err) {
+			updates = []WorldSettingUpdate{}
+		} else {
+			return state, err
+		}
 	}
 
 	settings := make([]*domain.WorldSetting, 0, len(updates))

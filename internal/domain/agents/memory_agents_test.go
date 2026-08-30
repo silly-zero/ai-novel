@@ -350,6 +350,22 @@ func TestCharacterAgentFillsMissingStaticFields(t *testing.T) {
 	}
 }
 
+func TestWorldAgentPromptRequiresEmptyArrayWithoutExplicitUpdates(t *testing.T) {
+	repo := &worldRepositoryFake{}
+	llm := &queuedStructuredLLM{responses: []string{"[]"}}
+	_, err := NewWorldAgent(llm, repo).Run(context.Background(), &GenerationState{
+		GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "林云在城门等待",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range []string{"明确发生", "空数组 []", "不要输出该设定", "先从正文选定连续原文", "直接省略该更新"} {
+		if !strings.Contains(llm.systems[0], rule) {
+			t.Fatalf("world prompt missing %q", rule)
+		}
+	}
+}
+
 func TestWorldAgentPreservesStaticLedgerAndReplacesCurrentState(t *testing.T) {
 	repo := &worldRepositoryFake{existing: &domain.WorldSetting{
 		NovelID:      "7",
