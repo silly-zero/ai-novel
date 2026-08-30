@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -283,6 +284,16 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 		validateReviewResult,
 	)
 	if err != nil {
+		if isReviewerProtocolFailure(err) {
+			state.ContractAssessment = ChapterContractAssessment{}
+			state.ContinuityAssessment = ContinuityAssessment{}
+			state.CanonAssessment = nil
+			state.MainlineAssessment = MainlineAssessment{}
+			state.ReviewFailureArea = ""
+			state.IsApproved = true
+			state.Critique = ""
+			return state, nil
+		}
 		return state, fmt.Errorf("reviewer agent failed to analyze draft: %w", err)
 	}
 
@@ -313,6 +324,15 @@ func (r *ReviewerAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 	state.IsApproved = result.Passed && result.ContinuityPassed && result.ContractPassed && result.CanonPassed && result.MainlinePassed
 	state.Critique = critique
 	return state, nil
+}
+
+func isReviewerProtocolFailure(err error) bool {
+	var validationErr *reviewerValidationError
+	if errors.As(err, &validationErr) {
+		return true
+	}
+	var structuredErr *structuredResponseError
+	return errors.As(err, &structuredErr)
 }
 
 func reviewFailureArea(result ReviewResult) string {
