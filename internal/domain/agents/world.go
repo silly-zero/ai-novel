@@ -188,10 +188,9 @@ func (a *WorldAgent) Run(ctx context.Context, state *GenerationState) (*Generati
 	)
 	if err != nil {
 		if isWorldStructuredFailure(err) {
-			updates = []WorldSettingUpdate{}
-		} else {
-			return state, err
+			return state, nil
 		}
+		return state, err
 	}
 
 	settings := make([]*domain.WorldSetting, 0, len(updates))

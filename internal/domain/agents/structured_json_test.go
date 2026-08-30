@@ -2447,7 +2447,7 @@ func TestCharacterAndWorldValidatorsRejectBeforePersistence(t *testing.T) {
 		context.Background(),
 		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "正文"},
 	)
-	if err != nil || worldState == nil || worldRepo.saveCalls != 1 {
+	if err != nil || worldState == nil || worldRepo.saveCalls != 0 {
 		t.Fatalf("world fallback = %#v, error = %v, saves = %d", worldState, err, worldRepo.saveCalls)
 	}
 }

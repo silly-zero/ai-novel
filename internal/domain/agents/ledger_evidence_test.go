@@ -124,8 +124,28 @@ func TestWorldEvidenceRepairAndFailurePersistence(t *testing.T) {
 	if err != nil || failedState != state {
 		t.Fatalf("world failure was not downgraded: state=%#v err=%v", failedState, err)
 	}
-	if failedRepo.saveCalls != 1 || failedRepo.savedSetting != nil {
+	if failedRepo.saveCalls != 0 || failedRepo.savedSetting != nil {
 		t.Fatalf("world saves=%d setting=%#v", failedRepo.saveCalls, failedRepo.savedSetting)
+	}
+}
+
+func TestWorldStructuredFailureDoesNotReplaceExistingChapterState(t *testing.T) {
+	repo := &worldRepositoryFake{existing: &domain.WorldSetting{
+		NovelID:      "7",
+		Category:     "地理",
+		Name:         "青云山",
+		Description:  "终年云雾环绕的修炼宗门",
+		CurrentState: "山门开放",
+	}}
+	invalid := `[{"category":"地理","name":"青云山","current_state":"山门封闭","identity_evidence":"青云山","state_evidence":"不存在"}]`
+	llm := &queuedStructuredLLM{responses: []string{invalid, invalid}}
+	state := &GenerationState{GenerationID: "g", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "青云山山门封闭。"}
+
+	if _, err := NewWorldAgent(llm, repo).Run(context.Background(), state); err != nil {
+		t.Fatal(err)
+	}
+	if repo.saveCalls != 0 {
+		t.Fatalf("world state was replaced after structured failure: saves=%d", repo.saveCalls)
 	}
 }
 
