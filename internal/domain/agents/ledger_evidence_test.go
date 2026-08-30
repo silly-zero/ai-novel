@@ -56,8 +56,9 @@ func TestCharacterEvidenceFailureDoesNotPersist(t *testing.T) {
 	response := `{"characters":[{"name":"林云","current_status":"停在密室入口","identity_evidence":"林云","state_evidence":"不存在"}],"relationships":[]}`
 	llm := &queuedStructuredLLM{responses: []string{response, response}}
 	state := &GenerationState{GenerationID: "g", NovelID: "7", ChapterID: "11", ChapterIndex: 4, Draft: "林云停在密室入口。"}
-	if _, err := NewCharacterAgent(llm, repo).Run(context.Background(), state); err == nil {
-		t.Fatal("invalid evidence was accepted")
+	got, err := NewCharacterAgent(llm, repo).Run(context.Background(), state)
+	if err != nil || got != state {
+		t.Fatalf("character failure was not downgraded: state=%#v err=%v", got, err)
 	}
 	if repo.saveCharacterCalls != 0 || len(repo.savedChanges) != 0 {
 		t.Fatalf("persisted character=%d relationships=%#v", repo.saveCharacterCalls, repo.savedChanges)

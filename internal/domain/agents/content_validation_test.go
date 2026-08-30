@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+func TestHasBlockingGeneratedContentIssuesIgnoresOnlyExcessLength(t *testing.T) {
+	if HasBlockingGeneratedContentIssues(strings.Repeat("文", 4001)) {
+		t.Fatal("excess-length-only issue was treated as blocking")
+	}
+	if !HasBlockingGeneratedContentIssues(strings.Repeat("文", 2499)) {
+		t.Fatal("short content was not treated as blocking")
+	}
+	if !HasBlockingGeneratedContentIssues(strings.Repeat("文", 2500) + "【场景卡】") {
+		t.Fatal("prompt label was not treated as blocking")
+	}
+}
+
 func TestValidateGeneratedContentWordCountBoundaries(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -95,37 +107,13 @@ func TestValidateGeneratedContentRejectsOnlyAdjacentExactLongParagraphs(t *testi
 		content  string
 		rejected bool
 	}{
-		{
-			name:     "adjacent long paragraphs",
-			content:  body + "\n\n" + paragraph + "\n\n" + paragraph,
-			rejected: true,
-		},
-		{
-			name:     "unicode whitespace blank line",
-			content:  body + "\n\n" + paragraph + "\n 　\n" + paragraph,
-			rejected: true,
-		},
-		{
-			name:     "crlf blank line",
-			content:  body + "\r\n\r\n" + paragraph + "\r\n\t\r\n" + paragraph,
-			rejected: true,
-		},
-		{
-			name:    "short paragraphs",
-			content: body + "\n\n短句\n\n短句",
-		},
-		{
-			name:    "nonadjacent paragraphs",
-			content: body + "\n\n" + paragraph + "\n\n中间段落\n\n" + paragraph,
-		},
-		{
-			name:    "near duplicate",
-			content: body + "\n\n" + paragraph + "\n\n" + paragraph + "不同",
-		},
-		{
-			name:    "different internal whitespace",
-			content: body + "\n\n" + paragraph + "\n\n" + paragraph[:30] + " " + paragraph[30:],
-		},
+		{name: "adjacent long paragraphs", content: body + "\n\n" + paragraph + "\n\n" + paragraph, rejected: true},
+		{name: "unicode whitespace blank line", content: body + "\n\n" + paragraph + "\n 　\n" + paragraph, rejected: true},
+		{name: "crlf blank line", content: body + "\r\n\r\n" + paragraph + "\r\n\t\r\n" + paragraph, rejected: true},
+		{name: "short paragraphs", content: body + "\n\n短句\n\n短句"},
+		{name: "nonadjacent paragraphs", content: body + "\n\n" + paragraph + "\n\n中间段落\n\n" + paragraph},
+		{name: "near duplicate", content: body + "\n\n" + paragraph + "\n\n" + paragraph + "不同"},
+		{name: "different internal whitespace", content: body + "\n\n" + paragraph + "\n\n" + paragraph[:30] + " " + paragraph[30:]},
 	}
 
 	for _, test := range tests {
@@ -140,15 +128,9 @@ func TestValidateGeneratedContentRejectsOnlyAdjacentExactLongParagraphs(t *testi
 }
 
 func TestValidateGeneratedContentIssuesAreStableAndBounded(t *testing.T) {
-	content := strings.Repeat("文", maxGeneratedContentRunes+1) +
-		string([]byte{0xff}) + "\x00\x01【场景卡】【本章契约】"
+	content := strings.Repeat("文", maxGeneratedContentRunes+1) + string([]byte{0xff}) + "\x00\x01【场景卡】【本章契约】"
 	issues := ValidateGeneratedContent(content)
-	wantCodes := []string{
-		"content_too_long",
-		"invalid_utf8",
-		"control_character",
-		"prompt_label_leak",
-	}
+	wantCodes := []string{"content_too_long", "invalid_utf8", "control_character", "prompt_label_leak"}
 	if len(issues) != len(wantCodes) {
 		t.Fatalf("issues = %#v, want %d", issues, len(wantCodes))
 	}

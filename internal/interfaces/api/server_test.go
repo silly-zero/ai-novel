@@ -57,6 +57,30 @@ func (e *reviewRetryLimitTestError) SafeReviewArea() string {
 	return "contract_goal"
 }
 
+type writeDeadlineRecorder struct {
+	*httptest.ResponseRecorder
+	deadlines []time.Time
+}
+
+func (w *writeDeadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	w.deadlines = append(w.deadlines, deadline)
+	return nil
+}
+
+func TestRetryChapterDerivedClearsWriteDeadline(t *testing.T) {
+	writer := &writeDeadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+	newServer(nil, nil).HandleRetryChapterDerived(
+		writer,
+		httptest.NewRequest(http.MethodPost, "/api/v1/chapters/11/derived/retry", nil),
+	)
+	if len(writer.deadlines) != 1 || !writer.deadlines[0].IsZero() {
+		t.Fatalf("write deadlines = %#v", writer.deadlines)
+	}
+	if writer.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", writer.Code, http.StatusInternalServerError)
+	}
+}
+
 type generationTestEngine struct {
 	prepare func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	run     func(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
@@ -1564,16 +1588,20 @@ func TestPreparePreviousContinuityRejectsStalePreviousChapter(t *testing.T) {
 	}
 }
 
-func TestPreparePreviousContinuityRejectsDerivedNotReady(t *testing.T) {
+func TestPreparePreviousContinuityAllowsDerivedNotReady(t *testing.T) {
 	for _, status := range []domain.DerivedStatus{domain.DerivedStatusPending, domain.DerivedStatusFailed} {
 		t.Run(string(status), func(t *testing.T) {
 			packet, err := preparePreviousContinuity(
 				context.Background(), 7, 3,
 				func(context.Context, int, int) (*ent.Chapter, error) {
-					return &ent.Chapter{DerivedStatus: string(status), LastBeat: "旧", NextAction: "旧"}, nil
+					return &ent.Chapter{
+						DerivedStatus: string(status),
+						LastBeat:      "旧",
+						NextAction:    "旧",
+					}, nil
 				},
 			)
-			if !packet.IsEmpty() || !errors.Is(err, errGenerationPreviousDerivedNotReady) {
+			if err != nil || packet.LastBeat != "旧" || packet.NextAction != "旧" {
 				t.Fatalf("packet=%#v error=%v", packet, err)
 			}
 		})
@@ -1607,8 +1635,8 @@ func TestPreparePreviousContinuityCopiesPreviousPacket(t *testing.T) {
 	}
 }
 
-func TestPreparePreviousContinuityRejectsInvalidPacket(t *testing.T) {
-	_, err := preparePreviousContinuity(
+func TestPreparePreviousContinuityFallsBackWhenPacketInvalid(t *testing.T) {
+	packet, err := preparePreviousContinuity(
 		context.Background(),
 		7,
 		3,
@@ -1616,8 +1644,8 @@ func TestPreparePreviousContinuityRejectsInvalidPacket(t *testing.T) {
 			return &ent.Chapter{DerivedStatus: string(domain.DerivedStatusReady)}, nil
 		},
 	)
-	if err == nil || !strings.Contains(err.Error(), "last_beat is required") {
-		t.Fatalf("error = %v", err)
+	if err != nil || !packet.IsEmpty() {
+		t.Fatalf("packet = %#v, error = %v", packet, err)
 	}
 }
 
@@ -1950,7 +1978,7 @@ func TestValidateGenerationChapterSaveRejectsQualityExhaustedInvalidContent(t *t
 			SaveEligible: true,
 		},
 	)
-	if err == nil || !strings.Contains(err.Error(), "prompt_label_leak") {
+	if err == nil || !strings.Contains(err.Error(), "blocking validation issues") {
 		t.Fatalf("validateGenerationChapterSave() error = %v", err)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	llminfra "github.com/ai-novel/studio/internal/infrastructure/llm"
 )
 
 type queuedStructuredLLM struct {
@@ -765,6 +767,16 @@ func TestReviewerStructuredFailureSoftApprovesDraftWithoutLeakingState(t *testin
 	}
 	if !got.IsApproved || got.Critique != "" || got.ReviewFailureArea != "" || got.RetryCount != 2 {
 		t.Fatalf("soft-approved state = %#v", got)
+	}
+}
+
+func TestReviewerEmptyModelResponseSoftApprovesDraft(t *testing.T) {
+	llm := &queuedStructuredLLM{errors: []error{&llminfra.ModelResponseError{}}}
+	state := &GenerationState{Draft: strings.Repeat("文", 2500), IsApproved: false}
+
+	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err != nil || got != state || !got.IsApproved || got.Critique != "" {
+		t.Fatalf("state=%#v error=%v", got, err)
 	}
 }
 
@@ -2433,12 +2445,12 @@ func TestCharacterAndWorldValidatorsRejectBeforePersistence(t *testing.T) {
 		`{"characters":[{"name":" "}]}`,
 		`{"characters":[{"name":" "}]}`,
 	}}
-	_, err := NewCharacterAgent(characterLLM, characterRepo).Run(
+	characterState, err := NewCharacterAgent(characterLLM, characterRepo).Run(
 		context.Background(),
 		&GenerationState{GenerationID: "generation", NovelID: "7", ChapterID: "11", ChapterIndex: 4},
 	)
-	if err == nil || characterRepo.saveCharacterCalls != 0 {
-		t.Fatalf("character error = %v, saves = %d", err, characterRepo.saveCharacterCalls)
+	if err != nil || characterState == nil || characterRepo.saveCharacterCalls != 0 {
+		t.Fatalf("character fallback = %#v, error = %v, saves = %d", characterState, err, characterRepo.saveCharacterCalls)
 	}
 
 	worldRepo := &worldRepositoryFake{}

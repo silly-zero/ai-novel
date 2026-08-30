@@ -332,7 +332,11 @@ func isReviewerProtocolFailure(err error) bool {
 		return true
 	}
 	var structuredErr *structuredResponseError
-	return errors.As(err, &structuredErr)
+	if errors.As(err, &structuredErr) {
+		return true
+	}
+	var diagnosticCoder interface{ SafeDiagnosticCode() string }
+	return errors.As(err, &diagnosticCoder) && diagnosticCoder.SafeDiagnosticCode() == "empty_model_response"
 }
 
 func reviewFailureArea(result ReviewResult) string {

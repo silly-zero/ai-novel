@@ -268,7 +268,7 @@ func TestGenerationPrepareRequiresPreviousDerivedReady(t *testing.T) {
 		if _, err := client.Chapter.UpdateOneID(chapters[1].ID).SetDerivedStatus(string(status)).Save(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.Prepare(ctx, novelRow.ID, chapters[2].ID, 2); !errors.Is(err, errGenerationPreviousDerivedNotReady) {
+		if _, err := store.Prepare(ctx, novelRow.ID, chapters[2].ID, 2); err != nil {
 			t.Fatalf("status %s prepare error = %v", status, err)
 		}
 	}

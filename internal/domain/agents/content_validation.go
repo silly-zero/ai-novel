@@ -76,6 +76,18 @@ func ValidateGeneratedContent(content string) []GeneratedContentIssue {
 	return issues
 }
 
+func HasBlockingGeneratedContentIssues(content string) bool {
+	for _, issue := range ValidateGeneratedContent(content) {
+		switch issue.Code {
+		case "content_too_long":
+			continue
+		default:
+			return true
+		}
+	}
+	return false
+}
+
 func containsDisallowedControlCharacter(content string) bool {
 	for _, character := range content {
 		if unicode.IsControl(character) && character != '\n' && character != '\r' && character != '\t' {

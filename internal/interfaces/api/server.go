@@ -319,16 +319,13 @@ func preparePreviousContinuity(
 	if previous.Status == string(domain.StatusStale) {
 		return agents.ContinuityPacket{}, fmt.Errorf("%w: chapter %d", errGenerationEarlierChapterStale, previousOrder)
 	}
-	if previous.DerivedStatus != string(domain.DerivedStatusReady) {
-		return agents.ContinuityPacket{}, fmt.Errorf("%w: chapter %d", errGenerationPreviousDerivedNotReady, previousOrder)
-	}
 	packet := agents.ContinuityPacket{
 		LastBeat:   strings.TrimSpace(previous.LastBeat),
 		OpenLoops:  append([]string(nil), previous.OpenLoops...),
 		NextAction: strings.TrimSpace(previous.NextAction),
 	}
 	if err := agents.ValidateContinuityPacket(&packet); err != nil {
-		return agents.ContinuityPacket{}, fmt.Errorf("previous chapter continuity is invalid: %w", err)
+		return agents.ContinuityPacket{}, nil
 	}
 	return packet, nil
 }
@@ -1098,15 +1095,19 @@ func (s *entGenerationChapterStore) Save(
 			if previousErr != nil {
 				return 0, previousErr
 			}
-			if previous.Status == string(domain.StatusStale) || previous.DerivedStatus != string(domain.DerivedStatusReady) {
-				return 0, errGenerationPreviousDerivedNotReady
+			if previous.Status == string(domain.StatusStale) {
+				return 0, errGenerationEarlierChapterStale
 			}
 			currentPacket := agents.ContinuityPacket{
 				LastBeat:   strings.TrimSpace(previous.LastBeat),
 				OpenLoops:  append([]string(nil), previous.OpenLoops...),
 				NextAction: strings.TrimSpace(previous.NextAction),
 			}
-			if !continuityPacketsEqual(target.PreviousContinuity, currentPacket) {
+			if err := agents.ValidateContinuityPacket(&currentPacket); err != nil {
+				if !target.PreviousContinuity.IsEmpty() {
+					return 0, errGenerationChapterChanged
+				}
+			} else if !continuityPacketsEqual(target.PreviousContinuity, currentPacket) {
 				return 0, errGenerationChapterChanged
 			}
 		}
@@ -1315,16 +1316,21 @@ func validateGenerationChapterSave(
 	if !state.IsApproved && !state.SaveEligible {
 		return errors.New("generation state is not approved")
 	}
-	issues := agents.ValidateGeneratedContent(state.Draft)
-	if len(issues) > 0 {
-		codes := make([]string, 0, len(issues))
-		for _, issue := range issues {
-			codes = append(codes, issue.Code)
+	if state.SaveEligible && agents.HasBlockingGeneratedContentIssues(state.Draft) {
+		return errors.New("generated chapter content contains blocking validation issues")
+	}
+	if !state.SaveEligible {
+		issues := agents.ValidateGeneratedContent(state.Draft)
+		if len(issues) > 0 {
+			codes := make([]string, 0, len(issues))
+			for _, issue := range issues {
+				codes = append(codes, issue.Code)
+			}
+			return fmt.Errorf(
+				"generated chapter content failed validation: %s",
+				strings.Join(codes, ", "),
+			)
 		}
-		return fmt.Errorf(
-			"generated chapter content failed validation: %s",
-			strings.Join(codes, ", "),
-		)
 	}
 	if !state.ContinuityExtractionFailed {
 		if err := agents.ValidateContinuityPacketAgainstDraft(&state.Continuity, state.Draft); err != nil {
@@ -2350,6 +2356,11 @@ func (s *Server) HandleUpdateChapter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) HandleRetryChapterDerived(w http.ResponseWriter, r *http.Request) {
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		writeBoundedDerivedHTTPError(w, err, http.StatusInternalServerError)
+		return
+	}
+
 	if s.db == nil || s.engine == nil {
 		http.Error(w, "server not configured", http.StatusInternalServerError)
 		return

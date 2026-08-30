@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,6 +15,11 @@ const (
 	maxCharacterTextRunes  = 2000
 	maxCharacterStateRunes = 1000
 )
+
+func isCharacterStructuredFailure(err error) bool {
+	var structuredErr *structuredResponseError
+	return errors.As(err, &structuredErr)
+}
 
 func decodeCharacterExtraction(candidate []byte) (CharacterExtraction, error) {
 	trimmed := bytes.TrimSpace(candidate)
@@ -302,6 +308,9 @@ func (a *CharacterAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		},
 	)
 	if err != nil {
+		if isCharacterStructuredFailure(err) {
+			return state, nil
+		}
 		return state, err
 	}
 
