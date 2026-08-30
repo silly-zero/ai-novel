@@ -90,6 +90,22 @@ func newReviewerLoopEngine(t *testing.T, llm *workflowLLMFake) *WorkflowEngine {
 	return engine
 }
 
+func TestRunChapterGenerationSoftApprovesReviewerProtocolFailure(t *testing.T) {
+	llm := &workflowLLMFake{reviewProtocolFailOn: 1}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		FullOutline:  "人工大纲：主角调查身世",
+		ChapterIndex: 1,
+	}
+	finalState, err := engine.RunChapterGeneration(context.Background(), state)
+	if err != nil {
+		t.Fatalf("RunChapterGeneration returned error: %v", err)
+	}
+	if finalState == nil || !finalState.IsApproved || finalState.RetryCount != 0 {
+		t.Fatalf("final state = %#v, want soft-approved without retries", finalState)
+	}
+}
+
 func TestRunChapterGenerationStopsAtInvalidStructuredOutline(t *testing.T) {
 	llm := &workflowLLMFake{}
 	engine := newReviewerLoopEngine(t, llm)
@@ -362,24 +378,18 @@ func TestRunChapterGenerationDistinguishesReviewerProtocolFailure(t *testing.T) 
 
 	finalState, err := engine.RunChapterGeneration(context.Background(), state)
 
-	if finalState != nil || errors.Is(err, ErrReviewRetryLimit) {
+	if err != nil || finalState == nil || !finalState.IsApproved || finalState.RetryCount != 2 {
 		t.Fatalf("finalState=%#v err=%v", finalState, err)
 	}
-	var stageErr *WorkflowStageError
-	if !errors.As(err, &stageErr) || stageErr.Stage != WorkflowStageReviewer {
-		t.Fatalf("error=%v, want reviewer stage", err)
-	}
-	var diagnosticCoder interface{ SafeDiagnosticCode() string }
-	if !errors.As(err, &diagnosticCoder) ||
-		diagnosticCoder.SafeDiagnosticCode() != "reviewer_json_shape_type" {
-		t.Fatalf("error=%#v", err)
+	if finalState.ReviewFailureArea != "" || finalState.Critique != "" {
+		t.Fatalf("review state=%#v", finalState)
 	}
 	if !slices.Equal(retries, []int{1, 2}) ||
 		llm.streamCalls != 3 || llm.reviewCalls != 3 {
 		t.Fatalf("retries=%v writer=%d reviewer=%d", retries, llm.streamCalls, llm.reviewCalls)
 	}
-	if strings.Contains(err.Error(), "CANARY_RESPONSE") {
-		t.Fatalf("error leaked response: %s", err)
+	if finalState.Draft == "" {
+		t.Fatal("final draft is empty")
 	}
 }
 

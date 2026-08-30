@@ -97,6 +97,77 @@ func TestValidateContinuityPacketRejectsInvalidFields(t *testing.T) {
 	}
 }
 
+func TestDecodeContinuityPacketAcceptsBoundedWrappersAndAliases(t *testing.T) {
+	valid := `{"last_beat":"结尾动作","open_loops":["悬念"],"next_action":"下一步"}`
+	for _, candidate := range []string{
+		valid,
+		`[` + valid + `]`,
+		`{"continuity":` + valid + `}`,
+		`{"packet":` + valid + `}`,
+		`{"data":` + valid + `}`,
+		`{"lastBeat":"结尾动作","openLoops":["悬念"],"nextAction":"下一步"}`,
+	} {
+		packet, err := decodeContinuityPacket([]byte(candidate))
+		if err != nil || packet.LastBeat != "结尾动作" || packet.NextAction != "下一步" || len(packet.OpenLoops) != 1 {
+			t.Fatalf("candidate=%s packet=%#v err=%v", candidate, packet, err)
+		}
+	}
+}
+
+func TestDecodeContinuityPacketRejectsAmbiguousOrInvalidWrappers(t *testing.T) {
+	valid := `{"last_beat":"结尾动作","open_loops":[],"next_action":"下一步"}`
+	for _, candidate := range []string{
+		`[]`,
+		`[` + valid + `,` + valid + `]`,
+		`{"continuity":` + valid + `,"packet":` + valid + `}`,
+		`{"continuity":{"packet":` + valid + `}}`,
+		`{"last_beat":"结尾动作","lastBeat":"结尾动作","open_loops":[],"next_action":"下一步"}`,
+		`{"last_beat":"结尾动作","open_loops":"悬念","next_action":"下一步"}`,
+		`{"last_beat":"结尾动作","open_loops":[],"next_action":{"text":"下一步"}}`,
+		`{"data":` + "\"" + valid + "\"" + `}`,
+	} {
+		if _, err := decodeContinuityPacket([]byte(candidate)); err == nil {
+			t.Fatalf("candidate=%s was accepted", candidate)
+		}
+	}
+}
+
+func TestValidateContinuityPacketAgainstDraftStillRequiresExactEvidence(t *testing.T) {
+	packet, err := decodeContinuityPacket([]byte(`{"lastBeat":"主角推开密门。","openLoops":["门后是谁。"],"nextAction":"主角跨入密门。"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateContinuityPacketAgainstDraft(&packet, "主角推开密门。门后是谁。主角跨入密门。"); err != nil {
+		t.Fatal(err)
+	}
+	packet.NextAction = "主角跨入密门！"
+	if err := ValidateContinuityPacketAgainstDraft(&packet, "主角推开密门。门后是谁。主角跨入密门。"); err == nil {
+		t.Fatal("non-exact evidence was accepted")
+	}
+}
+
+func TestValidateContinuityPacketRejectsOversizedWrappedValues(t *testing.T) {
+	candidate := `{"data":{"lastBeat":"` + strings.Repeat("字", maxContinuityTextRunes+1) + `","openLoops":[],"nextAction":"下一步"}}`
+	packet, err := decodeContinuityPacket([]byte(candidate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateContinuityPacket(&packet); err == nil || !strings.Contains(err.Error(), "last_beat exceeds") {
+		t.Fatalf("validation error = %v", err)
+	}
+}
+
+func TestValidateContinuityPacketRejectsUnknownGenericFields(t *testing.T) {
+	for _, candidate := range []string{
+		`{"beat":"结尾动作","loops":[],"action":"下一步"}`,
+		`{"continuity":{"beat":"结尾动作","loops":[],"action":"下一步"}}`,
+	} {
+		if _, err := decodeContinuityPacket([]byte(candidate)); err == nil {
+			t.Fatalf("candidate=%s was accepted", candidate)
+		}
+	}
+}
+
 func TestContinuityExtractorExtractsFinalDraftPacket(t *testing.T) {
 	llm := &continuityExtractorLLM{responses: []string{`{"last_beat":" 主角推开密门。 ","open_loops":[" 门后是谁 ",""],"next_action":" 主角跨入密门。 "}`}}
 	state := &GenerationState{

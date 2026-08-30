@@ -725,54 +725,60 @@ func TestReviewerInjectsMainlineBeatAndUsesExistingFailureProtocol(t *testing.T)
 	}
 }
 
-func TestReviewerStructuredFailureDoesNotBecomeQualityRetry(t *testing.T) {
+func TestReviewerStructuredFailureSoftApprovesDraftWithoutLeakingState(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{
 		"not json CANARY_INITIAL_RESPONSE",
 		"still not json CANARY_REPAIRED_RESPONSE",
 	}}
 	agent := NewReviewerAgent(llm)
-	oldAssessment := ChapterContractAssessment{
-		Goal: ContractRequirementAssessment{
-			Satisfied: true,
-			Evidence:  "旧评估依据",
-		},
-	}
 	state := &GenerationState{
-		Draft:              strings.Repeat("文", 2500),
-		ChapterContract:    validChapterContract(),
-		ContractAssessment: oldAssessment,
-		Critique:           "existing critique",
-		IsApproved:         true,
-		RetryCount:         2,
+		Draft:           strings.Repeat("文", 2500),
+		ChapterContract: validChapterContract(),
+		ContractAssessment: ChapterContractAssessment{
+			Goal: ContractRequirementAssessment{
+				Satisfied: true,
+				Evidence:  "旧评估依据",
+			},
+		},
+		ContinuityAssessment: ContinuityAssessment{
+			ChapterTail: ContractRequirementAssessment{Satisfied: true, Evidence: "旧连续性依据"},
+		},
+		Critique:   "existing critique",
+		IsApproved: false,
+		RetryCount: 2,
 	}
 
-	_, err := agent.Run(context.Background(), state)
-	if err == nil {
-		t.Fatal("ReviewerAgent.Run returned nil error")
+	got, err := agent.Run(context.Background(), state)
+	if err != nil {
+		t.Fatalf("ReviewerAgent.Run returned error: %v", err)
 	}
-	var diagnosticCoder interface{ SafeDiagnosticCode() string }
-	if !errors.As(err, &diagnosticCoder) {
-		t.Fatalf("error has no diagnostic code: %#v", err)
+	if got != state || llm.calls != 2 {
+		t.Fatalf("state=%#v calls=%d", got, llm.calls)
 	}
-	if code := diagnosticCoder.SafeDiagnosticCode(); code != "reviewer_json_shape_type" {
-		t.Fatalf("code = %q, error = %#v", code, err)
+	if got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		got.ContractAssessment.MustHappen != nil ||
+		got.ContractAssessment.MustNotHappen != nil ||
+		got.ContractAssessment.EndState != (ContractRequirementAssessment{}) ||
+		got.ContinuityAssessment != (ContinuityAssessment{}) ||
+		got.CanonAssessment != nil || got.MainlineAssessment != (MainlineAssessment{}) {
+		t.Fatalf("invalid review state retained: %#v", got)
 	}
-	var validationErr *reviewerValidationError
-	if !errors.As(err, &validationErr) ||
-		validationErr.category != "reviewer_json_shape_type" ||
-		validationErr.SafeReviewArea() != "" {
-		t.Fatalf("typed reviewer cause was not preserved: %#v", err)
+	if !got.IsApproved || got.Critique != "" || got.ReviewFailureArea != "" || got.RetryCount != 2 {
+		t.Fatalf("soft-approved state = %#v", got)
 	}
-	for _, secret := range []string{"CANARY_INITIAL_RESPONSE", "CANARY_REPAIRED_RESPONSE"} {
-		if strings.Contains(err.Error(), secret) {
-			t.Fatalf("structured error leaked %q: %s", secret, err)
-		}
+}
+
+func TestReviewerProviderFailureIsNotSoftApproved(t *testing.T) {
+	providerErr := errors.New("provider unavailable")
+	llm := &queuedStructuredLLM{errors: []error{providerErr}}
+	state := &GenerationState{Draft: strings.Repeat("文", 2500)}
+
+	_, err := NewReviewerAgent(llm).Run(context.Background(), state)
+	if err == nil || !errors.Is(err, providerErr) {
+		t.Fatalf("error = %v, want provider error", err)
 	}
-	if state.Critique != "existing critique" || state.RetryCount != 2 || llm.calls != 2 {
-		t.Fatalf("state = %#v, calls = %d", state, llm.calls)
-	}
-	if state.ContractAssessment.Goal != oldAssessment.Goal || !state.IsApproved {
-		t.Fatalf("review state changed after invalid responses: assessment = %#v, approved = %v", state.ContractAssessment, state.IsApproved)
+	if state.IsApproved {
+		t.Fatal("provider failure was soft-approved")
 	}
 }
 
@@ -1502,23 +1508,20 @@ func TestReviewerRunClearsStaleReviewFailureAreaOnProtocolError(t *testing.T) {
 
 func TestReviewerFullDraftAreaSurvivesStructuredError(t *testing.T) {
 	invalid := `{"passed":true,"continuity_assessment":{"chapter_head":null,"chapter_tail":{"satisfied":true,"evidence":"文"}},"contract_assessment":{"goal":{"satisfied":true,"evidence":"NOT_IN_DRAFT"},"must_happen":[],"must_not_happen":[],"end_state":{"satisfied":false,"evidence":"未达到结束状态"}},"critique":""}`
-	_, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{invalid, invalid}}).Run(
-		context.Background(),
-		&GenerationState{
-			Draft: strings.Repeat("文", 2500),
-			ChapterContract: ChapterContract{
-				Goal:     "完成目标",
-				EndState: "达到结束状态",
-			},
+	state := &GenerationState{
+		Draft: strings.Repeat("文", 2500),
+		ChapterContract: ChapterContract{
+			Goal:     "完成目标",
+			EndState: "达到结束状态",
 		},
+	}
+	got, err := NewReviewerAgent(&queuedStructuredLLM{responses: []string{invalid, invalid}}).Run(
+		context.Background(),
+		state,
 	)
-	var diagnosticCoder interface{ SafeDiagnosticCode() string }
-	var areaCoder interface{ SafeReviewArea() string }
-	if !errors.As(err, &diagnosticCoder) ||
-		diagnosticCoder.SafeDiagnosticCode() != reviewerIssueDraftSupport ||
-		!errors.As(err, &areaCoder) ||
-		areaCoder.SafeReviewArea() != string(reviewerAreaContractGoal) {
-		t.Fatalf("error=%#v", err)
+	if err != nil || got != state || !got.IsApproved || got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		got.Critique != "" {
+		t.Fatalf("state=%#v err=%v", got, err)
 	}
 }
 
@@ -1681,21 +1684,13 @@ func TestReviewerInvalidCanonResponsesPreserveReviewState(t *testing.T) {
 	}
 
 	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
-	if err == nil || !strings.Contains(err.Error(), "invalid after 2 attempts") {
-		t.Fatalf("error = %v, want bounded two-attempt structured error", err)
+	if err != nil || got != state || llm.calls != 2 {
+		t.Fatalf("state=%#v err=%v calls=%d", got, err, llm.calls)
 	}
-	if llm.calls != 2 {
-		t.Fatalf("calls = %d, want 2", llm.calls)
-	}
-	if len([]rune(err.Error())) > 2*structuredResponsePreviewRunes+500 {
-		t.Fatalf("error is unexpectedly large: %d runes", len([]rune(err.Error())))
-	}
-	if got != state || got.Draft != state.Draft || got.Critique != "旧修改意见" ||
-		got.ContractAssessment.Goal != oldContract.Goal ||
-		got.ContinuityAssessment.ChapterTail != oldContinuity.ChapterTail ||
-		len(got.CanonAssessment) != 1 || got.CanonAssessment[0] != oldCanon[0] ||
-		!got.IsApproved {
-		t.Fatalf("review state changed after invalid canon responses: %#v", got)
+	if got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		got.ContinuityAssessment.ChapterTail != (ContractRequirementAssessment{}) ||
+		got.CanonAssessment != nil || got.Critique != "" || !got.IsApproved {
+		t.Fatalf("review state after invalid canon responses: %#v", got)
 	}
 }
 
@@ -1793,21 +1788,14 @@ func TestReviewerInvalidMainlineResponsesPreserveReviewState(t *testing.T) {
 	llm := &queuedStructuredLLM{responses: []string{invalid, invalid}}
 
 	got, err := NewReviewerAgent(llm).Run(context.Background(), state)
-	if err == nil {
-		t.Fatal("Run() error = nil, want structured response failure")
+	if err != nil || got != state || llm.calls != 2 {
+		t.Fatalf("Run() state=%#v err=%v calls=%d", got, err, llm.calls)
 	}
-	if llm.calls != 2 {
-		t.Fatalf("calls = %d, want 2", llm.calls)
-	}
-	if len([]rune(err.Error())) > 2*structuredResponsePreviewRunes+500 {
-		t.Fatalf("error is unexpectedly large: %d runes", len([]rune(err.Error())))
-	}
-	if got != state || got.MainlineAssessment.CurrentEvent != state.MainlineAssessment.CurrentEvent ||
-		got.ContractAssessment.Goal != state.ContractAssessment.Goal ||
-		got.ContinuityAssessment.ChapterTail != state.ContinuityAssessment.ChapterTail ||
-		len(got.CanonAssessment) != 1 || got.CanonAssessment[0] != state.CanonAssessment[0] ||
-		got.Critique != "旧修改意见" || !got.IsApproved {
-		t.Fatalf("review state changed after invalid mainline responses: %#v", got)
+	if got.MainlineAssessment != (MainlineAssessment{}) ||
+		got.ContractAssessment.Goal != (ContractRequirementAssessment{}) ||
+		got.ContinuityAssessment.ChapterTail != (ContractRequirementAssessment{}) ||
+		got.CanonAssessment != nil || got.Critique != "" || !got.IsApproved {
+		t.Fatalf("review state after invalid mainline responses: %#v", got)
 	}
 }
 

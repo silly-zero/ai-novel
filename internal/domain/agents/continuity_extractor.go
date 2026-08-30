@@ -1,7 +1,9 @@
 package agents
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -50,7 +52,111 @@ func (e *ContinuityExtractor) Extract(ctx context.Context, state *GenerationStat
 }
 
 func decodeContinuityPacket(candidate []byte) (ContinuityPacket, error) {
-	return decodeJSON[ContinuityPacket](candidate)
+	object, err := continuityObject(candidate)
+	if err != nil {
+		return ContinuityPacket{}, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(object, &fields); err != nil {
+		return ContinuityPacket{}, err
+	}
+	lastBeat, err := continuityStringField(fields, "last_beat", "lastBeat")
+	if err != nil {
+		return ContinuityPacket{}, err
+	}
+	nextAction, err := continuityStringField(fields, "next_action", "nextAction")
+	if err != nil {
+		return ContinuityPacket{}, err
+	}
+	openLoops, err := continuityStringArrayField(fields, "open_loops", "openLoops")
+	if err != nil {
+		return ContinuityPacket{}, err
+	}
+	if lastBeat == "" && nextAction == "" && openLoops == nil {
+		return ContinuityPacket{}, fmt.Errorf("continuity packet has no supported fields")
+	}
+	return ContinuityPacket{LastBeat: lastBeat, OpenLoops: openLoops, NextAction: nextAction}, nil
+}
+
+func continuityObject(candidate []byte) ([]byte, error) {
+	trimmed := bytes.TrimSpace(candidate)
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("continuity packet must be a JSON object")
+	}
+	if trimmed[0] == '[' {
+		var items []json.RawMessage
+		if err := json.Unmarshal(trimmed, &items); err != nil {
+			return nil, err
+		}
+		if len(items) != 1 || len(bytes.TrimSpace(items[0])) == 0 || bytes.TrimSpace(items[0])[0] != '{' {
+			return nil, fmt.Errorf("continuity packet array must contain exactly one object")
+		}
+		trimmed = bytes.TrimSpace(items[0])
+	}
+	return continuityPacketObject(trimmed, true)
+}
+
+func continuityPacketObject(candidate []byte, allowEnvelope bool) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(candidate, &fields); err != nil {
+		return nil, err
+	}
+	if fields == nil {
+		return nil, fmt.Errorf("continuity packet must be a JSON object")
+	}
+	for _, envelope := range []string{"continuity", "packet", "data"} {
+		if value, ok := fields[envelope]; ok {
+			if !allowEnvelope || len(fields) != 1 || len(bytes.TrimSpace(value)) == 0 || bytes.TrimSpace(value)[0] != '{' {
+				return nil, fmt.Errorf("continuity %s envelope must contain only one object", envelope)
+			}
+			return continuityPacketObject(bytes.TrimSpace(value), false)
+		}
+	}
+	return bytes.TrimSpace(candidate), nil
+}
+
+func continuityStringField(fields map[string]json.RawMessage, names ...string) (string, error) {
+	var value string
+	found := false
+	for _, name := range names {
+		raw, ok := fields[name]
+		if !ok {
+			continue
+		}
+		if found {
+			return "", fmt.Errorf("continuity packet contains duplicate field aliases")
+		}
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return "", err
+		}
+		found = true
+	}
+	if !found {
+		return "", nil
+	}
+	return value, nil
+}
+
+func continuityStringArrayField(fields map[string]json.RawMessage, names ...string) ([]string, error) {
+	var value []string
+	found := false
+	for _, name := range names {
+		raw, ok := fields[name]
+		if !ok {
+			continue
+		}
+		if found {
+			return nil, fmt.Errorf("continuity packet contains duplicate field aliases")
+		}
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return nil, err
+		}
+		found = true
+	}
+	if !found {
+		return nil, nil
+	}
+	return value, nil
 }
 
 func ValidateContinuityPacket(packet *ContinuityPacket) error {
