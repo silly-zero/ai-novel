@@ -3539,7 +3539,7 @@ func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (Previe
 	return req, nil
 }
 
-const previewOutlineTimeout = 2 * time.Minute
+const previewOutlineTimeout = 5 * time.Minute
 
 type previewContextErrorPayload struct {
 	ErrorCode string `json:"error_code"`
