@@ -2825,6 +2825,7 @@ var generationDiagnosticIssueCodes = map[string]bool{
 	"generated_outline_blank_event":          true,
 	"generated_outline_oversized_event":      true,
 	"generated_outline_missing_chapter":      true,
+	"outline_plan_empty":                     true,
 	"existing_outline_range_overlap":         true,
 	"empty_model_response":                   true,
 	"structured_response_invalid":            true,

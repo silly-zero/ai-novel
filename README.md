@@ -141,7 +141,7 @@ ai-novel/
 
 3. **体验流式 API**:
 
-   `novel_id` 和 `chapter_index` 必须是 JSON 正整数；章节生成使用 POST JSON，响应仍为 SSE。`persist` 是 JSON boolean，省略时默认为 true；请求体最大 1 MiB，未知字段和尾随 JSON 会被拒绝。GET 生成接口已移除，预览接口仍保持 GET。
+   `novel_id` 和 `chapter_index` 必须是 JSON 正整数；章节生成使用 POST JSON，响应仍为 SSE。`persist` 是 JSON boolean，省略时默认为 true；请求体最大 1 MiB，未知字段和尾随 JSON 会被拒绝。GET 生成接口已移除，预览接口使用 POST JSON。
    ```bash
    # 基础用法：从大纲生成
    curl -N -X POST "http://127.0.0.1:8081/api/v1/novel/generate" \
@@ -160,7 +160,7 @@ ai-novel/
 
 4. **预览上下文 JSON（不写入章节）**:
    ```bash
-   # 仅生成“场景卡 + 背景资料 + 共创指令”，不进入写作/审查
+   # 仅生成“情节阶段主线”，不写入章节
    curl -X POST "http://127.0.0.1:8081/api/v1/novel/preview-context" \
      -H "Content-Type: application/json" \
      -H "Accept: application/json" \
