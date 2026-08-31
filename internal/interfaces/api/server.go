@@ -3616,30 +3616,34 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
-		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
-		row, qErr := s.db.Novel.Query().Where(novel.ID(*req.NovelID)).Only(loadCtx)
-		loadCancel()
-		if qErr != nil {
-			if ent.IsNotFound(qErr) {
-				http.Error(w, "novel not found", http.StatusNotFound)
+	if s.db != nil {
+		loadIdea := idea == ""
+		loadSavedOutline := req.OutlineMode != "full" && (outline == "" || existingOutline == "")
+		if loadIdea || loadSavedOutline {
+			loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
+			row, qErr := s.db.Novel.Query().Where(novel.ID(*req.NovelID)).Only(loadCtx)
+			loadCancel()
+			if qErr != nil {
+				if ent.IsNotFound(qErr) {
+					http.Error(w, "novel not found", http.StatusNotFound)
+					return
+				}
+				if errors.Is(qErr, context.DeadlineExceeded) {
+					writePreviewContextError(w, http.StatusGatewayTimeout, previewContextErrorPayload{ErrorCode: "generation_timeout", Message: "加载小说超时，请稍后重试"})
+					return
+				}
+				http.Error(w, "failed to load novel", http.StatusInternalServerError)
 				return
 			}
-			if errors.Is(qErr, context.DeadlineExceeded) {
-				writePreviewContextError(w, http.StatusGatewayTimeout, previewContextErrorPayload{ErrorCode: "generation_timeout", Message: "加载小说超时，请稍后重试"})
-				return
+			if idea == "" {
+				idea = strings.TrimSpace(row.Idea)
 			}
-			http.Error(w, "failed to load novel", http.StatusInternalServerError)
-			return
-		}
-		if idea == "" {
-			idea = strings.TrimSpace(row.Idea)
-		}
-		if outline == "" {
-			outline = strings.TrimSpace(row.Outline)
-		}
-		if existingOutline == "" {
-			existingOutline = strings.TrimSpace(row.Outline)
+			if outline == "" && req.OutlineMode != "full" {
+				outline = strings.TrimSpace(row.Outline)
+			}
+			if existingOutline == "" && req.OutlineMode != "full" {
+				existingOutline = strings.TrimSpace(row.Outline)
+			}
 		}
 	}
 	if outline == "" && idea == "" && existingOutline == "" {
