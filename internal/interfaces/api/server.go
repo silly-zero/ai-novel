@@ -62,11 +62,16 @@ type generationChapterTarget struct {
 	UpdatedAt           time.Time
 	NovelUpdatedAt      time.Time
 	isNew               bool
+	skipFollowingStale  bool
 }
 
 type generationChapterStore interface {
 	Prepare(context.Context, int, int, int) (*generationChapterTarget, error)
 	Save(context.Context, *generationChapterTarget, *agents.GenerationState) (int, error)
+}
+
+type eventGenerationChapterStore interface {
+	SaveEvent(context.Context, []*generationChapterTarget, string, []string) ([]int, error)
 }
 
 type entGenerationChapterStore struct {
@@ -1134,8 +1139,10 @@ func (s *entGenerationChapterStore) Save(
 		if err := databaseinfra.InitializeDerivedTasks(ctx, txClient, row.ID, state.GenerationID, domain.DerivedTaskPending); err != nil {
 			return 0, err
 		}
-		if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, row.ID); err != nil {
-			return 0, err
+		if !target.skipFollowingStale {
+			if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, row.ID); err != nil {
+				return 0, err
+			}
 		}
 		if err := tx.Commit(); err != nil {
 			return 0, err
@@ -1195,8 +1202,10 @@ func (s *entGenerationChapterStore) Save(
 	if err := invalidateChapterDerivedData(ctx, txClient, target.NovelID, []int{target.ID}); err != nil {
 		return 0, err
 	}
-	if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, target.ID); err != nil {
-		return 0, err
+	if !target.skipFollowingStale {
+		if err := markFollowingChaptersStale(ctx, txClient, target.NovelID, target.Order, target.ID); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
@@ -1638,6 +1647,19 @@ func newServerWithConfig(engine generationEngine, db *ent.Client, cfg ServerConf
 	s.router.Delete("/api/v1/chapters/{id}", s.HandleDeleteChapter)
 	s.router.Post("/api/v1/chapters/{id}/derived/retry", s.HandleRetryChapterDerived)
 	s.router.Post("/api/v1/novel/generate", s.HandleGenerateChapter)
+	s.router.Post("/api/v1/novel/generate-event", func(w http.ResponseWriter, r *http.Request) {
+		request, err := decodeGenerateChapterRequest(w, r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		request, err = normalizeGenerateChapterRequest(request)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		s.HandleGenerateEvent(w, r, request)
+	})
 	s.router.Post("/api/v1/novels/{id}/generate/cancel", s.HandleCancelGeneration)
 	s.router.Post("/api/v1/novel/preview-context", s.HandlePreviewContext)
 
@@ -2628,22 +2650,23 @@ func decodeStrictJSONObject(w http.ResponseWriter, r *http.Request, dst any, fie
 }
 
 type GenerateChapterRequest struct {
-	NovelID         *int   `json:"novel_id"`
-	ChapterID       *int   `json:"chapter_id,omitempty"`
-	Persist         *bool  `json:"persist,omitempty"`
-	ChapterIndex    *int   `json:"chapter_index,omitempty"`
-	Outline         string `json:"outline,omitempty"`
-	Idea            string `json:"idea,omitempty"`
-	ExistingOutline string `json:"existing_outline,omitempty"`
-	OutlineStart    *int   `json:"outline_start,omitempty"`
-	OutlineEnd      *int   `json:"outline_end,omitempty"`
-	EditorNotes     string `json:"editor_notes,omitempty"`
-	ManualContext   string `json:"manual_context,omitempty"`
+	NovelID           *int   `json:"novel_id"`
+	ChapterID         *int   `json:"chapter_id,omitempty"`
+	Persist           *bool  `json:"persist,omitempty"`
+	ChapterIndex      *int   `json:"chapter_index,omitempty"`
+	EventChapterCount *int   `json:"event_chapter_count,omitempty"`
+	Outline           string `json:"outline,omitempty"`
+	Idea              string `json:"idea,omitempty"`
+	ExistingOutline   string `json:"existing_outline,omitempty"`
+	OutlineStart      *int   `json:"outline_start,omitempty"`
+	OutlineEnd        *int   `json:"outline_end,omitempty"`
+	EditorNotes       string `json:"editor_notes,omitempty"`
+	ManualContext     string `json:"manual_context,omitempty"`
 }
 
 func decodeGenerateChapterRequest(w http.ResponseWriter, r *http.Request) (GenerateChapterRequest, error) {
 	var req GenerateChapterRequest
-	err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_id", "persist", "chapter_index", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"})
+	err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_id", "persist", "chapter_index", "event_chapter_count", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"})
 	return req, err
 }
 
@@ -2656,6 +2679,9 @@ func normalizeGenerateChapterRequest(req GenerateChapterRequest) (GenerateChapte
 	}
 	if req.ChapterIndex != nil && *req.ChapterIndex <= 0 {
 		return req, errors.New("chapter_index must be a positive integer")
+	}
+	if req.EventChapterCount != nil && (*req.EventChapterCount < 2 || *req.EventChapterCount > 3) {
+		return req, errors.New("event_chapter_count must be 2 or 3")
 	}
 	if (req.OutlineStart == nil) != (req.OutlineEnd == nil) {
 		return req, errors.New("outline_start and outline_end must be provided together")
@@ -2693,6 +2719,7 @@ type generationResult struct {
 	Message      string           `json:"message,omitempty"`
 	ErrorCode    string           `json:"error_code,omitempty"`
 	ChapterID    string           `json:"chapter_id,omitempty"`
+	ChapterIDs   []string         `json:"chapter_ids,omitempty"`
 	Persisted    bool             `json:"persisted,omitempty"`
 }
 
@@ -3068,6 +3095,10 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 	request, err = normalizeGenerateChapterRequest(request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if request.EventChapterCount != nil {
+		s.HandleGenerateEvent(w, r, request)
 		return
 	}
 	if s.engine == nil {

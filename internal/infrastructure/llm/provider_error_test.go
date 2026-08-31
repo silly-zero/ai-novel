@@ -63,7 +63,7 @@ func TestNormalizeProviderErrorDoesNotRetryAuth(t *testing.T) {
 
 func TestDefaultRetryPolicyUsesBoundedExponentialBackoff(t *testing.T) {
 	policy := defaultRetryPolicy()
-	want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second}
+	want := []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second, 30 * time.Second}
 	if policy.maxAttempts != 5 || !slices.Equal(policy.backoffs, want) {
 		t.Fatalf("policy = %#v, want attempts=5 backoffs=%v", policy, want)
 	}
@@ -87,7 +87,7 @@ func TestWithRetryUsesConfiguredBackoffSequence(t *testing.T) {
 	if !errors.Is(err, finalErr) || calls != 5 {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
-	want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second}
+	want := []time.Duration{2 * time.Second, 5 * time.Second, 15 * time.Second, 30 * time.Second}
 	if !slices.Equal(waits, want) {
 		t.Fatalf("waits=%v, want=%v", waits, want)
 	}

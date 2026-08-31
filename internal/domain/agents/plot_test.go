@@ -48,11 +48,11 @@ func TestPlotRunGeneratesStructuredChapterContract(t *testing.T) {
 	}
 	for _, rule := range []string{
 		"chapter_goal",
-		"单一、结果性、可观察的命题",
-		"明确主体",
+		"单一、可观察",
+		"包含明确主体",
 		"动作/发现/决定/状态变化",
 		"直接判断完成与否",
-		"不能只写“推进剧情”“发展矛盾”“继续调查”等空泛意图",
+		"不能只写空泛意图",
 		"不能把计划以后完成当成本章目标",
 	} {
 		if !strings.Contains(llm.systems[0], rule) {

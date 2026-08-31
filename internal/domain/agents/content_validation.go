@@ -76,6 +76,52 @@ func ValidateGeneratedContent(content string) []GeneratedContentIssue {
 	return issues
 }
 
+func ValidateGeneratedContentForState(state *GenerationState) []GeneratedContentIssue {
+	if state == nil || state.EventChapterCount == 0 {
+		if state == nil {
+			return []GeneratedContentIssue{{Code: "content_too_short", Message: "正文为空。"}}
+		}
+		return ValidateGeneratedContent(state.Draft)
+	}
+	issues := validateGeneratedContentSafety(state.Draft)
+	wordCount := len([]rune(strings.TrimSpace(state.Draft)))
+	minimum := minGeneratedContentRunes
+	maximum := maxGeneratedContentRunes
+	if state.EventSegmentIndex == 0 {
+		minimum *= state.EventChapterCount
+		maximum *= state.EventChapterCount
+	}
+	if wordCount < minimum {
+		issues = append([]GeneratedContentIssue{{
+			Code:    "content_too_short",
+			Message: fmt.Sprintf("连续情节字数不达标：当前约 %d 字。请补写到 %d–%d 字。", wordCount, minimum, maximum),
+		}}, issues...)
+	} else if wordCount > maximum {
+		issues = append([]GeneratedContentIssue{{
+			Code:    "content_too_long",
+			Message: fmt.Sprintf("连续情节字数超标：当前约 %d 字。请删减到 %d–%d 字。", wordCount, minimum, maximum),
+		}}, issues...)
+	}
+	return issues
+}
+
+func validateGeneratedContentSafety(content string) []GeneratedContentIssue {
+	issues := make([]GeneratedContentIssue, 0, 4)
+	if !utf8.ValidString(content) {
+		issues = append(issues, GeneratedContentIssue{Code: "invalid_utf8", Message: "正文包含无效字符编码，请重新生成有效的 UTF-8 文本。"})
+	}
+	if containsDisallowedControlCharacter(content) {
+		issues = append(issues, GeneratedContentIssue{Code: "control_character", Message: "正文包含异常控制字符，请删除后重新生成。"})
+	}
+	if containsGeneratedContentPromptLabel(content) {
+		issues = append(issues, GeneratedContentIssue{Code: "prompt_label_leak", Message: "正文泄漏了内部提示标签，请删除提示内容，只保留小说正文。"})
+	}
+	if containsAdjacentRepeatedLongParagraphs(content) {
+		issues = append(issues, GeneratedContentIssue{Code: "adjacent_repeated_paragraph", Message: "正文包含紧邻的长段落重复，请删除重复段落并补齐叙事。"})
+	}
+	return issues
+}
+
 func HasBlockingGeneratedContentIssues(content string) bool {
 	for _, issue := range ValidateGeneratedContent(content) {
 		switch issue.Code {

@@ -195,18 +195,13 @@ func TestWriterRunInjectsChapterContractOnRewrite(t *testing.T) {
 		}
 	}
 	for _, rule := range []string{
-		"实际完成 ChapterGoal（章节目标）",
-		"不能只被提及、计划或部分推进",
-		"可直接证明其完成的具体动作、发现、决定或状态变化",
-		"完成全部 MustHappen",
-		"逐条实际完成全部 MustHappen",
-		"每条 MustHappen 都必须在正文中明确发生一次",
-		"不要把契约原文直接当作事件证据",
+		"达到 ChapterGoal（本章阶段性推进节点）",
+		"不能只被提及或计划",
+		"ChapterGoal 不能只被提及或计划，应该出现能够证明本章推进已发生的具体动作、发现、决定或状态变化。",
+		"逐条呈现全部 MustHappen",
 		"不得执行 MustNotHappen",
-		"章尾达到 EndState",
-		"完成 ChapterGoal 后",
-		"新后续目标",
-		"不得以保留悬念为由让本章 ChapterGoal 未完成",
+		"章尾处于 EndState",
+		"保持当前情节的因果连续性",
 	} {
 		if !strings.Contains(llm.systemPrompt, rule) {
 			t.Fatalf("writer system prompt missing %q: %s", rule, llm.systemPrompt)

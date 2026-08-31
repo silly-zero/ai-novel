@@ -199,7 +199,7 @@ func TestMainlineBeatPromptFormatsAvailableBoundaries(t *testing.T) {
 		CurrentEvent: "主角找到血书",
 		NextEvent:    "主角前往地下祭坛",
 	})
-	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛", "本章不得提前完成"} {
+	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛", "本章只可自然铺垫"} {
 		if !strings.Contains(prompt, value) {
 			t.Fatalf("prompt missing %q: %s", value, prompt)
 		}
@@ -218,7 +218,7 @@ func TestMainlineBeatPromptFormatsAvailableBoundaries(t *testing.T) {
 		CurrentEvent: "主角出发",
 		NextEvent:    strings.Repeat("事", maxMainlineEventRunes+1),
 	})
-	if !strings.Contains(prompt, "主角出发") || strings.Contains(prompt, "下一章预定事件") {
+	if !strings.Contains(prompt, "主角出发") || strings.Contains(prompt, "下一章预定推进节点") {
 		t.Fatalf("oversized next event prompt = %q", prompt)
 	}
 }

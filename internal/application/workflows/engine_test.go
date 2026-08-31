@@ -90,6 +90,44 @@ func newReviewerLoopEngine(t *testing.T, llm *workflowLLMFake) *WorkflowEngine {
 	return engine
 }
 
+func TestRunContinuousSegmentAllowsSlightlyLongDraft(t *testing.T) {
+	llm := &workflowLLMFake{draft: strings.Repeat("文", 4001)}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		EventChapterCount: 3,
+		EventSegmentIndex: 1,
+		ChapterIndex:      1,
+		Outline:           "连续情节",
+		SceneCard:         "场景卡",
+		Context:           "背景",
+	}
+
+	finalState, err := engine.RunContinuousSegment(context.Background(), state)
+	if err != nil {
+		t.Fatalf("RunContinuousSegment returned error: %v", err)
+	}
+	if finalState != state || len([]rune(finalState.Draft)) != 4001 {
+		t.Fatalf("final state = %#v", finalState)
+	}
+}
+
+func TestRunContinuousSegmentRejectsBlockingDraftIssue(t *testing.T) {
+	llm := &workflowLLMFake{draft: strings.Repeat("文", 4000) + "【场景卡】"}
+	engine := newReviewerLoopEngine(t, llm)
+	state := &agents.GenerationState{
+		EventChapterCount: 3,
+		EventSegmentIndex: 1,
+	}
+
+	finalState, err := engine.RunContinuousSegment(context.Background(), state)
+	if err == nil || !strings.Contains(err.Error(), "content failed validation") {
+		t.Fatalf("RunContinuousSegment error = %v, want validation error", err)
+	}
+	if finalState == nil || finalState.Draft == "" {
+		t.Fatalf("final state = %#v", finalState)
+	}
+}
+
 func TestRunChapterGenerationSoftApprovesReviewerProtocolFailure(t *testing.T) {
 	llm := &workflowLLMFake{reviewProtocolFailOn: 1}
 	engine := newReviewerLoopEngine(t, llm)

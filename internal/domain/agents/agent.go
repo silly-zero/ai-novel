@@ -109,6 +109,8 @@ type GenerationState struct {
 	NovelID                    string
 	ChapterID                  string
 	ChapterIndex               int                          // 当前章节序号
+	EventChapterCount          int                          // 连续情节生成后拆分的章节数量；0 表示单章模式
+	EventSegmentIndex          int                          // 连续情节当前生成段，从 1 开始；0 表示尚未分段
 	Idea                       string                       // 初始想法 (一句话 Idea)
 	FullOutline                string                       // 全书大纲 (由 Architect Agent 生成)
 	ExistingOutline            string                       // 已有全书大纲（续写时参考）
@@ -128,6 +130,7 @@ type GenerationState struct {
 	ContextPrepared            bool                         // 本次生成是否已完成上下文准备
 	Context                    string                       // 图书管理员检索出的背景资料 (角色设定、前情提要)
 	PreviousContinuity         ContinuityPacket             // 上一章的结构化接力状态
+	PreviousChapterTail        string                       // 上一章或上一段的结尾原文，仅用于本次生成提示
 	Draft                      string                       // 主笔生成的草稿
 	Critique                   string                       // 审查员的修改意见
 	Continuity                 ContinuityPacket             // 当前草稿对应的结构化接力状态

@@ -82,6 +82,7 @@ type WorkflowEngine struct {
 	eventBus     events.Bus
 	derived      derivedProcessor
 	continuity   *agents.ContinuityExtractor
+	writer       *agents.WriterAgent
 }
 
 // NewWorkflowEngine 初始化一个新引擎，编排多个 Agent
@@ -214,10 +215,19 @@ func NewWorkflowEngine(
 		contextGraph: ctxRunnable,
 		eventBus:     eventBus,
 		continuity:   continuityExtractor,
+		writer:       writer,
 	}, nil
 }
 
-// RunChapterGeneration 开始执行章节生成工作流
+func hasBlockingGeneratedContentIssuesForState(state *agents.GenerationState) bool {
+	for _, issue := range agents.ValidateGeneratedContentForState(state) {
+		if issue.Code != "content_too_long" {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 	// 调用 Eino 编译好的 Runnable
 	finalState, err := e.graph.Invoke(ctx, state)
@@ -227,7 +237,7 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 
 	if !finalState.IsApproved {
 		if finalState.RetryCount >= 3 && strings.TrimSpace(finalState.Draft) != "" &&
-			!agents.HasBlockingGeneratedContentIssues(finalState.Draft) {
+			!hasBlockingGeneratedContentIssuesForState(finalState) {
 			finalState.SaveEligible = true
 		}
 		return finalState, NewWorkflowStageError(
@@ -239,6 +249,25 @@ func (e *WorkflowEngine) RunChapterGeneration(ctx context.Context, state *agents
 	return finalState, nil
 }
 
+func (e *WorkflowEngine) RunContinuousSegment(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+	if state == nil {
+		return nil, errors.New("continuous segment state is nil")
+	}
+	if e.writer == nil {
+		return nil, errors.New("continuous segment writer is not initialized")
+	}
+	writerState, err := runWorkflowStage(ctx, state, WorkflowStageWriter, e.writer.Run)
+	if err != nil {
+		return nil, fmt.Errorf("continuous segment generation failed: %w", err)
+	}
+	if writerState == nil || strings.TrimSpace(writerState.Draft) == "" {
+		return writerState, errors.New("continuous segment draft is empty")
+	}
+	if agents.HasBlockingGeneratedContentIssues(writerState.Draft) {
+		return writerState, fmt.Errorf("continuous segment content failed validation")
+	}
+	return writerState, nil
+}
 func (e *WorkflowEngine) SetDerivedProcessor(processor derivedProcessor) {
 	e.derived = processor
 }

@@ -244,10 +244,10 @@ func mainlineBeatPrompt(beat MainlineEventBeat) string {
 	}
 
 	currentEvent := strings.TrimSpace(beat.CurrentEvent)
-	prompt := fmt.Sprintf("【主线事件节拍】\n- 当前章节：第%d章\n- 本章必须推动的主线事件：%s", beat.ChapterIndex, currentEvent)
+	prompt := fmt.Sprintf("【主线推进节点】\n- 当前章节：第%d章\n- 本章必须达到的主线推进节点：%s", beat.ChapterIndex, currentEvent)
 	nextEvent := strings.TrimSpace(beat.NextEvent)
 	if nextEvent != "" && len([]rune(nextEvent)) <= maxMainlineEventRunes {
-		prompt += fmt.Sprintf("\n- 下一章预定事件（本章不得提前完成）：%s", nextEvent)
+		prompt += fmt.Sprintf("\n- 下一章预定推进节点（本章只可自然铺垫，不得提前达成决定性结果）：%s", nextEvent)
 	}
 	return prompt + "\n"
 }

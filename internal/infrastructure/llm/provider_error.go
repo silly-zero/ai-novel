@@ -86,10 +86,10 @@ func defaultRetryPolicy() retryPolicy {
 	return retryPolicy{
 		maxAttempts: 5,
 		backoffs: []time.Duration{
-			time.Second,
 			2 * time.Second,
-			4 * time.Second,
-			8 * time.Second,
+			5 * time.Second,
+			15 * time.Second,
+			30 * time.Second,
 		},
 		wait: waitForRetry,
 	}

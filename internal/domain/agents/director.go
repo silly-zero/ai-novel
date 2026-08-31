@@ -34,6 +34,12 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 
 请直接输出场景卡的文本内容，不要有多余的寒暄。`
 
+	if state.EventChapterCount > 0 {
+		systemPrompt += fmt.Sprintf(`
+7. 当前为连续情节模式：请设计一条可连续展开并自然拆分为 %d 章的场景链。章节边界只能来自转场、动作阶段变化、信息揭晓或张力节点，不能来自事件重启。
+8. 场景链中不得重复介绍已经出现的人物、地点、能力或设备，不得让角色无因返回起点重新执行入口动作。`, state.EventChapterCount)
+	}
+
 	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n\n%s\n\n%s\n", state.Outline, mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
 	if state.EditorNotes != "" {
 		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
