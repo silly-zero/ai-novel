@@ -10,7 +10,7 @@ import (
 
 const (
 	minGeneratedContentRunes  = 2500
-	maxGeneratedContentRunes  = 4000
+	maxGeneratedContentRunes  = 5000
 	minRepeatedParagraphRunes = 100
 )
 
@@ -36,12 +36,12 @@ func ValidateGeneratedContent(content string) []GeneratedContentIssue {
 	if wordCount < minGeneratedContentRunes {
 		issues = append(issues, GeneratedContentIssue{
 			Code:    "content_too_short",
-			Message: fmt.Sprintf("字数不达标：当前约 %d 字。请补写细节并推进剧情，使正文达到 2500–4000 字。", wordCount),
+			Message: fmt.Sprintf("字数不达标：当前约 %d 字。请补写细节并推进剧情，使正文达到 2500–5000 字。", wordCount),
 		})
 	} else if wordCount > maxGeneratedContentRunes {
 		issues = append(issues, GeneratedContentIssue{
 			Code:    "content_too_long",
-			Message: fmt.Sprintf("字数超标：当前约 %d 字。请删减冗余描写和重复表达，使正文保持在 2500–4000 字。", wordCount),
+			Message: fmt.Sprintf("字数超标：当前约 %d 字。请删减明显冗余表达，使正文控制在 2500–5000 字；不要为了字数删去关键剧情。", wordCount),
 		})
 	}
 

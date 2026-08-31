@@ -26,7 +26,7 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 系统要求：
 - 细节描写丰富，动作与神态刻画生动。
 - 严格遵循背景资料中的世界观和角色设定，避免 OOC。
-- 正文总字数（按中文字符计）控制在 2500-4000 字之间。
+- 正文总字数（按中文字符计）通常控制在 2500-5000 字；以情节完整、自然和连贯为优先，不要为了凑字数删掉关键内容。
 - 如果有【修改意见(Critique)】，请务必针对意见对原稿进行重写修正。
 - 如果存在上一章接力状态，开头必须承接 NextAction 或合理处理 OpenLoops；不得无因重启冲突。
 - 如果存在本章契约，必须在正文中达到 ChapterGoal（本章阶段性推进节点）、逐条呈现全部 MustHappen、不得执行 MustNotHappen，并让章尾处于 EndState；ChapterGoal 不能只被提及或计划，应该出现能够证明本章推进已发生的具体动作、发现、决定或状态变化。
@@ -39,7 +39,7 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 			segmentIndex = 1
 		}
 		systemPrompt += fmt.Sprintf(`
-- 当前为连续情节模式：这是同一核心情节的第 %d/%d 段，当前段写 2500-4000 字。
+- 当前为连续情节模式：这是同一核心情节的第 %d/%d 段，当前段通常写 2500-5000 字；以自然结束和情节质量为优先，不必刻意凑满或硬性截断。
 - 不要输出章节标题、章节编号、“本章完”、分隔线或任何人为切章标记；系统会在连续情节完成后按自然转折整理章节。
 - 同一冲突、调查、战斗、谈判或修炼过程必须连续发展；不得在中途重新介绍人物、地点、能力或重演已经发生的进入过程。
 - 当前段只推进同一情节的一段自然阶段；不要强行解决整个宏观事件，也不要为了段落结束另造无关任务。`, segmentIndex, state.EventChapterCount)
