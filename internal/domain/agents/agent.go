@@ -114,8 +114,9 @@ type GenerationState struct {
 	Idea                       string                       // 初始想法 (一句话 Idea)
 	FullOutline                string                       // 全书大纲 (由 Architect Agent 生成)
 	ExistingOutline            string                       // 已有全书大纲（续写时参考）
-	OutlineStart               int                          // 生成大纲的起始章
-	OutlineEnd                 int                          // 生成大纲的结束章
+	OutlineStart               int                          // 大纲生成的可选参考起始章
+	OutlineEnd                 int                          // 大纲生成的可选参考结束章
+	OutlineMode                string                       // 大纲生成模式：full 或 extend
 	Outline                    string                       // 当前章节剧情大纲 (由 Plot Agent 生成)
 	ChapterContract            ChapterContract              // 当前章节必须遵守的结构化剧情契约
 	MainlineBeat               MainlineEventBeat            // 从全书逐章大纲确定性选出的当前/下一主线节拍

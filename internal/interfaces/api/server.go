@@ -40,6 +40,7 @@ import (
 
 type generationEngine interface {
 	PrepareContext(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
+	PrepareOutline(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	RunChapterGeneration(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
 	PublishChapterGenerated(context.Context, *agents.GenerationState) error
 	ExtractContinuity(context.Context, *agents.GenerationState) (*agents.GenerationState, error)
@@ -2658,6 +2659,7 @@ type GenerateChapterRequest struct {
 	Outline           string `json:"outline,omitempty"`
 	Idea              string `json:"idea,omitempty"`
 	ExistingOutline   string `json:"existing_outline,omitempty"`
+	OutlineMode       string `json:"outline_mode,omitempty"`
 	OutlineStart      *int   `json:"outline_start,omitempty"`
 	OutlineEnd        *int   `json:"outline_end,omitempty"`
 	EditorNotes       string `json:"editor_notes,omitempty"`
@@ -2666,7 +2668,7 @@ type GenerateChapterRequest struct {
 
 func decodeGenerateChapterRequest(w http.ResponseWriter, r *http.Request) (GenerateChapterRequest, error) {
 	var req GenerateChapterRequest
-	err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_id", "persist", "chapter_index", "event_chapter_count", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"})
+	err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_id", "persist", "chapter_index", "event_chapter_count", "outline", "idea", "existing_outline", "outline_mode", "outline_start", "outline_end", "editor_notes", "manual_context"})
 	return req, err
 }
 
@@ -2682,6 +2684,9 @@ func normalizeGenerateChapterRequest(req GenerateChapterRequest) (GenerateChapte
 	}
 	if req.EventChapterCount != nil && (*req.EventChapterCount < 2 || *req.EventChapterCount > 3) {
 		return req, errors.New("event_chapter_count must be 2 or 3")
+	}
+	if req.OutlineMode != "" && req.OutlineMode != "full" && req.OutlineMode != "extend" {
+		return req, errors.New("outline_mode must be full or extend")
 	}
 	if (req.OutlineStart == nil) != (req.OutlineEnd == nil) {
 		return req, errors.New("outline_start and outline_end must be provided together")
@@ -2700,6 +2705,7 @@ func normalizeGenerateChapterRequest(req GenerateChapterRequest) (GenerateChapte
 	req.Outline = strings.TrimSpace(req.Outline)
 	req.Idea = strings.TrimSpace(req.Idea)
 	req.ExistingOutline = strings.TrimSpace(req.ExistingOutline)
+	req.OutlineMode = strings.TrimSpace(req.OutlineMode)
 	req.EditorNotes = strings.TrimSpace(req.EditorNotes)
 	req.ManualContext = strings.TrimSpace(req.ManualContext)
 	return req, nil
@@ -2793,6 +2799,7 @@ var generationDiagnosticErrorCodes = map[string]bool{
 	"generation_protocol_error":   true,
 	"provider_busy":               true,
 	"provider_error":              true,
+	"outline_validation_failed":   true,
 	"context_preparation_failed":  true,
 	"review_failed":               true,
 	"review_protocol_error":       true,
@@ -3491,6 +3498,7 @@ type PreviewContextRequest struct {
 	Outline         string `json:"outline,omitempty"`
 	Idea            string `json:"idea,omitempty"`
 	ExistingOutline string `json:"existing_outline,omitempty"`
+	OutlineMode     string `json:"outline_mode,omitempty"`
 	OutlineStart    *int   `json:"outline_start,omitempty"`
 	OutlineEnd      *int   `json:"outline_end,omitempty"`
 	EditorNotes     string `json:"editor_notes,omitempty"`
@@ -3499,7 +3507,7 @@ type PreviewContextRequest struct {
 
 func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (PreviewContextRequest, error) {
 	var req PreviewContextRequest
-	if err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_index", "outline", "idea", "existing_outline", "outline_start", "outline_end", "editor_notes", "manual_context"}); err != nil {
+	if err := decodeStrictJSONObject(w, r, &req, []string{"novel_id", "chapter_index", "outline", "idea", "existing_outline", "outline_mode", "outline_start", "outline_end", "editor_notes", "manual_context"}); err != nil {
 		return req, err
 	}
 	if req.NovelID == nil || *req.NovelID <= 0 {
@@ -3507,6 +3515,9 @@ func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (Previe
 	}
 	if req.ChapterIndex != nil && *req.ChapterIndex <= 0 {
 		return req, errors.New("chapter_index must be a positive integer")
+	}
+	if req.OutlineMode != "" && req.OutlineMode != "full" && req.OutlineMode != "extend" {
+		return req, errors.New("outline_mode must be full or extend")
 	}
 	if (req.OutlineStart == nil) != (req.OutlineEnd == nil) {
 		return req, errors.New("outline_start and outline_end must be provided together")
@@ -3521,9 +3532,55 @@ func decodePreviewContextRequest(w http.ResponseWriter, r *http.Request) (Previe
 	req.Outline = strings.TrimSpace(req.Outline)
 	req.Idea = strings.TrimSpace(req.Idea)
 	req.ExistingOutline = strings.TrimSpace(req.ExistingOutline)
+	req.OutlineMode = strings.TrimSpace(req.OutlineMode)
 	req.EditorNotes = strings.TrimSpace(req.EditorNotes)
 	req.ManualContext = strings.TrimSpace(req.ManualContext)
 	return req, nil
+}
+
+const previewOutlineTimeout = 2 * time.Minute
+
+type previewContextErrorPayload struct {
+	ErrorCode string `json:"error_code"`
+	Message   string `json:"message"`
+}
+
+func classifyPreviewContextError(err error) (int, previewContextErrorPayload) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return http.StatusGatewayTimeout, previewContextErrorPayload{ErrorCode: "generation_timeout", Message: "大纲生成超时，请稍后重试"}
+	}
+	if errors.Is(err, context.Canceled) {
+		return http.StatusRequestTimeout, previewContextErrorPayload{ErrorCode: "generation_cancelled", Message: "大纲生成已取消"}
+	}
+	var providerErr *llminfra.ProviderError
+	if errors.As(err, &providerErr) {
+		if providerErr.Retryable {
+			return http.StatusTooManyRequests, previewContextErrorPayload{ErrorCode: "provider_busy", Message: "模型服务繁忙，请稍后重试"}
+		}
+		return http.StatusBadGateway, previewContextErrorPayload{ErrorCode: "provider_error", Message: "模型服务请求失败，请检查配置后重试"}
+	}
+	var diagnosticCoder safeGenerationDiagnosticCoder
+	if errors.As(err, &diagnosticCoder) {
+		code := diagnosticCoder.SafeDiagnosticCode()
+		if code != "structured_response_invalid" && generationDiagnosticIssueCodes[code] {
+			return http.StatusUnprocessableEntity, previewContextErrorPayload{ErrorCode: "outline_validation_failed", Message: "大纲内容无法通过校验，请重试"}
+		}
+		if code == "structured_response_invalid" {
+			return http.StatusBadGateway, previewContextErrorPayload{ErrorCode: "structured_response_invalid", Message: "模型返回格式异常，请重试"}
+		}
+	}
+	var stageErr *workflows.WorkflowStageError
+	if errors.As(err, &stageErr) {
+		return http.StatusBadGateway, previewContextErrorPayload{ErrorCode: "context_preparation_failed", Message: "大纲上下文准备失败，请重试"}
+	}
+	return http.StatusInternalServerError, previewContextErrorPayload{ErrorCode: "context_preparation_failed", Message: "大纲上下文准备失败，请重试"}
+}
+
+func writePreviewContextError(w http.ResponseWriter, status int, response previewContextErrorPayload) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
@@ -3551,13 +3608,27 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	if req.OutlineStart != nil {
 		outlineStart, outlineEnd = *req.OutlineStart, *req.OutlineEnd
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), s.config.GenerationTimeout)
+	timeout := s.config.GenerationTimeout
+	if req.OutlineMode == "full" || req.OutlineMode == "extend" {
+		if timeout <= 0 || timeout > previewOutlineTimeout {
+			timeout = previewOutlineTimeout
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 	if s.db != nil && (idea == "" || outline == "" || existingOutline == "") {
 		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
 		row, qErr := s.db.Novel.Query().Where(novel.ID(*req.NovelID)).Only(loadCtx)
 		loadCancel()
 		if qErr != nil {
+			if ent.IsNotFound(qErr) {
+				http.Error(w, "novel not found", http.StatusNotFound)
+				return
+			}
+			if errors.Is(qErr, context.DeadlineExceeded) {
+				writePreviewContextError(w, http.StatusGatewayTimeout, previewContextErrorPayload{ErrorCode: "generation_timeout", Message: "加载小说超时，请稍后重试"})
+				return
+			}
 			http.Error(w, "failed to load novel", http.StatusInternalServerError)
 			return
 		}
@@ -3581,10 +3652,18 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.modelCapacity.release()
-	state := &agents.GenerationState{NovelID: novelID, ChapterIndex: chapterIndex, FullOutline: outline, Idea: idea, EditorNotes: editorNotes, ManualContext: manualContext, ExistingOutline: existingOutline, OutlineStart: outlineStart, OutlineEnd: outlineEnd}
-	res, err := s.engine.PrepareContext(ctx, state)
+	state := &agents.GenerationState{NovelID: novelID, ChapterIndex: chapterIndex, FullOutline: outline, Idea: idea, EditorNotes: editorNotes, ManualContext: manualContext, ExistingOutline: existingOutline, OutlineStart: outlineStart, OutlineEnd: outlineEnd, OutlineMode: req.OutlineMode}
+	prepare := s.engine.PrepareContext
+	if req.OutlineMode == "full" || req.OutlineMode == "extend" {
+		prepare = s.engine.PrepareOutline
+	}
+	res, err := prepare(ctx, state)
 	if err != nil || res == nil {
-		http.Error(w, "preview context preparation failed", http.StatusInternalServerError)
+		status, response := classifyPreviewContextError(err)
+		if res == nil && err == nil {
+			status, response = classifyPreviewContextError(errors.New("preview context returned no state"))
+		}
+		writePreviewContextError(w, status, response)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")

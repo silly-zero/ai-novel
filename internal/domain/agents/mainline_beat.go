@@ -73,6 +73,9 @@ func parseMainlineOutline(fullOutline string) parsedMainlineOutline {
 }
 
 func inspectMainlineEventBeat(fullOutline string, chapterIndex int) mainlineBeatSelection {
+	if _, isPhasePlan := outlinePlanFromText(fullOutline); isPhasePlan {
+		return mainlineBeatSelection{}
+	}
 	parsed := parseMainlineOutline(fullOutline)
 	selection := mainlineBeatSelection{
 		HasStructuredOutline: parsed.hasStructuredLines,

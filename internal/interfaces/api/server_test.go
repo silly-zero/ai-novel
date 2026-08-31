@@ -157,6 +157,10 @@ func (e *generationTestEngine) PrepareContext(ctx context.Context, state *agents
 	return state, nil
 }
 
+func (e *generationTestEngine) PrepareOutline(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+	return e.PrepareContext(ctx, state)
+}
+
 func (e *generationTestEngine) RunChapterGeneration(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
 	if e.run != nil {
 		return e.run(ctx, state)

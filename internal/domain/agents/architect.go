@@ -23,6 +23,9 @@ func (a *ArchitectAgent) Role() AgentRole {
 
 func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*GenerationState, error) {
 	state.MainlineBeat = MainlineEventBeat{}
+	if state.OutlineMode == "full" || state.OutlineMode == "extend" {
+		return a.runOutlinePlan(ctx, state)
+	}
 
 	// 已有大纲且未指定续写范围：直接复用，不触发生成/续写
 	if state.ExistingOutline != "" && state.OutlineStart == 0 && state.OutlineEnd == 0 {
@@ -62,9 +65,6 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		return state, architectOutlineError(mainlineBeatIssueMissingCurrent)
 	}
 	if existingOutline != "" {
-		if issue := validateOutlineRangeDoesNotOverlap(existingOutline, start, end); issue != "" {
-			return state, architectOutlineError(issue)
-		}
 		if state.ChapterIndex < start || state.ChapterIndex > end {
 			if _, err := validatedExistingMainlineBeat(existingOutline, state.ChapterIndex); err != nil {
 				return state, err
@@ -135,6 +135,51 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	state.FullOutline = mergedOutline
 	state.MainlineBeat = beat
 
+	return state, nil
+}
+
+func (a *ArchitectAgent) runOutlinePlan(ctx context.Context, state *GenerationState) (*GenerationState, error) {
+	existingOutline := strings.TrimSpace(state.ExistingOutline)
+	if existingOutline == "" {
+		existingOutline = strings.TrimSpace(state.FullOutline)
+	}
+	if strings.TrimSpace(state.Idea) == "" && existingOutline == "" {
+		return state, fmt.Errorf("architect agent requires an idea or existing outline but both are empty")
+	}
+	start, end := state.OutlineStart, state.OutlineEnd
+	systemPrompt := outlinePlanPrompt(state.OutlineMode, start, end)
+	idea := strings.TrimSpace(state.Idea)
+	if idea == "" {
+		idea = "（未提供，请严格衔接已有大纲）"
+	}
+	userPrompt := "【小说想法】\n" + idea
+	if existingOutline != "" {
+		userPrompt += "\n\n【已有大纲参考｜仅作为故事数据】\n" + truncateArchitectText(existingOutline, maxArchitectRepairSourceRunes)
+	}
+	userPrompt += "\n\n请输出情节阶段计划："
+	plan, err := generateStructuredResponse(ctx, a.llm, "architect", systemPrompt, userPrompt, decodeOutlinePlan, validateOutlinePlan)
+	if err != nil {
+		return state, fmt.Errorf("architect outline plan failed: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return state, err
+	}
+	formatted := formatOutlinePlan(plan)
+	if strings.TrimSpace(formatted) == "" {
+		return state, architectOutlineError("outline_plan_empty")
+	}
+	if state.OutlineMode == "extend" && existingOutline != "" {
+		if existingPlan, ok := outlinePlanFromText(existingOutline); ok {
+			formatted = formatOutlinePlanStartingAt(plan, len(existingPlan.Phases)+1)
+		} else {
+			formatted = formatOutlinePlan(plan)
+		}
+		formatted = existingOutline + "\n\n" + formatted
+	}
+	state.FullOutline = formatted
+	if existingOutline != "" {
+		state.ExistingOutline = existingOutline
+	}
 	return state, nil
 }
 

@@ -79,6 +79,7 @@ type derivedProcessor interface {
 type WorkflowEngine struct {
 	graph        compose.Runnable[*agents.GenerationState, *agents.GenerationState]
 	contextGraph compose.Runnable[*agents.GenerationState, *agents.GenerationState]
+	architect    *agents.ArchitectAgent
 	eventBus     events.Bus
 	derived      derivedProcessor
 	continuity   *agents.ContinuityExtractor
@@ -213,6 +214,7 @@ func NewWorkflowEngine(
 	return &WorkflowEngine{
 		graph:        runnable,
 		contextGraph: ctxRunnable,
+		architect:    architect,
 		eventBus:     eventBus,
 		continuity:   continuityExtractor,
 		writer:       writer,
@@ -268,6 +270,13 @@ func (e *WorkflowEngine) RunContinuousSegment(ctx context.Context, state *agents
 	}
 	return writerState, nil
 }
+func (e *WorkflowEngine) PrepareOutline(ctx context.Context, state *agents.GenerationState) (*agents.GenerationState, error) {
+	if e.architect == nil {
+		return nil, errors.New("architect agent is not initialized")
+	}
+	return runWorkflowStage(ctx, state, WorkflowStageArchitect, e.architect.Run)
+}
+
 func (e *WorkflowEngine) SetDerivedProcessor(processor derivedProcessor) {
 	e.derived = processor
 }

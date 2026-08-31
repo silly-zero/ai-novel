@@ -8,6 +8,39 @@ import (
 	"testing"
 )
 
+func TestArchitectGeneratesPhasePlanWithoutChapterList(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{`{"phases":[{"id":"phase_1","title":"起点","goal":"主角发现异常","events":["抵达现场","发现线索"],"causal_hook":"线索指向旧案","end_state":"决定继续调查"},{"id":"phase_2","title":"调查","goal":"主角确认线索","events":["追查来源","遭遇阻拦"],"causal_hook":"阻拦暴露幕后势力","end_state":"锁定下一地点"},{"id":"phase_3","title":"转折","goal":"主角进入新危机","events":["抵达入口","发现陷阱"],"causal_hook":"陷阱引出真相","end_state":"带着线索撤离"}]}`}}
+	state := &GenerationState{Idea: "调查身世", OutlineMode: "full", ChapterIndex: 1}
+	got, err := NewArchitectAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if llm.calls != 1 || !strings.Contains(got.FullOutline, "阶段1｜起点") || strings.Contains(got.FullOutline, "第1章：") {
+		t.Fatalf("calls=%d outline=%q", llm.calls, got.FullOutline)
+	}
+	if got.MainlineBeat != (MainlineEventBeat{}) {
+		t.Fatalf("phase plan produced a chapter hard anchor: %#v", got.MainlineBeat)
+	}
+	if !strings.Contains(llm.systems[0], "不要按“每章一件事”设计") {
+		t.Fatalf("system prompt = %s", llm.systems[0])
+	}
+}
+
+func TestArchitectExtendsPhasePlanAfterExistingOutline(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{`{"phases":[{"id":"phase_4","title":"新阶段","goal":"主角确认新目标","events":["整理线索","确定方向"],"causal_hook":"新目标引出追踪","end_state":"踏上新路"},{"id":"phase_5","title":"追踪","goal":"主角接近目标","events":["追踪踪迹","遭遇阻碍"],"causal_hook":"阻碍暴露敌人","end_state":"发现敌人所在"},{"id":"phase_6","title":"对抗","goal":"主角与敌人交锋","events":["确认敌情","展开交锋"],"causal_hook":"交锋改变局势","end_state":"冲突尚未结束"}]}`}}
+	state := &GenerationState{Idea: "调查身世", ExistingOutline: "阶段1｜旧阶段\n阶段目标：旧目标", OutlineMode: "extend", OutlineStart: 1, OutlineEnd: 10, ChapterIndex: 4}
+	got, err := NewArchitectAgent(llm).Run(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.FullOutline, "阶段1｜旧阶段") || !strings.Contains(got.FullOutline, "阶段2｜新阶段") {
+		t.Fatalf("outline=%q", got.FullOutline)
+	}
+	if !strings.Contains(llm.systems[0], "不要求逐章输出") || !strings.Contains(llm.systems[0], "第1-10章") {
+		t.Fatalf("system prompt=%s", llm.systems[0])
+	}
+}
+
 func TestArchitectSelectsBeatFromExistingFullOutline(t *testing.T) {
 	llm := &queuedStructuredLLM{}
 	state := &GenerationState{
@@ -374,7 +407,7 @@ func TestArchitectRejectsInvalidGeneratedOutlineWithoutMutatingState(t *testing.
 	}
 }
 
-func TestArchitectRejectsInvalidAndOverlappingRangesBeforeGeneration(t *testing.T) {
+func TestArchitectRejectsInvalidRangesBeforeGeneration(t *testing.T) {
 	tests := []struct {
 		name  string
 		state GenerationState
@@ -385,7 +418,6 @@ func TestArchitectRejectsInvalidAndOverlappingRangesBeforeGeneration(t *testing.
 		{name: "missing start", state: GenerationState{Idea: "调查身世", OutlineEnd: 2}, issue: outlineIssueInvalidRange},
 		{name: "missing end", state: GenerationState{Idea: "调查身世", OutlineStart: 2}, issue: outlineIssueInvalidRange},
 		{name: "reversed", state: GenerationState{Idea: "调查身世", OutlineStart: 4, OutlineEnd: 3}, issue: outlineIssueInvalidRange},
-		{name: "overlap", state: GenerationState{FullOutline: "第1章：主角出发\n第2章：主角发现血书", OutlineStart: 2, OutlineEnd: 3, ChapterIndex: 2}, issue: outlineIssueRangeOverlap},
 	}
 
 	for _, test := range tests {
@@ -399,6 +431,23 @@ func TestArchitectRejectsInvalidAndOverlappingRangesBeforeGeneration(t *testing.
 				t.Fatalf("state = %#v, calls = %d", got, llm.calls)
 			}
 		})
+	}
+}
+
+func TestArchitectAllowsOverlappingReferenceRange(t *testing.T) {
+	llm := &queuedStructuredLLM{responses: []string{"第2章：主角继续追查\n第3章：主角发现新线索"}}
+	state := &GenerationState{
+		FullOutline:  "第1章：主角出发\n第2章：主角发现血书",
+		OutlineStart: 2,
+		OutlineEnd:   3,
+		ChapterIndex: 2,
+	}
+	got, err := NewArchitectAgent(llm).Run(context.Background(), state)
+	if err != nil || llm.calls != 1 {
+		t.Fatalf("error=%v calls=%d state=%#v", err, llm.calls, got)
+	}
+	if !strings.Contains(llm.systems[0], "第 2 章到第 3 章") || !strings.Contains(got.FullOutline, "第2章：主角继续追查") {
+		t.Fatalf("system=%q state=%#v", llm.systems[0], got)
 	}
 }
 
