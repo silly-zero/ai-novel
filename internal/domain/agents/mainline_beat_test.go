@@ -5,6 +5,54 @@ import (
 	"testing"
 )
 
+func TestCurrentMainlineEventBeatMapsPhaseEventsToChapter(t *testing.T) {
+	outline := `阶段1｜模拟觉醒与苟道开局
+阶段目标：确立生存策略
+事件链：
+1. 觉醒人生模拟器
+2. 锁定隐秘副本
+3. 大学时期积蓄力量
+因果牵引：主角寻找变数
+阶段终点：掌握初始能力
+
+阶段2｜隐秘副本与分身收徒
+参考章节：4-6
+阶段目标：获得修炼据点
+事件链：
+1. 进入副本
+2. 通过考核
+3. 获得传承
+因果牵引：获得真实修炼环境
+阶段终点：实力质变`
+
+	first := currentMainlineEventBeat(outline, 1)
+	if first.CurrentEvent != "觉醒人生模拟器" || first.PhaseTitle != "模拟觉醒与苟道开局" || !first.Estimated {
+		t.Fatalf("chapter 1 beat = %#v", first)
+	}
+	third := currentMainlineEventBeat(outline, 3)
+	if third.CurrentEvent != "大学时期积蓄力量" || third.NextEvent != "" || third.PhaseTitle != "模拟觉醒与苟道开局" {
+		t.Fatalf("chapter 3 beat = %#v", third)
+	}
+	fourth := currentMainlineEventBeat(outline, 4)
+	if fourth.CurrentEvent != "进入副本" || fourth.PhaseTitle != "隐秘副本与分身收徒" || !fourth.Estimated {
+		t.Fatalf("chapter 4 beat = %#v", fourth)
+	}
+}
+
+func TestCurrentMainlineEventBeatPrefersExactChapterOverPhaseEstimate(t *testing.T) {
+	outline := `第3章：主角进入秘境
+阶段1｜早期阶段
+阶段目标：不应覆盖精确章节
+事件链：
+1. 回到宿舍
+2. 重新觉醒
+因果牵引：继续推进
+阶段终点：进入下一阶段`
+	beat := currentMainlineEventBeat(outline, 3)
+	if beat.CurrentEvent != "主角进入秘境" || beat.Estimated || beat.PhaseTitle != "" {
+		t.Fatalf("beat = %#v", beat)
+	}
+}
 func TestSelectMainlineEventBeatUsesExactChapterAndNextEvent(t *testing.T) {
 	outline := `第 1 章：主角抵达边城
 第2章: 主角发现失踪案与旧王朝有关
@@ -199,13 +247,26 @@ func TestMainlineBeatPromptFormatsAvailableBoundaries(t *testing.T) {
 		CurrentEvent: "主角找到血书",
 		NextEvent:    "主角前往地下祭坛",
 	})
-	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛", "本章只可自然铺垫"} {
+	for _, value := range []string{"第4章", "主角找到血书", "主角前往地下祭坛", "当前章节主线锚点"} {
 		if !strings.Contains(prompt, value) {
 			t.Fatalf("prompt missing %q: %s", value, prompt)
 		}
 	}
 	if got := mainlineBeatPrompt(MainlineEventBeat{}); got != "" {
 		t.Fatalf("empty beat prompt = %q", got)
+	}
+	firstPrompt := mainlineBeatPrompt(MainlineEventBeat{
+		ChapterIndex:  1,
+		CurrentEvent:  "觉醒人生模拟器",
+		PhaseTitle:    "开局",
+		PhaseGoal:     "确立生存策略",
+		PhaseEndState: "掌握初始能力",
+		Estimated:     true,
+	})
+	for _, value := range []string{"阶段事件方向（不代表必须在本章完成）", "开局", "确立生存策略", "阶段边界参考"} {
+		if !strings.Contains(firstPrompt, value) {
+			t.Fatalf("estimated prompt missing %q: %s", value, firstPrompt)
+		}
 	}
 	if got := mainlineBeatPrompt(MainlineEventBeat{
 		ChapterIndex: 1,

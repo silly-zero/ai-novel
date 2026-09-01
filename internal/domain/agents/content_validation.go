@@ -24,6 +24,14 @@ var (
 		"【上一章接力状态】",
 	}
 	generatedContentParagraphBoundary = regexp.MustCompile(`(?:\r\n|\n|\r)[\p{Zs}\t]*(?:\r\n|\n|\r)`)
+	continuousRestartPatterns         = []*regexp.Regexp{
+		regexp.MustCompile(`穿越到这个世界的[第\d一二三四五六七八九十百]+天`),
+		regexp.MustCompile(`第一次人生模拟`),
+		regexp.MustCompile(`刚刚觉醒`),
+		regexp.MustCompile(`人生模拟[，,、 ]*结束`),
+		regexp.MustCompile(`大学宿舍`),
+		regexp.MustCompile(`宿舍里`),
+	}
 )
 
 type GeneratedContentIssue struct {
@@ -128,6 +136,20 @@ func HasBlockingGeneratedContentIssuesForBatch(content string) bool {
 		return true
 	}
 	return len(validateGeneratedContentSafety(content)) > 0
+}
+
+func HasContinuousRestartSignals(content string) bool {
+	runes := []rune(strings.TrimSpace(content))
+	if len(runes) > 1200 {
+		content = string(runes[:1200])
+	}
+	matches := 0
+	for _, pattern := range continuousRestartPatterns {
+		if pattern.MatchString(content) {
+			matches++
+		}
+	}
+	return matches >= 3
 }
 func HasBlockingGeneratedContentIssues(content string) bool {
 	for _, issue := range ValidateGeneratedContent(content) {

@@ -153,6 +153,17 @@ func TestValidateGeneratedContentIssuesAreStableAndBounded(t *testing.T) {
 	}
 }
 
+func TestHasContinuousRestartSignalsRequiresMultipleEarlySignals(t *testing.T) {
+	if !HasContinuousRestartSignals("他回到大学宿舍，想起自己刚刚觉醒。第一次人生模拟，人生模拟结束。") {
+		t.Fatal("expected multiple restart signals to be detected")
+	}
+	if HasContinuousRestartSignals("他握紧手中的钥匙，继续走向石门。") {
+		t.Fatal("ordinary continuation was treated as a restart")
+	}
+	if HasContinuousRestartSignals("大学宿舍只是旧日回忆，随后他回到秘境现场。") {
+		t.Fatal("a single retrospective signal was treated as a restart")
+	}
+}
 func hasGeneratedContentIssue(issues []GeneratedContentIssue, code string) bool {
 	for _, issue := range issues {
 		if issue.Code == code {

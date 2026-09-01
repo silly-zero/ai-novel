@@ -18,8 +18,8 @@ func TestArchitectGeneratesPhasePlanWithoutChapterList(t *testing.T) {
 	if llm.calls != 1 || !strings.Contains(got.FullOutline, "阶段1｜起点") || strings.Contains(got.FullOutline, "第1章：") {
 		t.Fatalf("calls=%d outline=%q", llm.calls, got.FullOutline)
 	}
-	if got.MainlineBeat != (MainlineEventBeat{}) {
-		t.Fatalf("phase plan produced a chapter hard anchor: %#v", got.MainlineBeat)
+	if got.MainlineBeat.ChapterIndex != 1 || got.MainlineBeat.CurrentEvent != "抵达现场" || got.MainlineBeat.NextEvent != "发现线索" || !got.MainlineBeat.Estimated {
+		t.Fatalf("phase plan chapter anchor = %#v", got.MainlineBeat)
 	}
 	if !strings.Contains(llm.systems[0], "不要按“每章一件事”设计") {
 		t.Fatalf("system prompt = %s", llm.systems[0])

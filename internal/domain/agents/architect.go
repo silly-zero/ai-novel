@@ -27,24 +27,21 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 		return a.runOutlinePlan(ctx, state)
 	}
 
-	// 已有大纲且未指定续写范围：直接复用，不触发生成/续写
 	if state.ExistingOutline != "" && state.OutlineStart == 0 && state.OutlineEnd == 0 {
-		beat, err := validatedExistingMainlineBeat(state.ExistingOutline, state.ChapterIndex)
-		if err != nil {
+		if _, err := validatedExistingMainlineBeat(state.ExistingOutline, state.ChapterIndex); err != nil {
 			return state, err
 		}
 		state.FullOutline = state.ExistingOutline
-		state.MainlineBeat = beat
+		state.MainlineBeat = currentMainlineEventBeat(state.FullOutline, state.ChapterIndex)
 		return state, nil
 	}
 
 	// FullOutline 已有且未指定续写范围：跳过生成
 	if state.FullOutline != "" && state.OutlineStart == 0 && state.OutlineEnd == 0 {
-		beat, err := validatedExistingMainlineBeat(state.FullOutline, state.ChapterIndex)
-		if err != nil {
+		if _, err := validatedExistingMainlineBeat(state.FullOutline, state.ChapterIndex); err != nil {
 			return state, err
 		}
-		state.MainlineBeat = beat
+		state.MainlineBeat = currentMainlineEventBeat(state.FullOutline, state.ChapterIndex)
 		return state, nil
 	}
 
@@ -128,6 +125,9 @@ func (a *ArchitectAgent) Run(ctx context.Context, state *GenerationState) (*Gene
 	if err != nil {
 		return state, err
 	}
+	if phaseBeat := currentMainlineEventBeat(beatSource, state.ChapterIndex); mainlineEventBeatIsValid(phaseBeat) {
+		beat = phaseBeat
+	}
 
 	if existingOutline != "" {
 		state.ExistingOutline = existingOutline
@@ -180,6 +180,7 @@ func (a *ArchitectAgent) runOutlinePlan(ctx context.Context, state *GenerationSt
 	if existingOutline != "" {
 		state.ExistingOutline = existingOutline
 	}
+	state.MainlineBeat = currentMainlineEventBeat(state.FullOutline, state.ChapterIndex)
 	return state, nil
 }
 

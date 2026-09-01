@@ -1653,6 +1653,19 @@ func TestPreparePreviousContinuityFallsBackWhenPacketInvalid(t *testing.T) {
 	}
 }
 
+func TestPreparePreviousContinuityFallsBackToPreviousDraft(t *testing.T) {
+	packet, err := preparePreviousContinuity(
+		context.Background(),
+		7,
+		3,
+		func(context.Context, int, int) (*ent.Chapter, error) {
+			return &ent.Chapter{Content: "主角推开石门，黑雾从门后涌出。"}, nil
+		},
+	)
+	if err != nil || packet.LastBeat != "主角推开石门，黑雾从门后涌出。" || packet.NextAction != packet.LastBeat {
+		t.Fatalf("packet = %#v, error = %v", packet, err)
+	}
+}
 func TestPreparePreviousContinuityPropagatesLookupError(t *testing.T) {
 	lookupErr := errors.New("lookup failed")
 	_, err := preparePreviousContinuity(

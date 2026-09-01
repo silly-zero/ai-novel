@@ -331,7 +331,10 @@ func preparePreviousContinuity(
 		NextAction: strings.TrimSpace(previous.NextAction),
 	}
 	if err := agents.ValidateContinuityPacket(&packet); err != nil {
-		return agents.ContinuityPacket{}, nil
+		packet = agents.DeriveBatchContinuity(previous.Content)
+		if packet.IsEmpty() {
+			return agents.ContinuityPacket{}, nil
+		}
 	}
 	return packet, nil
 }

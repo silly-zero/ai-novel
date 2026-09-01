@@ -97,9 +97,14 @@ func (c ChapterContract) IsEmpty() bool {
 }
 
 type MainlineEventBeat struct {
-	ChapterIndex int
-	CurrentEvent string
-	NextEvent    string
+	ChapterIndex  int
+	CurrentEvent  string
+	NextEvent     string
+	PhaseTitle    string
+	PhaseGoal     string
+	PhaseEvent    string
+	PhaseEndState string
+	Estimated     bool
 }
 
 // GenerationState 承载一次小说生成任务中的上下文状态

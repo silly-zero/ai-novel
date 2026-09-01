@@ -114,6 +114,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			ManualContext:       request.ManualContext,
 			PreviousContinuity:  previousContinuity,
 			PreviousChapterTail: previousContinuity.LastBeat,
+			MainlineBeat:        agents.CurrentMainlineEventBeat(outline, targets[index].Order),
 			EventChapterCount:   chapterCount,
 			EventSegmentIndex:   index + 1,
 			StreamSink:          nil,
@@ -134,6 +135,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			preparedBase.ManualContext = request.ManualContext
 			preparedBase.PreviousContinuity = previousContinuity
 			preparedBase.PreviousChapterTail = previousContinuity.LastBeat
+			preparedBase.MainlineBeat = agents.CurrentMainlineEventBeat(outline, targets[index].Order)
 			preparedBase.EventChapterCount = chapterCount
 			preparedBase.EventSegmentIndex = index + 1
 			preparedBase.Draft = ""
@@ -156,6 +158,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 		}
 		prepared.PreviousContinuity = previousContinuity
 		prepared.PreviousChapterTail = previousContinuity.LastBeat
+		prepared.MainlineBeat = agents.CurrentMainlineEventBeat(outline, prepared.ChapterIndex)
 		prepared.EventChapterCount = chapterCount
 		prepared.EventSegmentIndex = index + 1
 		if err := sse.send("context_meta", map[string]any{
@@ -212,6 +215,10 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			return
 		}
 		chapters = append(chapters, strings.TrimSpace(finalState.Draft))
+		if !previousContinuity.IsEmpty() && agents.HasContinuousRestartSignals(chapters[len(chapters)-1]) {
+			sendGenerationError(sse, generationID, errors.New("continuous segment restarted an earlier timeline"))
+			return
+		}
 		previousContinuity = agents.DeriveBatchContinuity(chapters[len(chapters)-1])
 	}
 

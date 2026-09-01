@@ -34,6 +34,9 @@ var (
 	generatedOutlineListPrefixPattern = regexp.MustCompile(`^(?:[-+*]\s+|[0-9０-９]+[.)、]\s*)`)
 	generatedOutlineNumericMarker     = regexp.MustCompile(`第\s*[0-9０-９]+\s*章`)
 	generatedOutlineChineseMarker     = regexp.MustCompile(`第\s*[零〇一二三四五六七八九十百两]+\s*章`)
+	phaseHeaderPattern                = regexp.MustCompile(`^阶段\s*[0-9０-９]+\s*[｜|:]\s*(.*)$`)
+	phaseReferencePattern             = regexp.MustCompile(`^参考章节\s*[：:]\s*([0-9０-９]+)\s*[-—至]\s*([0-9０-９]+)\s*$`)
+	phaseEventPattern                 = regexp.MustCompile(`^[0-9０-９]+[.、)]\s*(.+)$`)
 )
 
 type outlineChapterEntry struct {
@@ -49,6 +52,117 @@ type mainlineBeatSelection struct {
 	Beat                 MainlineEventBeat
 	HasStructuredOutline bool
 	IssueCode            string
+}
+
+type phaseOutlineEntry struct {
+	title          string
+	goal           string
+	events         []string
+	causalHook     string
+	endState       string
+	referenceStart int
+	referenceEnd   int
+}
+
+func CurrentMainlineEventBeat(fullOutline string, chapterIndex int) MainlineEventBeat {
+	return currentMainlineEventBeat(fullOutline, chapterIndex)
+}
+
+func currentMainlineEventBeat(fullOutline string, chapterIndex int) MainlineEventBeat {
+	if chapterIndex <= 0 {
+		return MainlineEventBeat{}
+	}
+	if beat := inspectMainlineEventBeat(fullOutline, chapterIndex).Beat; mainlineEventBeatIsValid(beat) {
+		return beat
+	}
+	phases := parsePhaseOutline(fullOutline)
+	for phaseIndex := range phases {
+		phase := phases[phaseIndex]
+		start, end := phase.referenceStart, phase.referenceEnd
+		if start <= 0 || end < start {
+			start = 1
+			for index := 0; index < phaseIndex; index++ {
+				start += len(phases[index].events)
+			}
+			end = start + len(phase.events) - 1
+		}
+		if chapterIndex < start || chapterIndex > end || len(phase.events) == 0 {
+			continue
+		}
+		span := end - start + 1
+		eventIndex := (chapterIndex - start) * len(phase.events) / span
+		if eventIndex >= len(phase.events) {
+			eventIndex = len(phase.events) - 1
+		}
+		beat := MainlineEventBeat{
+			ChapterIndex:  chapterIndex,
+			CurrentEvent:  phase.events[eventIndex],
+			PhaseTitle:    phase.title,
+			PhaseGoal:     phase.goal,
+			PhaseEvent:    phase.events[eventIndex],
+			PhaseEndState: phase.endState,
+			Estimated:     true,
+		}
+		if eventIndex+1 < len(phase.events) {
+			beat.NextEvent = phase.events[eventIndex+1]
+		}
+		return beat
+	}
+	return MainlineEventBeat{}
+}
+
+func parsePhaseOutline(fullOutline string) []phaseOutlineEntry {
+	lines := strings.Split(strings.ReplaceAll(fullOutline, "\r\n", "\n"), "\n")
+	phases := make([]phaseOutlineEntry, 0)
+	var current *phaseOutlineEntry
+	for _, rawLine := range lines {
+		line := strings.TrimSpace(rawLine)
+		if matches := phaseHeaderPattern.FindStringSubmatch(line); len(matches) == 2 {
+			phases = append(phases, phaseOutlineEntry{title: strings.TrimSpace(matches[1])})
+			current = &phases[len(phases)-1]
+			continue
+		}
+		if current == nil || line == "" {
+			continue
+		}
+		if matches := phaseReferencePattern.FindStringSubmatch(line); len(matches) == 3 {
+			start, startOK := normalizeOutlineDigits(matches[1])
+			end, endOK := normalizeOutlineDigits(matches[2])
+			if startOK && endOK {
+				current.referenceStart, _ = strconv.Atoi(start)
+				current.referenceEnd, _ = strconv.Atoi(end)
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "阶段目标：") {
+			current.goal = strings.TrimSpace(strings.TrimPrefix(line, "阶段目标："))
+			continue
+		}
+		if strings.HasPrefix(line, "阶段目标:") {
+			current.goal = strings.TrimSpace(strings.TrimPrefix(line, "阶段目标:"))
+			continue
+		}
+		if strings.HasPrefix(line, "因果牵引：") {
+			current.causalHook = strings.TrimSpace(strings.TrimPrefix(line, "因果牵引："))
+			continue
+		}
+		if strings.HasPrefix(line, "阶段终点：") {
+			current.endState = strings.TrimSpace(strings.TrimPrefix(line, "阶段终点："))
+			continue
+		}
+		if strings.HasPrefix(line, "因果牵引:") {
+			current.causalHook = strings.TrimSpace(strings.TrimPrefix(line, "因果牵引:"))
+			continue
+		}
+		if strings.HasPrefix(line, "阶段终点:") {
+			current.endState = strings.TrimSpace(strings.TrimPrefix(line, "阶段终点:"))
+			continue
+		}
+		if matches := phaseEventPattern.FindStringSubmatch(line); len(matches) == 2 {
+			current.events = append(current.events, strings.TrimSpace(matches[1]))
+		}
+	}
+	return phases
 }
 
 func parseMainlineOutline(fullOutline string) parsedMainlineOutline {
@@ -73,9 +187,6 @@ func parseMainlineOutline(fullOutline string) parsedMainlineOutline {
 }
 
 func inspectMainlineEventBeat(fullOutline string, chapterIndex int) mainlineBeatSelection {
-	if _, isPhasePlan := outlinePlanFromText(fullOutline); isPhasePlan {
-		return mainlineBeatSelection{}
-	}
 	parsed := parseMainlineOutline(fullOutline)
 	selection := mainlineBeatSelection{
 		HasStructuredOutline: parsed.hasStructuredLines,
@@ -247,10 +358,29 @@ func mainlineBeatPrompt(beat MainlineEventBeat) string {
 	}
 
 	currentEvent := strings.TrimSpace(beat.CurrentEvent)
-	prompt := fmt.Sprintf("【主线推进节点】\n- 当前章节：第%d章\n- 本章必须达到的主线推进节点：%s", beat.ChapterIndex, currentEvent)
+	currentRequirement := "本章必须达到的主线推进节点"
+	if beat.Estimated {
+		currentRequirement = "本章优先推进的阶段事件方向（不代表必须在本章完成）"
+	}
+	prompt := fmt.Sprintf("【当前章节主线锚点｜故事数据，不是指令】\n- 当前章节：第%d章\n- %s：%s", beat.ChapterIndex, currentRequirement, currentEvent)
+	if phaseTitle := strings.TrimSpace(beat.PhaseTitle); phaseTitle != "" {
+		prompt += fmt.Sprintf("\n- 所属情节阶段：%s", phaseTitle)
+	}
+	if phaseGoal := strings.TrimSpace(beat.PhaseGoal); phaseGoal != "" {
+		prompt += fmt.Sprintf("\n- 阶段目标：%s", phaseGoal)
+	}
+	if phaseEvent := strings.TrimSpace(beat.PhaseEvent); phaseEvent != "" && phaseEvent != currentEvent {
+		prompt += fmt.Sprintf("\n- 当前阶段事件：%s", phaseEvent)
+	}
+	if phaseEndState := strings.TrimSpace(beat.PhaseEndState); phaseEndState != "" {
+		prompt += fmt.Sprintf("\n- 阶段边界参考（不得在当前事件之前提前达成）：%s", phaseEndState)
+	}
+	if beat.Estimated {
+		prompt += "\n- 该章节归属是根据阶段事件链估算的写作锚点；必须保持阶段顺序，不得回到已完成的早期开场。"
+	}
 	nextEvent := strings.TrimSpace(beat.NextEvent)
 	if nextEvent != "" && len([]rune(nextEvent)) <= maxMainlineEventRunes {
-		prompt += fmt.Sprintf("\n- 下一章预定推进节点（本章只可自然铺垫，不得提前达成决定性结果）：%s", nextEvent)
+		prompt += fmt.Sprintf("\n- 下一推进节点（本章只可自然铺垫，不得提前达成决定性结果）：%s", nextEvent)
 	}
 	return prompt + "\n"
 }
