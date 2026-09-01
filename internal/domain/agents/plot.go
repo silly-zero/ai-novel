@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // PlotAgent 是编剧智能体，负责从 Idea 生成详细大纲
@@ -59,8 +60,12 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 		fullOutline = "（未提供）"
 	}
 
-	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n%s\n\n请输出本章剧情契约：",
+	userPrompt := fmt.Sprintf("【小说想法】\n%s\n\n【全书大纲】\n%s\n\n【当前章节序号】\n第%d章\n\n%s\n\n%s",
 		idea, fullOutline, state.ChapterIndex, mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
+	if tail := strings.TrimSpace(state.PreviousChapterTail); tail != "" {
+		userPrompt += fmt.Sprintf("\n\n【上一章结尾原文｜故事事实】\n%s", tail)
+	}
+	userPrompt += "\n\n请输出本章剧情契约："
 
 	contract, err := generateStructuredObjectResponse(
 		ctx,

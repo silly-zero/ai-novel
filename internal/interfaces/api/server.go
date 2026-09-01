@@ -60,6 +60,7 @@ type generationChapterTarget struct {
 	OpenLoops           []string
 	NextAction          string
 	PreviousContinuity  agents.ContinuityPacket
+	PreviousChapterTail string
 	UpdatedAt           time.Time
 	NovelUpdatedAt      time.Time
 	isNew               bool
@@ -77,6 +78,13 @@ type eventGenerationChapterStore interface {
 
 type entGenerationChapterStore struct {
 	client *ent.Client
+}
+
+const maxPreviousChapterTailRunes = 500
+
+type previousChapterContext struct {
+	packet agents.ContinuityPacket
+	tail   string
 }
 
 var (
@@ -197,6 +205,12 @@ func (s *entGenerationChapterStore) Prepare(
 		return nil, err
 	}
 	target.PreviousContinuity = packet
+	if target.Order > 1 {
+		previous, previousErr := lookupPreviousChapterForShare(ctx, txClient, novelID, target.Order-1)
+		if previousErr == nil {
+			target.PreviousChapterTail = lastRunes(previous.Content, maxPreviousChapterTailRunes)
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -276,6 +290,11 @@ func prepareNewGenerationChapter(
 			return nil, err
 		}
 		target.PreviousContinuity = packet
+		if target.Order > 1 {
+			if previous, previousErr := lookup(ctx, novelID, target.Order-1); previousErr == nil {
+				target.PreviousChapterTail = lastRunes(previous.Content, maxPreviousChapterTailRunes)
+			}
+		}
 		return target, nil
 	}
 	if !ent.IsNotFound(err) {
@@ -298,6 +317,11 @@ func prepareNewGenerationChapter(
 	}
 	target := generationChapterTargetFromRow(row)
 	target.PreviousContinuity = packet
+	if target.Order > 1 {
+		if previous, previousErr := lookup(ctx, novelID, target.Order-1); previousErr == nil {
+			target.PreviousChapterTail = lastRunes(previous.Content, maxPreviousChapterTailRunes)
+		}
+	}
 	target.isNew = true
 	return target, nil
 }
@@ -325,6 +349,13 @@ func preparePreviousContinuity(
 	if previous.Status == string(domain.StatusStale) {
 		return agents.ContinuityPacket{}, fmt.Errorf("%w: chapter %d", errGenerationEarlierChapterStale, previousOrder)
 	}
+	return continuityPacketFromChapter(previous), nil
+}
+
+func continuityPacketFromChapter(previous *ent.Chapter) agents.ContinuityPacket {
+	if previous == nil {
+		return agents.ContinuityPacket{}
+	}
 	packet := agents.ContinuityPacket{
 		LastBeat:   strings.TrimSpace(previous.LastBeat),
 		OpenLoops:  append([]string(nil), previous.OpenLoops...),
@@ -332,11 +363,8 @@ func preparePreviousContinuity(
 	}
 	if err := agents.ValidateContinuityPacket(&packet); err != nil {
 		packet = agents.DeriveBatchContinuity(previous.Content)
-		if packet.IsEmpty() {
-			return agents.ContinuityPacket{}, nil
-		}
 	}
-	return packet, nil
+	return packet
 }
 
 func requireEarliestStaleTarget(
@@ -3321,6 +3349,12 @@ func (s *Server) HandleGenerateChapter(w http.ResponseWriter, r *http.Request) {
 			}
 			return chapterTarget.PreviousContinuity
 		}(),
+		PreviousChapterTail: func() string {
+			if chapterTarget == nil {
+				return ""
+			}
+			return chapterTarget.PreviousChapterTail
+		}(),
 	}
 
 	logGenerationDiagnostic(generationID, "context_preparation", "started", "", nil)
@@ -3660,7 +3694,28 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.modelCapacity.release()
-	state := &agents.GenerationState{NovelID: novelID, ChapterIndex: chapterIndex, FullOutline: outline, Idea: idea, EditorNotes: editorNotes, ManualContext: manualContext, ExistingOutline: existingOutline, OutlineStart: outlineStart, OutlineEnd: outlineEnd, OutlineMode: req.OutlineMode}
+	previousContinuity := agents.ContinuityPacket{}
+	previousChapterTail := ""
+	if s.db != nil && chapterIndex > 1 {
+		loadCtx, loadCancel := context.WithTimeout(ctx, 5*time.Second)
+		previous, qErr := s.db.Chapter.Query().Where(
+			chapter.OrderEQ(chapterIndex-1),
+			chapter.HasNovelWith(novel.ID(*req.NovelID)),
+		).Only(loadCtx)
+		loadCancel()
+		if qErr == nil {
+			previousContinuity = continuityPacketFromChapter(previous)
+			previousChapterTail = lastRunes(previous.Content, maxPreviousChapterTailRunes)
+		} else if !ent.IsNotFound(qErr) {
+			if errors.Is(qErr, context.DeadlineExceeded) {
+				writePreviewContextError(w, http.StatusGatewayTimeout, previewContextErrorPayload{ErrorCode: "generation_timeout", Message: "加载上一章接力超时，请稍后重试"})
+				return
+			}
+			http.Error(w, "failed to load previous chapter", http.StatusInternalServerError)
+			return
+		}
+	}
+	state := &agents.GenerationState{NovelID: novelID, ChapterIndex: chapterIndex, FullOutline: outline, Idea: idea, EditorNotes: editorNotes, ManualContext: manualContext, ExistingOutline: existingOutline, OutlineStart: outlineStart, OutlineEnd: outlineEnd, OutlineMode: req.OutlineMode, PreviousContinuity: previousContinuity, PreviousChapterTail: previousChapterTail}
 	prepare := s.engine.PrepareContext
 	if req.OutlineMode == "full" || req.OutlineMode == "extend" {
 		prepare = s.engine.PrepareOutline

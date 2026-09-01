@@ -98,6 +98,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 
 	streamChan := make(chan agents.GenerationStreamEvent)
 	previousContinuity := targets[0].PreviousContinuity
+	previousChapterTail := targets[0].PreviousChapterTail
 	chapters := make([]string, 0, chapterCount)
 	var preparedBase *agents.GenerationState
 	for index := range targets {
@@ -113,7 +114,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			EditorNotes:         continuousSegmentNotes(request.EditorNotes, index, chapterCount),
 			ManualContext:       request.ManualContext,
 			PreviousContinuity:  previousContinuity,
-			PreviousChapterTail: previousContinuity.LastBeat,
+			PreviousChapterTail: previousChapterTail,
 			MainlineBeat:        agents.CurrentMainlineEventBeat(outline, targets[index].Order),
 			EventChapterCount:   chapterCount,
 			EventSegmentIndex:   index + 1,
@@ -134,7 +135,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			preparedBase.EditorNotes = segmentState.EditorNotes
 			preparedBase.ManualContext = request.ManualContext
 			preparedBase.PreviousContinuity = previousContinuity
-			preparedBase.PreviousChapterTail = previousContinuity.LastBeat
+			preparedBase.PreviousChapterTail = previousChapterTail
 			preparedBase.MainlineBeat = agents.CurrentMainlineEventBeat(outline, targets[index].Order)
 			preparedBase.EventChapterCount = chapterCount
 			preparedBase.EventSegmentIndex = index + 1
@@ -157,7 +158,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			}
 		}
 		prepared.PreviousContinuity = previousContinuity
-		prepared.PreviousChapterTail = previousContinuity.LastBeat
+		prepared.PreviousChapterTail = previousChapterTail
 		prepared.MainlineBeat = agents.CurrentMainlineEventBeat(outline, prepared.ChapterIndex)
 		prepared.EventChapterCount = chapterCount
 		prepared.EventSegmentIndex = index + 1
@@ -220,6 +221,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			return
 		}
 		previousContinuity = agents.DeriveBatchContinuity(chapters[len(chapters)-1])
+		previousChapterTail = lastRunes(chapters[len(chapters)-1], maxPreviousChapterTailRunes)
 	}
 
 	finalChapters := chapters

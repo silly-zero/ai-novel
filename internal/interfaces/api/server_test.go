@@ -1723,7 +1723,7 @@ func TestPrepareNewGenerationChapterAttachesPreviousContinuity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(events, ",") != "lock,target,lookup" || target.ID != 0 || !target.isNew || target.Order != 3 || target.PreviousContinuity.LastBeat != "结尾" {
+	if strings.Join(events, ",") != "lock,target,lookup,lookup" || target.ID != 0 || !target.isNew || target.Order != 3 || target.PreviousContinuity.LastBeat != "结尾" {
 		t.Fatalf("events = %v, target = %#v", events, target)
 	}
 }

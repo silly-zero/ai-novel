@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // DirectorAgent 是主编/导演智能体，负责拆解大纲，生成场景卡
@@ -43,6 +44,9 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 	userPrompt := fmt.Sprintf("【本章大纲】\n%s\n\n%s\n\n%s\n", state.Outline, mainlineBeatPrompt(state.MainlineBeat), continuityPrompt(state.PreviousContinuity))
 	if state.EditorNotes != "" {
 		userPrompt += fmt.Sprintf("\n【作者指令（人工干预）】\n%s\n", state.EditorNotes)
+	}
+	if tail := strings.TrimSpace(state.PreviousChapterTail); tail != "" {
+		userPrompt += fmt.Sprintf("\n【上一章结尾原文｜故事事实】\n%s\n", tail)
 	}
 	userPrompt += "\n请输出场景卡："
 
