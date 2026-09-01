@@ -5,6 +5,15 @@ import (
 	"testing"
 )
 
+func TestHasBlockingGeneratedContentIssuesForBatchAllowsShortNaturalSegment(t *testing.T) {
+	if HasBlockingGeneratedContentIssuesForBatch(strings.Repeat("文", 1000)) {
+		t.Fatal("expected a short continuous segment to be allowed")
+	}
+	if !HasBlockingGeneratedContentIssuesForBatch(strings.Repeat("文", 999)) {
+		t.Fatal("expected an abnormally short continuous segment to be blocked")
+	}
+}
+
 func TestHasBlockingGeneratedContentIssuesIgnoresOnlyExcessLength(t *testing.T) {
 	if HasBlockingGeneratedContentIssues(strings.Repeat("文", 4001)) {
 		t.Fatal("excess-length-only issue was treated as blocking")

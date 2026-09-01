@@ -57,6 +57,45 @@ func (e *ContinuityExtractor) Extract(ctx context.Context, state *GenerationStat
 	return state, nil
 }
 
+func DeriveBatchContinuity(draft string) ContinuityPacket {
+	draft = strings.TrimSpace(draft)
+	if draft == "" {
+		return ContinuityPacket{}
+	}
+	runes := []rune(draft)
+	end := len(runes)
+	start := 0
+	lastBoundary := -1
+	for index := end - 1; index >= 0; index-- {
+		if strings.ContainsRune("。！？.!?；;", runes[index]) {
+			lastBoundary = index
+			break
+		}
+	}
+	if lastBoundary >= 0 && lastBoundary == end-1 {
+		end = lastBoundary + 1
+		for index := end - 2; index >= 0; index-- {
+			if strings.ContainsRune("。！？.!?；;", runes[index]) {
+				start = index + 1
+				break
+			}
+		}
+	} else if lastBoundary >= 0 {
+		start = lastBoundary + 1
+	}
+	if end-start > maxContinuityTextRunes {
+		start = end - maxContinuityTextRunes
+	}
+	handoff := strings.TrimSpace(string(runes[start:end]))
+	if handoff == "" {
+		return ContinuityPacket{}
+	}
+	return ContinuityPacket{
+		LastBeat:   handoff,
+		OpenLoops:  []string{},
+		NextAction: handoff,
+	}
+}
 func isContinuityStructuredFailure(err error) bool {
 	var structuredErr *structuredResponseError
 	return errors.As(err, &structuredErr)

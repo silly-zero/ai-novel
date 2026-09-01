@@ -11,6 +11,7 @@ import (
 const (
 	minGeneratedContentRunes  = 2500
 	maxGeneratedContentRunes  = 5000
+	minBatchContentRunes      = 1000
 	minRepeatedParagraphRunes = 100
 )
 
@@ -122,6 +123,12 @@ func validateGeneratedContentSafety(content string) []GeneratedContentIssue {
 	return issues
 }
 
+func HasBlockingGeneratedContentIssuesForBatch(content string) bool {
+	if len([]rune(strings.TrimSpace(content))) < minBatchContentRunes {
+		return true
+	}
+	return len(validateGeneratedContentSafety(content)) > 0
+}
 func HasBlockingGeneratedContentIssues(content string) bool {
 	for _, issue := range ValidateGeneratedContent(content) {
 		switch issue.Code {

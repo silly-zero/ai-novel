@@ -265,7 +265,7 @@ func (e *WorkflowEngine) RunContinuousSegment(ctx context.Context, state *agents
 	if writerState == nil || strings.TrimSpace(writerState.Draft) == "" {
 		return writerState, errors.New("continuous segment draft is empty")
 	}
-	if agents.HasBlockingGeneratedContentIssues(writerState.Draft) {
+	if agents.HasBlockingGeneratedContentIssuesForBatch(writerState.Draft) {
 		return writerState, fmt.Errorf("continuous segment content failed validation")
 	}
 	return writerState, nil

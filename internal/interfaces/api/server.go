@@ -3617,10 +3617,6 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		http.Error(w, "preview setup failed", http.StatusInternalServerError)
-		return
-	}
 	if s.db != nil {
 		loadIdea := idea == ""
 		loadSavedOutline := req.OutlineMode != "full" && (outline == "" || existingOutline == "")
@@ -3666,8 +3662,19 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	if req.OutlineMode == "full" || req.OutlineMode == "extend" {
 		prepare = s.engine.PrepareOutline
 	}
+	responseController := http.NewResponseController(w)
+	if err := responseController.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		http.Error(w, "preview setup failed", http.StatusInternalServerError)
+		return
+	}
+	restoreWriteDeadline := func() {
+		if s.config.WriteTimeout > 0 {
+			_ = responseController.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
+		}
+	}
 	res, err := prepare(ctx, state)
 	if err != nil || res == nil {
+		restoreWriteDeadline()
 		status, response := classifyPreviewContextError(err)
 		if res == nil && err == nil {
 			status, response = classifyPreviewContextError(errors.New("preview context returned no state"))
@@ -3675,6 +3682,7 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 		writePreviewContextError(w, status, response)
 		return
 	}
+	restoreWriteDeadline()
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"novel_id": res.NovelID, "chapter_index": res.ChapterIndex, "full_outline": res.FullOutline, "outline": res.Outline, "scene_card": res.SceneCard, "context": res.Context, "editor_notes": res.EditorNotes, "manual_context": res.ManualContext})

@@ -28,7 +28,7 @@ func (s *entGenerationChapterStore) SaveEvent(
 		if target == nil || target.NovelID != novelID || target.Order != targets[0].Order+index {
 			return nil, errors.New("invalid event generation target")
 		}
-		if agents.HasBlockingGeneratedContentIssues(contents[index]) {
+		if agents.HasBlockingGeneratedContentIssuesForBatch(contents[index]) {
 			return nil, errors.New("event chapter content failed validation")
 		}
 	}
@@ -61,6 +61,10 @@ func (s *entGenerationChapterStore) SaveEvent(
 	ids := make([]int, len(targets))
 	existingIDs := make([]int, 0, len(targets))
 	for index, target := range targets {
+		packet := agents.DeriveBatchContinuity(contents[index])
+		if err := agents.ValidateContinuityPacketAgainstDraft(&packet, contents[index]); err != nil {
+			return nil, err
+		}
 		if target.ID == 0 {
 			if err := requireAvailableChapterOrder(ctx, novelID, target.Order, 0, func(ctx context.Context, novelID, order int) (*ent.Chapter, error) {
 				return lookupGenerationChapter(ctx, txClient, novelID, order)
@@ -76,9 +80,9 @@ func (s *entGenerationChapterStore) SaveEvent(
 				SetStatus(string(domain.StatusDraft)).
 				SetDerivedStatus(string(domain.DerivedStatusPending)).
 				SetDerivedGenerationID(generationID).
-				SetLastBeat("").
-				SetOpenLoops([]string{}).
-				SetNextAction("").
+				SetLastBeat(packet.LastBeat).
+				SetOpenLoops(packet.OpenLoops).
+				SetNextAction(packet.NextAction).
 				Save(ctx)
 			if createErr != nil {
 				return nil, createErr
@@ -92,9 +96,9 @@ func (s *entGenerationChapterStore) SaveEvent(
 				SetStatus(string(domain.StatusDraft)).
 				SetDerivedStatus(string(domain.DerivedStatusPending)).
 				SetDerivedGenerationID(generationID).
-				SetLastBeat("").
-				SetOpenLoops([]string{}).
-				SetNextAction("").
+				SetLastBeat(packet.LastBeat).
+				SetOpenLoops(packet.OpenLoops).
+				SetNextAction(packet.NextAction).
 				Save(ctx)
 			if ent.IsNotFound(updateErr) {
 				return nil, errGenerationChapterChanged

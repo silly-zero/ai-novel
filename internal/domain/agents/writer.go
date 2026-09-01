@@ -39,10 +39,10 @@ func (w *WriterAgent) Run(ctx context.Context, state *GenerationState) (*Generat
 			segmentIndex = 1
 		}
 		systemPrompt += fmt.Sprintf(`
-- 当前为连续情节模式：这是同一核心情节的第 %d/%d 段，当前段通常写 2500-5000 字；以自然结束和情节质量为优先，不必刻意凑满或硬性截断。
+- 当前为连续写作批次：这是同一核心情节的第 %d 个写作段，预计本批次约 %d 章；章数只是写作窗口，不是事件总跨度或闭环承诺。当前段通常写 2500-5000 字，但不得为了凑足窗口压缩过渡、硬性截断或添加无关内容。
 - 不要输出章节标题、章节编号、“本章完”、分隔线或任何人为切章标记；系统会在连续情节完成后按自然转折整理章节。
 - 同一冲突、调查、战斗、谈判或修炼过程必须连续发展；不得在中途重新介绍人物、地点、能力或重演已经发生的进入过程。
-- 当前段只推进同一情节的一段自然阶段；不要强行解决整个宏观事件，也不要为了段落结束另造无关任务。`, segmentIndex, state.EventChapterCount)
+- 当前段只推进同一情节的一段自然阶段；不要强行解决整个宏观事件，也不要为了段落结束另造无关任务。批次结束时允许事件处于自然未完状态，下一批必须从本批次最后现场继续。`, segmentIndex, state.EventChapterCount)
 	}
 
 	userPrompt := generationContextPrompt(state)

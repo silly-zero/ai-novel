@@ -97,7 +97,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 	}
 
 	streamChan := make(chan agents.GenerationStreamEvent)
-	previousContinuity := agents.ContinuityPacket{}
+	previousContinuity := targets[0].PreviousContinuity
 	chapters := make([]string, 0, chapterCount)
 	var preparedBase *agents.GenerationState
 	for index := range targets {
@@ -113,7 +113,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			EditorNotes:         continuousSegmentNotes(request.EditorNotes, index, chapterCount),
 			ManualContext:       request.ManualContext,
 			PreviousContinuity:  previousContinuity,
-			PreviousChapterTail: lastRunes(strings.Join(chapters, "\n\n"), 500),
+			PreviousChapterTail: previousContinuity.LastBeat,
 			EventChapterCount:   chapterCount,
 			EventSegmentIndex:   index + 1,
 			StreamSink:          nil,
@@ -133,7 +133,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			preparedBase.EditorNotes = segmentState.EditorNotes
 			preparedBase.ManualContext = request.ManualContext
 			preparedBase.PreviousContinuity = previousContinuity
-			preparedBase.PreviousChapterTail = lastRunes(strings.Join(chapters, "\n\n"), 500)
+			preparedBase.PreviousChapterTail = previousContinuity.LastBeat
 			preparedBase.EventChapterCount = chapterCount
 			preparedBase.EventSegmentIndex = index + 1
 			preparedBase.Draft = ""
@@ -155,7 +155,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			}
 		}
 		prepared.PreviousContinuity = previousContinuity
-		prepared.PreviousChapterTail = lastRunes(strings.Join(chapters, "\n\n"), 500)
+		prepared.PreviousChapterTail = previousContinuity.LastBeat
 		prepared.EventChapterCount = chapterCount
 		prepared.EventSegmentIndex = index + 1
 		if err := sse.send("context_meta", map[string]any{
@@ -212,10 +212,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 			return
 		}
 		chapters = append(chapters, strings.TrimSpace(finalState.Draft))
-		previousContinuity = agents.ContinuityPacket{
-			LastBeat:   lastRunes(chapters[len(chapters)-1], 500),
-			NextAction: "紧接上一段结尾继续当前情节",
-		}
+		previousContinuity = agents.DeriveBatchContinuity(chapters[len(chapters)-1])
 	}
 
 	finalChapters := chapters
@@ -251,7 +248,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 	if err := sse.terminal(generationResult{
 		GenerationID: generationID,
 		Status:       generationStatusSuccess,
-		Message:      fmt.Sprintf("连续情节已拆分为%d章", len(ids)),
+		Message:      fmt.Sprintf("连续写作批次已生成%d章；情节可在后续批次继续", len(ids)),
 		ChapterID:    ids[0],
 		ChapterIDs:   ids,
 		Persisted:    true,
@@ -261,7 +258,7 @@ func (s *Server) HandleGenerateEvent(w http.ResponseWriter, r *http.Request, req
 }
 
 func continuousSegmentNotes(notes string, index, count int) string {
-	instructions := fmt.Sprintf("连续情节第%d/%d段：承接上一段最后的动作、对话、人物位置和冲突现场，继续同一故事事件。不要重新介绍人物、地点、能力或入口过程；本段在自然转折处结束，不要人为解决整个宏观事件。", index+1, count)
+	instructions := fmt.Sprintf("连续写作批次第%d/%d段：承接上一段最后的动作、对话、人物位置和冲突现场，继续同一故事事件。这里的%d章只是本批次预计写作窗口，不代表事件必须结束；不要重新介绍人物、地点、能力或入口过程。本段在自然转折处结束，可以停在动作、信息变化、冲突升级或悬念节点；不要为了窗口结束压缩过渡、强行解决宏观事件或添加无关任务。", index+1, count, count)
 	if value := strings.TrimSpace(notes); value != "" {
 		return instructions + "\n" + value
 	}

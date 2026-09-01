@@ -36,7 +36,7 @@ func (d *DirectorAgent) Run(ctx context.Context, state *GenerationState) (*Gener
 
 	if state.EventChapterCount > 0 {
 		systemPrompt += fmt.Sprintf(`
-7. 当前为连续情节模式：请设计一条可连续展开并自然拆分为 %d 章的场景链。章节边界只能来自转场、动作阶段变化、信息揭晓或张力节点，不能来自事件重启。
+7. 当前为连续写作批次：请设计适合连续推进的场景链，预计约 %d 章；章数只是写作窗口，允许跨批次延续，不能为了匹配章数压缩过渡或强行结束事件。章节边界优先来自转场、动作阶段变化、信息揭晓或张力节点，不能来自事件重启。
 8. 场景链中不得重复介绍已经出现的人物、地点、能力或设备，不得让角色无因返回起点重新执行入口动作。`, state.EventChapterCount)
 	}
 

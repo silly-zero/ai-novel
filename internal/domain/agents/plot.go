@@ -45,9 +45,9 @@ func (p *PlotAgent) Run(ctx context.Context, state *GenerationState) (*Generatio
 	if state.EventChapterCount > 0 {
 		systemPrompt += fmt.Sprintf(`
 连续情节模式补充要求：
-- 本次将连续生成并自然拆分为 %d 章，chapter_goal 表示这段跨章情节整体要达到的结果，不是第一章必须完成的独立事件。
+- 本次是连续写作批次，预计约 %d 章；chapter_goal 只表示当前写作段的阶段性推进，不是本批次或宏观事件必须完成的终局。
 - must_happen 必须按因果顺序覆盖多个连续推进阶段，允许同一场景或冲突跨越章节边界。
-- end_state 是整段连续情节结束时的状态；中间章节不要求另造新任务或独立闭环。
+- end_state 是当前写作段自然结束时的现场状态，可以停在持续冲突、动作进行中或信息刚刚变化；事件未完时由后续批次继续。
 - 禁止通过回到起点、重新介绍人物地点或重复进入过程来制造章节感。`, state.EventChapterCount)
 	}
 
