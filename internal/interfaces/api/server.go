@@ -3617,6 +3617,10 @@ func (s *Server) HandlePreviewContext(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		http.Error(w, "preview setup failed", http.StatusInternalServerError)
+		return
+	}
 	if s.db != nil {
 		loadIdea := idea == ""
 		loadSavedOutline := req.OutlineMode != "full" && (outline == "" || existingOutline == "")
